@@ -4,6 +4,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 @AGENTS.md
 
+## Über den Projektbesitzer
+- Ich bin absoluter Nicht-Programmierer (keine Kenntnisse in
+  JavaScript, TypeScript, HTML, CSS oder generell Programmieren)
+- Erkläre Änderungen und Vorschläge immer in einfacher, klarer
+  Sprache, ohne Fachjargon vorauszusetzen
+- Wenn ich etwas außerhalb des Codes tun muss (z.B. in GitHub, Vercel,
+  Supabase klicken), gib mir genaue Schritt-für-Schritt-Anleitungen
+  mit den exakten Menüpunkten/Buttons
+- Bei mehreren möglichen Lösungswegen: triff eine klare Empfehlung
+  statt mich mit Optionen zu überfordern, außer ich frage explizit
+  danach
+
+## Projektkontext
+- Website für Live-Windwerte für Gleitschirmflieger, Startpunkt:
+  Südtiroler Wetterstationen (Provinz Bozen Open Data API)
+- Aktuell nur ich + wenige Nutzer, aber die Architektur soll
+  skalierbar bleiben
+- Phasenplan:
+  1. Südtirol: Live-Wind + 48h-Historie auf Karte (aktuell in Arbeit)
+  2. Erweiterung auf weitere Länder/Regionen (Schweiz, Österreich)
+  3. Prognosevergleich ICON-D2 vs. ICON-CH1 via Open-Meteo API
+
+## Wichtige Entscheidungen (bitte nicht ohne Rücksprache ändern)
+- Karten-Bibliothek: Leaflet (bewusst statt MapLibre GL JS gewählt)
+- Hosting: Vercel, Datenbank: Supabase, Datensammlung: GitHub Actions
+  (nicht Vercel Cron)
+- Secrets (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) NIEMALS im Code,
+  nur als Umgebungsvariablen/Secrets in Vercel + GitHub
+
+## Kommunikation bei Fehlern
+- Wenn etwas fehlschlägt: kurz erklären WAS und WARUM, dann direkt
+  einen Lösungsvorschlag machen - keine langen technischen
+  Fehlerausgaben ohne Einordnung
+- Bei Unsicherheit lieber nachfragen als etwas Riskantes einfach
+  auszuführen (z.B. Datenbank löschen, force push)
+
+## Kommunikation bei Änderungen
+- Bei jeder Code-Änderung immer angeben, in welcher Datei (Dateiname
+  + Pfad) sie gemacht wurde, z.B. "in app/components/WindMarker.tsx"
+- Bei mehreren betroffenen Dateien: alle auflisten, nicht nur
+  zusammenfassen
+
 ## Commands
 
 ```bash
