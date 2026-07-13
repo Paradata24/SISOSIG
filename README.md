@@ -21,13 +21,15 @@ Die Winddaten kommen vom offenen Datenportal der Provinz Bozen
 - `/sensors` liefert die aktuellen Messwerte aller Stationen.
 - `/stations` liefert Name und Koordinaten der Stationen.
 
-Die Next.js-Route `src/app/api/wind/route.ts` ruft beide Endpunkte ab,
-sucht sich (falls kein `?station=<Code>` angegeben ist) automatisch die
-erste Station mit vollständigen Winddaten heraus und gibt Richtung,
-Windgeschwindigkeit und Windböe als JSON zurück (umgerechnet in km/h).
+Die Next.js-Route `src/app/api/wind/route.ts` ruft beide Endpunkte ab
+(insgesamt nur 2 Anfragen pro Aktualisierung) und gibt alle Stationen
+mit Windsensoren und Koordinaten als JSON-Liste zurück: Richtung,
+Mittelwind und Böe (umgerechnet in km/h) sowie ein `stale`-Flag für
+Stationen, deren Messwerte fehlen oder älter als 2 Stunden sind — diese
+erscheinen auf der Karte als grauer Punkt statt als Windpfeil.
 
-Eine bestimmte Station lässt sich über `/api/wind?station=<SCODE>`
-abrufen. Die Stationscodes findet man in der Antwort von
+Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
+filtern. Die Stationscodes findet man in der Antwort von
 `/services/meteo/v1/stations`.
 
 ## Hinweis zur Sandbox-Umgebung
