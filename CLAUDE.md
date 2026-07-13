@@ -75,10 +75,14 @@ Supabase.
    (metadata: name, coordinates, altitude).
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
-   colored by speed (green/yellow/red thresholds for paraglider-relevant
-   wind speeds — see `getWindColor`/`getWindCategory` in `src/lib/wind.ts`),
-   or a gray dot for stations whose `stale` flag is set (missing reading or
-   measurement older than 2h). It's loaded via `WindMapLoader.tsx`
+   colored by speed on a 10-step scale modeled after the XC-Therm legend
+   (white → light blue → green → yellow → orange → red → violet → indigo —
+   see `WIND_COLOR_SCALE`/`getWindColor` in `src/lib/wind.ts`), or a gray
+   dot for stations whose `stale` flag is set (missing reading or
+   measurement older than 2h). `WindLegend.tsx` renders the matching
+   color-scale legend overlay on the map, driven by the same
+   `WIND_COLOR_SCALE` constant so the legend and the markers can never
+   drift out of sync. It's loaded via `WindMapLoader.tsx`
    (`next/dynamic`, `ssr: false`) because Leaflet needs `window` — Next 16
    no longer allows `ssr: false` directly inside a Server Component, so the
    dynamic import must live in its own `"use client"` wrapper. The map

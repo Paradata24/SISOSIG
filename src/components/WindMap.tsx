@@ -5,6 +5,7 @@ import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
+import WindLegend from "@/components/WindLegend";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
@@ -74,7 +75,13 @@ function StationPopup({ station }: { station: WindStation }) {
         <p className="text-zinc-500">Keine aktuellen Winddaten</p>
       ) : (
         <>
-          <p>Mittelwind: {station.speedKmh} km/h</p>
+          <p className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-full border border-black/10"
+              style={{ backgroundColor: getWindColor(station.speedKmh) }}
+            />
+            Mittelwind: {station.speedKmh} km/h
+          </p>
           {station.gustKmh !== null && <p>Böe: {station.gustKmh} km/h</p>}
           {station.direction !== null && (
             <p>
@@ -154,6 +161,7 @@ export default function WindMap() {
             </Marker>
           ))}
       </MapContainer>
+      <WindLegend />
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}
