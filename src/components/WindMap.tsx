@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import {
+  LayerGroup,
+  LayersControl,
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  useMapEvents,
+} from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
@@ -11,20 +19,30 @@ const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 const POLL_INTERVAL_MS = 300_000; // 5 Minuten
 
-const ARROW_SIZE = 44;
-const LABEL_HEIGHT = 18;
+const ARROW_BASE_SIZE = 44;
+const LABEL_BASE_HEIGHT = 20;
+const MIN_ICON_SCALE = 0.35;
+
+// Die Pfeile skalieren stufenlos mit dem Kartenzoom mit (größer beim
+// Reinzoomen, kleiner beim Rauszoomen) statt eine feste Pixelgröße zu haben.
+// Beim Rauszoomen wird der Skalierfaktor nach unten hin gedeckelt
+// (MIN_ICON_SCALE), damit die Pfeile nicht auf der ganzen Karte verschwinden
+// und diese übersichtlich bleibt. getIconScale() rechnet eine Zoomstufe in
+// diesen Skalierfaktor um.
+function getIconScale(zoom: number): number {
+  const scale = 1 + (zoom - SOUTH_TYROL_ZOOM) * 0.15;
+  return Math.max(MIN_ICON_SCALE, scale);
+}
 
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
-// die Richtung meldet, AUS der der Wind kommt). 44px Kantenlänge, damit die
-// Marker auch auf Touchscreens gut antippbar sind. Die Füllfarbe zeigt den
-// Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala). Als
-// DivIcon mit fester iconSize bleibt die Pixelgröße unabhängig vom Zoom
-// gleich, da Leaflet DivIcons nie mit der Karte mitskaliert.
+// die Richtung meldet, AUS der der Wind kommt). Die Füllfarbe zeigt den
+// Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala).
 function createWindIcon(
   direction: number | null,
   speedKmh: number | null,
   gustKmh: number | null,
+  scale: number,
 ) {
   const fillColor = getWindColor(speedKmh);
   const strokeColor = getWindColor(gustKmh);
@@ -32,21 +50,28 @@ function createWindIcon(
   const speedLabel = speedKmh !== null ? Math.round(speedKmh) : "–";
   const gustLabel = gustKmh !== null ? Math.round(gustKmh) : "–";
 
+  const arrowSize = Math.round(ARROW_BASE_SIZE * scale);
+  const labelHeight = Math.round(LABEL_BASE_HEIGHT * scale);
+  const fontSize = Math.max(9, Math.round(13 * scale));
+  const strokeWidth = Math.max(1.5, 3 * scale);
+
+  const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
+
   const html = `
-    <div style="display: flex; flex-direction: column; align-items: center; width: ${ARROW_SIZE}px;">
-      <div style="transform: rotate(${rotation}deg); width: ${ARROW_SIZE}px; height: ${ARROW_SIZE}px;">
-        <svg width="${ARROW_SIZE}" height="${ARROW_SIZE}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="20" cy="20" r="17" fill="white" stroke="#d1d5db" stroke-width="1.5" />
+    <div style="display: flex; flex-direction: column; align-items: center; width: ${arrowSize}px;">
+      <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px;">
+        <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
           <path
-            d="M20 7 L27 24 L20 20 L13 24 Z"
+            d="M20 2 L34 34 L20 26 L6 34 Z"
             fill="${fillColor}"
             stroke="${strokeColor}"
-            stroke-width="2.5"
+            stroke-width="${strokeWidth}"
             stroke-linejoin="round"
+            stroke-linecap="round"
           />
         </svg>
       </div>
-      <div style="margin-top: -2px; padding: 1px 4px; background: white; border: 1px solid #9ca3af; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 1.3; color: #1f2937; white-space: nowrap;">
+      <div style="margin-top: -2px; font-size: ${fontSize}px; font-weight: 700; line-height: 1.3; color: #1f2937; white-space: nowrap; text-shadow: ${textHalo};">
         ${speedLabel} / ${gustLabel}
       </div>
     </div>
@@ -55,18 +80,21 @@ function createWindIcon(
   return L.divIcon({
     html,
     className: "",
-    iconSize: [ARROW_SIZE, ARROW_SIZE + LABEL_HEIGHT],
-    iconAnchor: [ARROW_SIZE / 2, ARROW_SIZE / 2],
-    popupAnchor: [0, -ARROW_SIZE / 2],
+    iconSize: [arrowSize, arrowSize + labelHeight],
+    iconAnchor: [arrowSize / 2, arrowSize / 2],
+    popupAnchor: [0, -arrowSize / 2],
   });
 }
 
 // Grauer Punkt für Stationen mit Windsensoren, die gerade keine aktuellen
 // Werte liefern (Ausfall oder veraltete Messung).
-function createStaleIcon() {
+function createStaleIcon(scale: number) {
+  const size = Math.round(ARROW_BASE_SIZE * scale);
+  const dotSize = Math.max(8, Math.round(18 * scale));
+
   const html = `
-    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
-      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+    <div style="width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
+      <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
         <circle cx="9" cy="9" r="7" fill="#9ca3af" stroke="white" stroke-width="2" />
       </svg>
     </div>
@@ -75,9 +103,9 @@ function createStaleIcon() {
   return L.divIcon({
     html,
     className: "",
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-    popupAnchor: [0, -12],
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   });
 }
 
@@ -120,6 +148,39 @@ function StationPopup({ station }: { station: WindStation }) {
   );
 }
 
+// Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
+// synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
+// da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
+function WindMarkers({ stations }: { stations: WindStation[] }) {
+  const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
+  const map = useMapEvents({
+    zoomend: () => setZoom(map.getZoom()),
+  });
+  const scale = getIconScale(zoom);
+
+  return (
+    <>
+      {stations
+        .filter((s) => s.lat !== null && s.lng !== null)
+        .map((station) => (
+          <Marker
+            key={station.stationCode}
+            position={[station.lat!, station.lng!]}
+            icon={
+              station.stale
+                ? createStaleIcon(scale)
+                : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale)
+            }
+          >
+            <Popup>
+              <StationPopup station={station} />
+            </Popup>
+          </Marker>
+        ))}
+    </>
+  );
+}
+
 export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -159,31 +220,27 @@ export default function WindMap() {
         zoom={SOUTH_TYROL_ZOOM}
         className="h-full w-full"
       >
-        <TileLayer
-          attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
-        />
-        <TileLayer
-          attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-        />
-        {stations
-          .filter((s) => s.lat !== null && s.lng !== null)
-          .map((station) => (
-            <Marker
-              key={station.stationCode}
-              position={[station.lat!, station.lng!]}
-              icon={
-                station.stale
-                  ? createStaleIcon()
-                  : createWindIcon(station.direction, station.speedKmh, station.gustKmh)
-              }
-            >
-              <Popup>
-                <StationPopup station={station} />
-              </Popup>
-            </Marker>
-          ))}
+        <LayersControl position="topright">
+          <LayersControl.BaseLayer checked name="Standard">
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Relief">
+            <LayerGroup>
+              <TileLayer
+                attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
+              />
+              <TileLayer
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+              />
+            </LayerGroup>
+          </LayersControl.BaseLayer>
+        </LayersControl>
+        <WindMarkers stations={stations} />
       </MapContainer>
       <WindLegend />
       {error && (
