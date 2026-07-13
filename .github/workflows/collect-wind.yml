@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # TEMPORÄR: Diagnose statt Sammeln (nur auf diesem Branch)
-      - name: Frische der Windwerte messen
-        run: node scripts/wind-freshness-probe.mjs
+      - name: Winddaten abrufen und speichern
+        run: node scripts/collect-wind.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
