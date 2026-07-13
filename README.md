@@ -32,6 +32,27 @@ Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
 filtern. Die Stationscodes findet man in der Antwort von
 `/services/meteo/v1/stations`.
 
+## Wind-Historie (Supabase)
+
+Ein GitHub-Actions-Workflow (`.github/workflows/collect-wind.yml`) fragt
+alle 10 Minuten den Wetterdienst ab und schreibt die Windwerte aller
+Stationen in die Supabase-Tabelle `wind_measurements`
+(Schema: `supabase/schema.sql`, einmalig im Supabase SQL-Editor
+ausführen). Einträge älter als 7 Tage werden bei jedem Lauf gelöscht.
+
+`/api/history?station=<SCODE>` liefert die Messwerte der letzten
+48 Stunden einer Station.
+
+Benötigte Zugangsdaten (niemals in den Code schreiben!):
+
+| Variable | Wert | Wo eintragen |
+| --- | --- | --- |
+| `SUPABASE_URL` | Project URL des Supabase-Projekts | GitHub: Settings → Secrets and variables → Actions. Vercel: Settings → Environment Variables |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | ebenda |
+
+Die GitHub Secrets braucht der Sammel-Workflow, die Vercel-Variablen
+braucht die `/api/history`-Route.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz
