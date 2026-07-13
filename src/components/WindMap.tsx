@@ -4,22 +4,23 @@ import { useEffect, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { getWindColor, type WindStation } from "@/lib/wind";
+import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 600_000; // 10 Minuten
+const POLL_INTERVAL_MS = 300_000; // 5 Minuten
 
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
-// die Richtung meldet, AUS der der Wind kommt).
+// die Richtung meldet, AUS der der Wind kommt). 44px Kantenlänge, damit die
+// Marker auch auf Touchscreens gut antippbar sind.
 function createWindIcon(direction: number | null, speedKmh: number | null) {
   const color = getWindColor(speedKmh);
   const rotation = direction !== null ? (direction + 180) % 360 : 0;
 
   const html = `
-    <div style="transform: rotate(${rotation}deg); width: 40px; height: 40px;">
-      <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+    <div style="transform: rotate(${rotation}deg); width: 44px; height: 44px;">
+      <svg width="44" height="44" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
         <circle cx="20" cy="20" r="17" fill="white" stroke="${color}" stroke-width="2.5" />
         <path d="M20 7 L27 24 L20 20 L13 24 Z" fill="${color}" />
       </svg>
@@ -29,9 +30,29 @@ function createWindIcon(direction: number | null, speedKmh: number | null) {
   return L.divIcon({
     html,
     className: "",
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20],
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor: [0, -22],
+  });
+}
+
+// Grauer Punkt für Stationen mit Windsensoren, die gerade keine aktuellen
+// Werte liefern (Ausfall oder veraltete Messung).
+function createStaleIcon() {
+  const html = `
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+      <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="9" cy="9" r="7" fill="#9ca3af" stroke="white" stroke-width="2" />
+      </svg>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
+    popupAnchor: [0, -12],
   });
 }
 
@@ -39,7 +60,33 @@ function formatTimestamp(timestamp: string | null): string {
   if (!timestamp) return "unbekannt";
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "medium" });
+  return date.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+function StationPopup({ station }: { station: WindStation }) {
+  return (
+    <div className="text-sm leading-6">
+      <p className="font-semibold">
+        {station.stationName}
+        {station.altitude !== null && ` (${station.altitude} m)`}
+      </p>
+      {station.stale ? (
+        <p className="text-zinc-500">Keine aktuellen Winddaten</p>
+      ) : (
+        <>
+          <p>Mittelwind: {station.speedKmh} km/h</p>
+          {station.gustKmh !== null && <p>Böe: {station.gustKmh} km/h</p>}
+          {station.direction !== null && (
+            <p>
+              Richtung: {Math.round(station.direction)}° /{" "}
+              {toCompassPoint(station.direction)}
+            </p>
+          )}
+        </>
+      )}
+      <p className="text-zinc-500">Stand: {formatTimestamp(station.timestamp)}</p>
+    </div>
+  );
 }
 
 export default function WindMap() {
@@ -91,21 +138,14 @@ export default function WindMap() {
             <Marker
               key={station.stationCode}
               position={[station.lat!, station.lng!]}
-              icon={createWindIcon(station.direction, station.speedKmh)}
+              icon={
+                station.stale
+                  ? createStaleIcon()
+                  : createWindIcon(station.direction, station.speedKmh)
+              }
             >
               <Popup>
-                <div className="text-sm">
-                  <p className="font-semibold">
-                    {station.stationName}
-                    {station.altitude !== null && ` (${station.altitude} m)`}
-                  </p>
-                  <p>Richtung: {station.direction ?? "–"}°</p>
-                  <p>Geschwindigkeit: {station.speedKmh ?? "–"} km/h</p>
-                  <p>Böe: {station.gustKmh ?? "–"} km/h</p>
-                  <p className="text-zinc-500">
-                    Stand: {formatTimestamp(station.timestamp)}
-                  </p>
-                </div>
+                <StationPopup station={station} />
               </Popup>
             </Marker>
           ))}

@@ -3,15 +3,15 @@ import type { WindStation } from "@/lib/wind";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
+// Zwei Anfragen genügen für alle Stationen: /sensors liefert die aktuellen
+// Messwerte ALLER Stationen auf einmal, /stations alle Metadaten.
 const API_BASE =
   process.env.WIND_API_BASE_URL ??
   "http://daten.buergernetz.bz.it/services/meteo/v1";
 
-// Stationen, die zusätzlich zur automatisch gewählten Station immer
-// angezeigt werden. Abgleich über den normalisierten Stationsnamen
-// (Groß-/Kleinschreibung und Leerzeichen egal), da die Stationscodes
-// des Dienstes nicht dokumentiert sind.
-const FEATURED_STATION_NAMES = ["rittnerhorn"];
+// Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen
+// (die Stationen messen normalerweise alle 5-10 Minuten).
+const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 interface SensorReading {
   SCODE: string;
@@ -57,8 +57,12 @@ function normalizeStations(raw: unknown): StationMeta[] {
   return [];
 }
 
-function normalizeName(name: string): string {
-  return name.toLowerCase().replace(/[^a-zäöüß]/g, "");
+// Der Dienst liefert Zeitstempel wie "2026-07-13T14:10:00CEST" — das ist
+// kein gültiges ISO 8601 und von JavaScript nicht parsebar. Die Zeitzonen-
+// Kürzel werden deshalb durch numerische Offsets ersetzt.
+function toIsoTimestamp(date: string | undefined): string | null {
+  if (!date) return null;
+  return date.replace(/CEST$/, "+02:00").replace(/CET$/, "+01:00");
 }
 
 function toKmh(value: number, unit: string | undefined): number {
@@ -104,8 +108,6 @@ export async function GET(request: Request) {
       console.error(`Stationsmetadaten: Status ${res.status}`);
     }
   } catch (err) {
-    // Stationsmetadaten (Name, Koordinaten) sind optional; ohne sie
-    // liefern wir trotzdem die Sensordaten zurück.
     console.error("Stationsmetadaten nicht abrufbar:", err);
   }
 
@@ -117,75 +119,72 @@ export async function GET(request: Request) {
 
   const hasDirection = (r: SensorReading) => isDirection(r.DESC_D);
   const hasSpeed = (r: SensorReading) => isSpeed(r.DESC_D);
-  const hasWind = (readings: SensorReading[]) =>
-    readings.some(hasDirection) || readings.some(hasSpeed);
+  const now = Date.now();
 
   function buildWindStation(code: string): WindStation | null {
     const readings = byStation.get(code);
     if (!readings) return null;
 
+    // Nur Stationen mit Windsensoren; alle anderen (reine Pegel-/
+    // Temperaturstationen) werden gar nicht erst zurückgegeben.
     const dirReading = readings.find(hasDirection);
     const speedReading = readings.find(hasSpeed);
-    const gustReading = readings.find((r) => isGust(r.DESC_D));
+    if (!dirReading && !speedReading) return null;
+
+    // Ohne Koordinaten kann kein Marker platziert werden.
     const meta = stationsByCode.get(code);
+    if (!hasCoords(meta)) return null;
+
+    const gustReading = readings.find((r) => isGust(r.DESC_D));
+    const timestamp = toIsoTimestamp(speedReading?.DATE ?? dirReading?.DATE);
+
+    const direction = dirReading?.VALUE ?? null;
+    const speedKmh =
+      speedReading?.VALUE != null
+        ? Math.round(toKmh(speedReading.VALUE, speedReading.UNIT) * 10) / 10
+        : null;
+
+    // Station gilt als ausgefallen, wenn Richtung oder Geschwindigkeit
+    // fehlen (ohne Richtung kann kein Pfeil gezeichnet werden) oder der
+    // letzte Messwert zu alt ist.
+    const measuredAt = timestamp ? Date.parse(timestamp) : NaN;
+    const stale =
+      direction === null ||
+      speedKmh === null ||
+      Number.isNaN(measuredAt) ||
+      now - measuredAt > STALE_AFTER_MS;
 
     return {
       stationCode: code,
-      stationName: meta?.NAME_D ?? meta?.NAME_I ?? code,
-      lat: meta?.LAT ?? null,
-      lng: meta?.LONG ?? null,
-      altitude: meta?.ALT ?? null,
-      direction: dirReading?.VALUE ?? null,
-      speedKmh:
-        speedReading?.VALUE != null
-          ? Math.round(toKmh(speedReading.VALUE, speedReading.UNIT) * 10) / 10
-          : null,
+      stationName: meta.NAME_D ?? meta.NAME_I ?? code,
+      lat: meta.LAT ?? null,
+      lng: meta.LONG ?? null,
+      altitude: meta.ALT ?? null,
+      direction,
+      speedKmh,
       gustKmh:
         gustReading?.VALUE != null
           ? Math.round(toKmh(gustReading.VALUE, gustReading.UNIT) * 10) / 10
           : null,
-      timestamp: speedReading?.DATE ?? dirReading?.DATE ?? null,
+      timestamp,
+      stale,
     };
   }
 
-  // Zu zeigende Stationen bestimmen (Reihenfolge, ohne Duplikate):
-  // 1. Explizit per ?station=CODE1,CODE2 angefragte Stationen — oder sonst:
-  // 2. Die erste Station mit Windrichtung + -geschwindigkeit UND Koordinaten.
-  // 3. Die konfigurierten Stationen (FEATURED_STATION_NAMES), per Name gesucht.
-  const codes: string[] = [];
-
+  // Alle Stationen mit Windsensoren und Koordinaten — optional gefiltert
+  // über ?station=CODE1,CODE2 (für Tests/Debugging).
+  let codes = [...byStation.keys()];
   if (requestedStations) {
-    for (const code of requestedStations.split(",").map((c) => c.trim())) {
-      if (code && byStation.has(code) && !codes.includes(code)) codes.push(code);
-    }
-  } else {
-    for (const [code, readings] of byStation) {
-      if (
-        readings.some(hasDirection) &&
-        readings.some(hasSpeed) &&
-        hasCoords(stationsByCode.get(code))
-      ) {
-        codes.push(code);
-        break;
-      }
-    }
-
-    for (const featured of FEATURED_STATION_NAMES) {
-      for (const [code, meta] of stationsByCode) {
-        const names = [meta.NAME_D, meta.NAME_I].filter(
-          (n): n is string => typeof n === "string",
-        );
-        const matches = names.some((n) => normalizeName(n).includes(featured));
-        if (!matches || codes.includes(code)) continue;
-        const readings = byStation.get(code);
-        if (readings && hasWind(readings) && hasCoords(meta)) codes.push(code);
-      }
-    }
+    const wanted = new Set(
+      requestedStations.split(",").map((c) => c.trim()).filter(Boolean),
+    );
+    codes = codes.filter((c) => wanted.has(c));
   }
 
   const stations = codes
     .map(buildWindStation)
-    .filter((s): s is WindStation => s !== null);
+    .filter((s): s is WindStation => s !== null)
+    .sort((a, b) => a.stationName.localeCompare(b.stationName, "de"));
 
   if (stations.length === 0) {
     return NextResponse.json(
