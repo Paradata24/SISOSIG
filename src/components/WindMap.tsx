@@ -17,7 +17,7 @@ import WindLegend from "@/components/WindLegend";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 300_000; // 5 Minuten
+const POLL_INTERVAL_MS = 120_000; // 2 Minuten
 const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 
 const ARROW_BASE_SIZE = 22;
@@ -223,7 +223,9 @@ export default function WindMap() {
 
     async function loadWind() {
       try {
-        const res = await fetch("/api/wind");
+        // cache: "no-store" verhindert, dass der Browser eine ältere
+        // Antwort aus seinem Cache wiederverwendet.
+        const res = await fetch("/api/wind", { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
@@ -240,9 +242,19 @@ export default function WindMap() {
 
     loadWind();
     const interval = setInterval(loadWind, POLL_INTERVAL_MS);
+
+    // Browser drosseln Timer in Hintergrund-Tabs. Wer den Tab (z.B. am
+    // Handy) wieder in den Vordergrund holt, bekommt deshalb sofort
+    // frische Werte statt auf den nächsten Timer-Tick zu warten.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadWind();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

@@ -100,7 +100,13 @@ export async function GET(request: Request) {
 
   let stationsByCode = new Map<string, StationMeta>();
   try {
-    const res = await fetch(`${API_BASE}/stations`, { cache: "no-store" });
+    // Stationsmetadaten (Name, Koordinaten, Höhe) ändern sich praktisch
+    // nie — sie dürfen bis zu 1h aus dem Cache kommen. Das halbiert die
+    // Anfragen an den Wetterdienst; die Messwerte selbst (/sensors oben)
+    // werden weiterhin bei jedem Aufruf frisch geholt.
+    const res = await fetch(`${API_BASE}/stations`, {
+      next: { revalidate: 3600 },
+    });
     if (res.ok) {
       const stations = normalizeStations(await res.json());
       stationsByCode = new Map(stations.map((s) => [s.SCODE, s]));
@@ -193,5 +199,9 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json(stations);
+  // no-store: weder Vercels CDN noch der Browser dürfen diese Antwort
+  // zwischenspeichern — jeder Abruf soll die aktuellsten Messwerte liefern.
+  return NextResponse.json(stations, {
+    headers: { "Cache-Control": "no-store" },
+  });
 }
