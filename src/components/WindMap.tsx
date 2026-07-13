@@ -19,8 +19,8 @@ const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 const POLL_INTERVAL_MS = 300_000; // 5 Minuten
 
-const ARROW_BASE_SIZE = 44;
-const LABEL_BASE_HEIGHT = 20;
+const ARROW_BASE_SIZE = 22;
+const LABEL_BASE_HEIGHT = 10;
 const MIN_ICON_SCALE = 0.35;
 
 // Die Pfeile skalieren stufenlos mit dem Kartenzoom mit (größer beim
@@ -52,8 +52,8 @@ function createWindIcon(
 
   const arrowSize = Math.round(ARROW_BASE_SIZE * scale);
   const labelHeight = Math.round(LABEL_BASE_HEIGHT * scale);
-  const fontSize = Math.max(9, Math.round(13 * scale));
-  const strokeWidth = Math.max(1.5, 3 * scale);
+  const fontSize = Math.max(5, Math.round(6.5 * scale));
+  const strokeWidth = Math.max(0.75, 1.5 * scale);
 
   const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
 
@@ -90,7 +90,7 @@ function createWindIcon(
 // Werte liefern (Ausfall oder veraltete Messung).
 function createStaleIcon(scale: number) {
   const size = Math.round(ARROW_BASE_SIZE * scale);
-  const dotSize = Math.max(8, Math.round(18 * scale));
+  const dotSize = Math.max(4, Math.round(9 * scale));
 
   const html = `
     <div style="width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
