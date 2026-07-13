@@ -8,7 +8,7 @@ import { getWindColor, type WindStation } from "@/lib/wind";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 600_000; // 10 Minuten
 
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
