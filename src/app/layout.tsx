@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Südtirol Live-Wind",
+  title: "Should I stay or should I go",
   description: "Live-Windwerte Südtiroler Wetterstationen auf einer Karte",
 };
 
