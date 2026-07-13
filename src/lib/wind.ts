@@ -17,24 +17,38 @@ export interface WindStation {
   stale: boolean;
 }
 
-export type WindCategory = "schwach" | "mittel" | "stark";
-
-/** Farb- und Kategorie-Grenzwerte für Gleitschirmflieger. */
-export function getWindCategory(speedKmh: number | null): WindCategory {
-  if (speedKmh === null || speedKmh < 10) return "schwach";
-  if (speedKmh < 25) return "mittel";
-  return "stark";
+export interface WindColorStop {
+  /** Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe. */
+  max: number;
+  /** Hex-Farbcode dieser Stufe. */
+  color: string;
+  /** Untere Grenze dieser Stufe als Beschriftung, z. B. "18" für die Stufe 18–23. */
+  label: string;
 }
 
+/**
+ * Farbskala angelehnt an die XC-Therm-Skala (Windwerte für Gleitschirmflieger).
+ * Grenzwerte und Farben sind mit dem Projektbesitzer per Screenshot-Vorlage
+ * abgestimmt; bei Änderungswunsch bitte hier zentral anpassen.
+ */
+export const WIND_COLOR_SCALE: WindColorStop[] = [
+  { max: 4, color: "#F4F4EC", label: "0" }, // sehr helles Weiß/Off-White
+  { max: 7, color: "#B8DCEA", label: "4" }, // helles Blau
+  { max: 11, color: "#8DC873", label: "7" }, // helles Grün
+  { max: 14, color: "#C6D94A", label: "11" }, // Gelbgrün
+  { max: 18, color: "#F6D746", label: "14" }, // Gelb
+  { max: 23, color: "#F2A63C", label: "18" }, // Orange
+  { max: 27, color: "#DB5A34", label: "23" }, // Rot-Orange
+  { max: 36, color: "#9C3350", label: "27" }, // dunkles Rot/Bordeaux
+  { max: 45, color: "#7B3796", label: "36" }, // Violett/Lila
+  { max: Infinity, color: "#2C2A6E", label: "45" }, // dunkles Blau/Indigo
+];
+
+/** Liefert für einen Windwert (km/h) die passende Farbe der XC-Therm-Skala. */
 export function getWindColor(speedKmh: number | null): string {
-  switch (getWindCategory(speedKmh)) {
-    case "schwach":
-      return "#22c55e"; // grün
-    case "mittel":
-      return "#eab308"; // gelb
-    case "stark":
-      return "#ef4444"; // rot
-  }
+  const speed = speedKmh ?? 0;
+  const stop = WIND_COLOR_SCALE.find((s) => speed < s.max);
+  return (stop ?? WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1]).color;
 }
 
 const COMPASS_POINTS = [
