@@ -18,6 +18,7 @@ import WindLegend from "@/components/WindLegend";
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 const POLL_INTERVAL_MS = 300_000; // 5 Minuten
+const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 
 const ARROW_BASE_SIZE = 44;
 const LABEL_BASE_HEIGHT = 20;
@@ -109,6 +110,31 @@ function createStaleIcon(scale: number) {
   });
 }
 
+// Schalter oben links auf der Karte: blendet Stationen unterhalb der
+// Höhenschwelle aus, sobald aktiviert. Ausreichend groß für Touch-Bedienung.
+function ElevationFilterToggle({
+  active,
+  onToggle,
+}: {
+  active: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={`absolute top-20 left-3 z-[1000] rounded-md border px-3 py-2.5 text-sm font-medium shadow-lg transition-colors ${
+        active
+          ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
+          : "border-black/10 bg-white/90 text-zinc-700 hover:bg-white dark:border-white/10 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-900"
+      }`}
+    >
+      Nur Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M}m
+    </button>
+  );
+}
+
 function formatTimestamp(timestamp: string | null): string {
   if (!timestamp) return "unbekannt";
   const date = new Date(timestamp);
@@ -184,6 +210,13 @@ function WindMarkers({ stations }: { stations: WindStation[] }) {
 export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [highAltitudeOnly, setHighAltitudeOnly] = useState(false);
+
+  const visibleStations = highAltitudeOnly
+    ? stations.filter(
+        (s) => s.altitude !== null && s.altitude > HIGH_ALTITUDE_THRESHOLD_M,
+      )
+    : stations;
 
   useEffect(() => {
     let cancelled = false;
@@ -240,8 +273,12 @@ export default function WindMap() {
             </LayerGroup>
           </LayersControl.BaseLayer>
         </LayersControl>
-        <WindMarkers stations={stations} />
+        <WindMarkers stations={visibleStations} />
       </MapContainer>
+      <ElevationFilterToggle
+        active={highAltitudeOnly}
+        onToggle={() => setHighAltitudeOnly((v) => !v)}
+      />
       <WindLegend />
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
