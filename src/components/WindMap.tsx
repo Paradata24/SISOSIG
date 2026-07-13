@@ -1,14 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  LayerGroup,
-  LayersControl,
-  MapContainer,
-  Marker,
-  Popup,
-  TileLayer,
-} from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
@@ -135,26 +128,14 @@ export default function WindMap() {
         zoom={SOUTH_TYROL_ZOOM}
         className="h-full w-full"
       >
-        <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Standard">
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-          </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="Relief">
-            <LayerGroup>
-              <TileLayer
-                attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
-              />
-              <TileLayer
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-              />
-            </LayerGroup>
-          </LayersControl.BaseLayer>
-        </LayersControl>
+        <TileLayer
+          attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
+        />
+        <TileLayer
+          attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+        />
         {stations
           .filter((s) => s.lat !== null && s.lng !== null)
           .map((station) => (
