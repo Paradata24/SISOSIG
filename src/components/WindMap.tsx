@@ -43,7 +43,7 @@ function formatTimestamp(timestamp: string | null): string {
 }
 
 export default function WindMap() {
-  const [station, setStation] = useState<WindStation | null>(null);
+  const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,11 +56,11 @@ export default function WindMap() {
         if (cancelled) return;
         if (!res.ok) {
           setError(data.error ?? "Unbekannter Fehler");
-          setStation(null);
+          setStations([]);
           return;
         }
         setError(null);
-        setStation(data as WindStation);
+        setStations(data as WindStation[]);
       } catch {
         if (!cancelled) setError("Winddaten konnten nicht geladen werden");
       }
@@ -85,24 +85,30 @@ export default function WindMap() {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {station && station.lat !== null && station.lng !== null && (
-          <Marker
-            position={[station.lat, station.lng]}
-            icon={createWindIcon(station.direction, station.speedKmh)}
-          >
-            <Popup>
-              <div className="text-sm">
-                <p className="font-semibold">{station.stationName}</p>
-                <p>Richtung: {station.direction ?? "–"}°</p>
-                <p>Geschwindigkeit: {station.speedKmh ?? "–"} km/h</p>
-                <p>Böe: {station.gustKmh ?? "–"} km/h</p>
-                <p className="text-zinc-500">
-                  Stand: {formatTimestamp(station.timestamp)}
-                </p>
-              </div>
-            </Popup>
-          </Marker>
-        )}
+        {stations
+          .filter((s) => s.lat !== null && s.lng !== null)
+          .map((station) => (
+            <Marker
+              key={station.stationCode}
+              position={[station.lat!, station.lng!]}
+              icon={createWindIcon(station.direction, station.speedKmh)}
+            >
+              <Popup>
+                <div className="text-sm">
+                  <p className="font-semibold">
+                    {station.stationName}
+                    {station.altitude !== null && ` (${station.altitude} m)`}
+                  </p>
+                  <p>Richtung: {station.direction ?? "–"}°</p>
+                  <p>Geschwindigkeit: {station.speedKmh ?? "–"} km/h</p>
+                  <p>Böe: {station.gustKmh ?? "–"} km/h</p>
+                  <p className="text-zinc-500">
+                    Stand: {formatTimestamp(station.timestamp)}
+                  </p>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
       </MapContainer>
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">

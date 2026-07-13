@@ -7,6 +7,12 @@ const API_BASE =
   process.env.WIND_API_BASE_URL ??
   "http://daten.buergernetz.bz.it/services/meteo/v1";
 
+// Stationen, die zusätzlich zur automatisch gewählten Station immer
+// angezeigt werden. Abgleich über den normalisierten Stationsnamen
+// (Groß-/Kleinschreibung und Leerzeichen egal), da die Stationscodes
+// des Dienstes nicht dokumentiert sind.
+const FEATURED_STATION_NAMES = ["rittnerhorn"];
+
 interface SensorReading {
   SCODE: string;
   TYPE: string;
@@ -51,6 +57,10 @@ function normalizeStations(raw: unknown): StationMeta[] {
   return [];
 }
 
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[^a-zäöüß]/g, "");
+}
+
 function toKmh(value: number, unit: string | undefined): number {
   if (unit && unit.toLowerCase().includes("m/s")) return value * 3.6;
   return value;
@@ -65,7 +75,7 @@ const hasCoords = (meta: StationMeta | undefined): meta is StationMeta =>
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const requestedStation = searchParams.get("station");
+  const requestedStations = searchParams.get("station");
 
   let sensors: SensorReading[];
   try {
@@ -107,54 +117,82 @@ export async function GET(request: Request) {
 
   const hasDirection = (r: SensorReading) => isDirection(r.DESC_D);
   const hasSpeed = (r: SensorReading) => isSpeed(r.DESC_D);
+  const hasWind = (readings: SensorReading[]) =>
+    readings.some(hasDirection) || readings.some(hasSpeed);
 
-  // Ohne explizite Stationsangabe: die erste Station mit vollständigen
-  // Winddaten (Richtung + Geschwindigkeit) UND bekannten Koordinaten nehmen,
-  // damit garantiert ein Marker auf der Karte platziert werden kann.
-  let stationCode = requestedStation ?? undefined;
-  if (!stationCode) {
+  function buildWindStation(code: string): WindStation | null {
+    const readings = byStation.get(code);
+    if (!readings) return null;
+
+    const dirReading = readings.find(hasDirection);
+    const speedReading = readings.find(hasSpeed);
+    const gustReading = readings.find((r) => isGust(r.DESC_D));
+    const meta = stationsByCode.get(code);
+
+    return {
+      stationCode: code,
+      stationName: meta?.NAME_D ?? meta?.NAME_I ?? code,
+      lat: meta?.LAT ?? null,
+      lng: meta?.LONG ?? null,
+      altitude: meta?.ALT ?? null,
+      direction: dirReading?.VALUE ?? null,
+      speedKmh:
+        speedReading?.VALUE != null
+          ? Math.round(toKmh(speedReading.VALUE, speedReading.UNIT) * 10) / 10
+          : null,
+      gustKmh:
+        gustReading?.VALUE != null
+          ? Math.round(toKmh(gustReading.VALUE, gustReading.UNIT) * 10) / 10
+          : null,
+      timestamp: speedReading?.DATE ?? dirReading?.DATE ?? null,
+    };
+  }
+
+  // Zu zeigende Stationen bestimmen (Reihenfolge, ohne Duplikate):
+  // 1. Explizit per ?station=CODE1,CODE2 angefragte Stationen — oder sonst:
+  // 2. Die erste Station mit Windrichtung + -geschwindigkeit UND Koordinaten.
+  // 3. Die konfigurierten Stationen (FEATURED_STATION_NAMES), per Name gesucht.
+  const codes: string[] = [];
+
+  if (requestedStations) {
+    for (const code of requestedStations.split(",").map((c) => c.trim())) {
+      if (code && byStation.has(code) && !codes.includes(code)) codes.push(code);
+    }
+  } else {
     for (const [code, readings] of byStation) {
       if (
         readings.some(hasDirection) &&
         readings.some(hasSpeed) &&
         hasCoords(stationsByCode.get(code))
       ) {
-        stationCode = code;
+        codes.push(code);
         break;
+      }
+    }
+
+    for (const featured of FEATURED_STATION_NAMES) {
+      for (const [code, meta] of stationsByCode) {
+        const names = [meta.NAME_D, meta.NAME_I].filter(
+          (n): n is string => typeof n === "string",
+        );
+        const matches = names.some((n) => normalizeName(n).includes(featured));
+        if (!matches || codes.includes(code)) continue;
+        const readings = byStation.get(code);
+        if (readings && hasWind(readings) && hasCoords(meta)) codes.push(code);
       }
     }
   }
 
-  if (!stationCode || !byStation.has(stationCode)) {
+  const stations = codes
+    .map(buildWindStation)
+    .filter((s): s is WindStation => s !== null);
+
+  if (stations.length === 0) {
     return NextResponse.json(
       { error: "Keine Station mit Winddaten und Koordinaten gefunden" },
       { status: 404 },
     );
   }
 
-  const readings = byStation.get(stationCode)!;
-  const dirReading = readings.find(hasDirection);
-  const speedReading = readings.find(hasSpeed);
-  const gustReading = readings.find((r) => isGust(r.DESC_D));
-  const meta = stationsByCode.get(stationCode);
-
-  const result: WindStation = {
-    stationCode,
-    stationName: meta?.NAME_D ?? meta?.NAME_I ?? stationCode,
-    lat: meta?.LAT ?? null,
-    lng: meta?.LONG ?? null,
-    altitude: meta?.ALT ?? null,
-    direction: dirReading?.VALUE ?? null,
-    speedKmh:
-      speedReading?.VALUE != null
-        ? Math.round(toKmh(speedReading.VALUE, speedReading.UNIT) * 10) / 10
-        : null,
-    gustKmh:
-      gustReading?.VALUE != null
-        ? Math.round(toKmh(gustReading.VALUE, gustReading.UNIT) * 10) / 10
-        : null,
-    timestamp: speedReading?.DATE ?? dirReading?.DATE ?? null,
-  };
-
-  return NextResponse.json(result);
+  return NextResponse.json(stations);
 }
