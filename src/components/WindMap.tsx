@@ -145,7 +145,7 @@ function ElevationFilterToggle({
         aria-pressed={filter === "high"}
         className={buttonClass(filter === "high")}
       >
-        Nur Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
+        Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
       </button>
       <button
         type="button"
@@ -153,7 +153,7 @@ function ElevationFilterToggle({
         aria-pressed={filter === "veryHigh"}
         className={buttonClass(filter === "veryHigh")}
       >
-        Nur Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
+        Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
       </button>
     </div>
   );
