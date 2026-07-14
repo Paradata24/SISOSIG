@@ -53,6 +53,37 @@ Benötigte Zugangsdaten (niemals in den Code schreiben!):
 Die GitHub Secrets braucht der Sammel-Workflow, die Vercel-Variablen
 braucht die `/api/history`-Route.
 
+## Verlaufsbalken (48h-Windverlauf beim Klick auf eine Station)
+
+Der **Verlaufsbalken** ist das Panel, das unten über die volle
+Bildschirmbreite erscheint, sobald man auf der Karte auf eine Station
+klickt. Er zeigt den Windverlauf der letzten 48 Stunden dieser Station:
+
+- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 48 h" bis
+  „jetzt + 3 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
+- zwei Kurven — Mittelwind (dünn) und Böen (dick) — vor den Farbbändern
+  der Windstärke-Skala (dieselbe Skala wie die Windpfeile auf der Karte),
+- darunter eine Reihe Windrichtungs-Pfeile, einer je Messpunkt, jeweils in
+  die Windrichtung gedreht und nach Windstärke eingefärbt.
+
+Das Diagramm ist breiter als der Bildschirm und lässt sich horizontal
+scrollen (Desktop und Handy); beim Öffnen steht es am rechten Rand
+(aktuelle Zeit), nach links scrollen zeigt die älteren Stunden. Schließen
+per X-Button oder Escape-Taste.
+
+Code: `src/components/WindHistoryPanel.tsx`. Geöffnet wird der Balken per
+Klick auf einen Marker in `src/components/WindMap.tsx`; die Daten kommen
+von `/api/history?station=<SCODE>`.
+
+**Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
+Messwerte gesammelt werden. Der Sammel-Workflow ist auf alle 10 Minuten
+eingestellt, GitHub Actions führt solche Zeitpläne bei Auslastung aber
+faktisch nur etwa alle 1–2 Stunden aus — die Kurve ist daher eher grob
+aufgelöst.
+
+> **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
+> ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz

@@ -99,6 +99,24 @@ Supabase.
 4. `src/app/api/history/route.ts` — reads the last 48h for one station
    (`?station=<SCODE>`) straight from Supabase via the REST API (no
    `@supabase/supabase-js` dependency, just `fetch`).
+5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
+   project owner's reference name for this feature; use it when they ask to
+   change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
+   the screen, opened by clicking a station marker in `WindMap.tsx` (the
+   marker's `click` handler calls `onSelect`, which sets `selectedStation`).
+   It fetches `/api/history?station=<SCODE>` and draws an SVG chart of the
+   last 48h: a **fixed** time axis from `now − 48h` to `now + 3h` (dashed
+   "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
+   curve over horizontal wind-scale color bands, and a row of wind-direction
+   arrows below. Colors and arrow rotation deliberately reuse
+   `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
+   convention so the panel and the map markers can never drift apart. The
+   chart is wider than the viewport (horizontally scrollable, auto-scrolled
+   to "now" on open); two points are only joined into a line when ≤ 3h apart
+   (`LINE_GAP_MS`) because the collector realistically runs only ~every 1–2h,
+   not every 10 min — GitHub throttles the `*/10` cron — and every
+   measurement is also drawn as a dot so sparse data stays visible. Loading /
+   error / "Keine Daten verfügbar" states are handled.
 
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `collect-wind.mjs`:**
