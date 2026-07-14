@@ -328,6 +328,17 @@ export default function WindHistoryPanel({
   const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const gustValueY = speedValueY + VALUE_LINE_H;
 
+  // Prognose-Werte (rot) oben im Diagramm, unter der "jetzt"-Beschriftung:
+  // erst die zwei Textzeilen (Mittelwind, Böe), darunter der Windpfeil.
+  // Bewusst als reine Überlagerung innerhalb des bestehenden Kurvenbereichs,
+  // damit sich an der übrigen Geometrie (SVG_H, chartTop/-Bottom, …) nichts
+  // verschiebt. Eigene Zeile unterhalb von "jetzt" (chartTop + 11), damit
+  // sich beide nicht überlappen, falls ein Prognosepunkt an derselben Stelle
+  // wie die "jetzt"-Linie liegt.
+  const forecastSpeedValueY = chartTop + 2 * VALUE_LINE_H;
+  const forecastGustValueY = forecastSpeedValueY + VALUE_LINE_H;
+  const forecastArrowCy = forecastGustValueY + VALUES_GAP + ARROW_ROW_H / 2;
+
   // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
   const bands: { from: number; to: number; color: string }[] = [];
   let bandFrom = 0;
@@ -364,6 +375,24 @@ export default function WindHistoryPanel({
   );
   const arrowIndices: number[] = [];
   for (let i = points.length - 1; i >= 0; i -= arrowStep) arrowIndices.push(i);
+
+  // Dieselbe Ausdünnung für die roten Prognose-Werte/Pfeile oben im
+  // Diagramm, aber auf Basis der (stündlichen) Prognosepunkte statt der
+  // Messpunkte — deren Abstand in Pixeln unterscheidet sich sonst je nach
+  // Stationsabdeckung von der Messreihe.
+  const forecastPxPerPoint =
+    forecastPoints.length > 1
+      ? (x(forecastPoints[forecastPoints.length - 1].t) - x(forecastPoints[0].t)) /
+        (forecastPoints.length - 1)
+      : historyWidth;
+  const forecastArrowStep = Math.max(
+    1,
+    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / forecastPxPerPoint),
+  );
+  const forecastArrowIndices: number[] = [];
+  for (let i = forecastPoints.length - 1; i >= 0; i -= forecastArrowStep) {
+    forecastArrowIndices.push(i);
+  }
 
   const yTicks: number[] = [];
   for (let v = 0; v <= yMax; v += yTickStep) yTicks.push(v);
@@ -677,6 +706,56 @@ export default function WindHistoryPanel({
                     >
                       {p.gust !== null ? Math.round(p.gust) : "–"}
                     </text>
+                  </g>
+                );
+              })}
+
+              {/* Prognose-Werte oben im Diagramm, in Rot: zuerst Mittelwind,
+                  darunter Böe, darunter der Windpfeil — dieselbe Anordnung wie
+                  unten bei den Messwerten, nur oben und komplett rot (auch der
+                  Pfeil einfarbig statt windstärke-gefärbt wie auf der Karte). */}
+              {forecastArrowIndices.map((i) => {
+                const p = forecastPoints[i];
+                if (p.direction === null) return null;
+                const tx = x(p.t).toFixed(1);
+                return (
+                  <g key={`fvalues-${p.t}`} className="fill-red-600 dark:fill-red-500">
+                    <text
+                      x={tx}
+                      y={forecastSpeedValueY}
+                      textAnchor="middle"
+                      className="text-[10px] tabular-nums"
+                    >
+                      {p.speed !== null ? Math.round(p.speed) : "–"}
+                    </text>
+                    <text
+                      x={tx}
+                      y={forecastGustValueY}
+                      textAnchor="middle"
+                      className="text-[10px] tabular-nums"
+                    >
+                      {p.gust !== null ? Math.round(p.gust) : "–"}
+                    </text>
+                  </g>
+                );
+              })}
+              {forecastArrowIndices.map((i) => {
+                const p = forecastPoints[i];
+                if (p.direction === null) return null;
+                const rotation = (p.direction + 180) % 360;
+                return (
+                  <g
+                    key={`farrow-${p.t}`}
+                    transform={`translate(${x(p.t).toFixed(1)} ${forecastArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                  >
+                    <title>
+                      {`Prognose ${formatTime(p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
+                    </title>
+                    <path
+                      d="M20 2 L34 34 L20 26 L6 34 Z"
+                      transform="translate(-20 -20)"
+                      className="fill-red-600 dark:fill-red-500"
+                    />
                   </g>
                 );
               })}
