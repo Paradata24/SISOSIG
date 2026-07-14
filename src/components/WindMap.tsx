@@ -18,7 +18,7 @@ import WindHistoryPanel from "@/components/WindHistoryPanel";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 300_000; // 5 Minuten
+const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
 const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 
 const ARROW_BASE_SIZE = 22;
@@ -222,6 +222,7 @@ export default function WindMap() {
   const [error, setError] = useState<string | null>(null);
   const [highAltitudeOnly, setHighAltitudeOnly] = useState(false);
   const [selectedStation, setSelectedStation] = useState<WindStation | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const visibleStations = highAltitudeOnly
     ? stations.filter(
@@ -232,28 +233,46 @@ export default function WindMap() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadWind() {
+    // isInitial=true nur beim allerersten Laden. Bei den Hintergrund-
+    // Aktualisierungen bleiben die zuletzt bekannten Marker stehen, falls
+    // eine einzelne Anfrage scheitert (z. B. kurzer Netzaussetzer am Handy) —
+    // so verschwinden nicht plötzlich alle Pfeile von der Karte.
+    async function loadWind(isInitial = false) {
       try {
-        const res = await fetch("/api/wind");
+        const res = await fetch("/api/wind", { cache: "no-store" });
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
-          setError(data.error ?? "Unbekannter Fehler");
-          setStations([]);
+          if (isInitial) {
+            setError(data.error ?? "Unbekannter Fehler");
+            setStations([]);
+          }
           return;
         }
         setError(null);
         setStations(data as WindStation[]);
+        setLastUpdated(new Date());
       } catch {
-        if (!cancelled) setError("Winddaten konnten nicht geladen werden");
+        if (!cancelled && isInitial) {
+          setError("Winddaten konnten nicht geladen werden");
+        }
       }
     }
 
-    loadWind();
-    const interval = setInterval(loadWind, POLL_INTERVAL_MS);
+    loadWind(true);
+    const interval = setInterval(() => loadWind(false), POLL_INTERVAL_MS);
+
+    // Sobald der Tab wieder in den Vordergrund kommt (z. B. Handy entsperrt),
+    // sofort frische Werte holen statt bis zum nächsten Intervall zu warten.
+    function handleVisibility() {
+      if (document.visibilityState === "visible") loadWind(false);
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -291,6 +310,15 @@ export default function WindMap() {
         onToggle={() => setHighAltitudeOnly((v) => !v)}
       />
       <WindLegend />
+      {lastUpdated && (
+        <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
+          Zuletzt aktualisiert:{" "}
+          {lastUpdated.toLocaleTimeString("de-DE", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </div>
+      )}
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}

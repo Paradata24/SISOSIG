@@ -28,8 +28,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Wichtige Entscheidungen (bitte nicht ohne Rücksprache ändern)
 - Karten-Bibliothek: Leaflet (bewusst statt MapLibre GL JS gewählt)
-- Hosting: Vercel, Datenbank: Supabase, Datensammlung: GitHub Actions
-  (nicht Vercel Cron)
+- Hosting: Vercel, Datenbank: Supabase, Datensammlung: Vercel-API-Route
+  `/api/collect`, angestoßen von Supabase Cron (früher GitHub Actions)
 - Secrets (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) NIEMALS im Code,
   nur als Umgebungsvariablen/Secrets in Vercel + GitHub
 
@@ -89,13 +89,16 @@ Supabase.
    itself offers two base layers via Leaflet's `LayersControl` (Standard
    OSM tiles vs. an Esri hillshade + CARTO place-name overlay); markers are
    rendered outside the base-layer group so they stay visible on both.
-3. `scripts/collect-wind.mjs` — a standalone Node script (no npm deps) run
-   by `.github/workflows/collect-wind.yml` every 10 minutes. It re-fetches
-   the same upstream API, upserts rows into the Supabase table
+3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
+   **Supabase Cron** (formerly a GitHub Actions workflow, now removed). It
+   re-fetches the same upstream API, upserts rows into the Supabase table
    `wind_measurements` (schema in `supabase/schema.sql`), and deletes rows
-   older than 7 days. This is a separate code path from `/api/wind` (not a
-   shared module) because it runs in GitHub Actions, not in the Next.js
-   runtime.
+   older than 7 days, then answers with a small JSON summary
+   (`{ ok, saved, ... }`). It is guarded by a bearer token: callers must
+   send `Authorization: Bearer <CRON_SECRET>` or the route returns 401
+   (`CRON_SECRET` is a Vercel env var). This deliberately reuses the same
+   sensor-parsing logic as `/api/wind` but is a separate route because it
+   *writes* to Supabase rather than serving the map.
 4. `src/app/api/history/route.ts` — reads the last 48h for one station
    (`?station=<SCODE>`) straight from Supabase via the REST API (no
    `@supabase/supabase-js` dependency, just `fetch`).
@@ -113,13 +116,13 @@ Supabase.
    convention so the panel and the map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
    to "now" on open); two points are only joined into a line when ≤ 3h apart
-   (`LINE_GAP_MS`) because the collector realistically runs only ~every 1–2h,
-   not every 10 min — GitHub throttles the `*/10` cron — and every
+   (`LINE_GAP_MS`) to stay robust even if the Supabase cron for `/api/collect`
+   runs less often than configured, and every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled.
 
 **Upstream API quirks worth knowing before touching `/api/wind` or
-`collect-wind.mjs`:**
+`/api/collect`:**
 - The webservice's station list (`/stations`) has been observed in two
   shapes: a flat array, or a GeoJSON `FeatureCollection` (coordinates
   under `geometry.coordinates`). `normalizeStations()` handles both —
@@ -130,16 +133,16 @@ Supabase.
   findable; this is intentionally more robust than guessing exact codes.
 - Timestamps come back as e.g. `"2026-07-13T14:10:00CEST"`, which is not
   valid ISO 8601 and `Date.parse` can't handle it. Both `/api/wind` and
-  `collect-wind.mjs` replace the `CEST`/`CET` suffix with a numeric UTC
-  offset (`toIsoTimestamp`/inline equivalent) before returning or storing
-  it — keep these two in sync if the conversion logic changes.
+  `/api/collect` replace the `CEST`/`CET` suffix with a numeric UTC
+  offset (`toIsoTimestamp`) before returning or storing it — keep these two
+  in sync if the conversion logic changes.
 - A station only ends up in `/api/wind`'s output if it has wind sensors
   **and** resolvable coordinates; stations with sensors but no metadata
   match are dropped rather than shown at an unknown location.
 
 **Secrets:** `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are required by
-`/api/history` (as Vercel environment variables) and by the collector
-workflow (as GitHub Actions secrets) — never hardcode them or the
+`/api/history` and `/api/collect`, and `CRON_SECRET` guards `/api/collect`
+— all as Vercel environment variables; never hardcode them or the
 webservice URL override; see the README's setup table.
 
 **Sandboxed dev environments:** outbound requests to
