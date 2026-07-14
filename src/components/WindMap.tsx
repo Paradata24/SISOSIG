@@ -16,10 +16,8 @@ import "leaflet/dist/leaflet.css";
 import { getWindColor, type WindStation } from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
-import suedtirolGrenze from "@/data/suedtirol-grenze.json";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
 
-const GRENZE_STYLE = { color: "#555555", weight: 1, opacity: 0.8, fill: false };
 const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
@@ -319,11 +317,6 @@ export default function WindMap() {
             </LayerGroup>
           </LayersControl.BaseLayer>
         </LayersControl>
-        <GeoJSON
-          data={suedtirolGrenze as GeoJSON.GeoJsonObject}
-          style={GRENZE_STYLE}
-          interactive={false}
-        />
         <GeoJSON
           data={staatsgrenzen as GeoJSON.GeoJsonObject}
           style={STAATSGRENZE_STYLE}
