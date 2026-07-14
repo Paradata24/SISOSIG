@@ -130,7 +130,7 @@ function ElevationFilterToggle({
   onChange: (filter: AltitudeFilter) => void;
 }) {
   function buttonClass(active: boolean) {
-    return `rounded-md border px-3 py-2.5 text-sm font-medium shadow-lg transition-colors ${
+    return `rounded border px-1.5 py-1 text-xs font-medium shadow-md transition-colors ${
       active
         ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
         : "border-black/10 bg-white/90 text-zinc-700 hover:bg-white dark:border-white/10 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-900"
