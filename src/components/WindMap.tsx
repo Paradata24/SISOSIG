@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from "react";
 import {
+  CircleMarker,
   LayerGroup,
   LayersControl,
   MapContainer,
   Marker,
-  Popup,
   TileLayer,
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
+import { getWindColor, type WindStation } from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
 
@@ -136,62 +136,34 @@ function ElevationFilterToggle({
   );
 }
 
-function formatTimestamp(timestamp: string | null): string {
-  if (!timestamp) return "unbekannt";
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
-}
-
-function StationPopup({ station }: { station: WindStation }) {
-  return (
-    <div className="text-sm leading-6">
-      <p className="font-semibold">
-        {station.stationName}
-        {station.altitude !== null && ` (${station.altitude} m)`}
-      </p>
-      {station.stale ? (
-        <p className="text-zinc-500">Keine aktuellen Winddaten</p>
-      ) : (
-        <>
-          <p className="flex items-center gap-1.5">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-full border border-black/10"
-              style={{ backgroundColor: getWindColor(station.speedKmh) }}
-            />
-            Mittelwind: {station.speedKmh} km/h
-          </p>
-          {station.gustKmh !== null && <p>Böe: {station.gustKmh} km/h</p>}
-          {station.direction !== null && (
-            <p>
-              Richtung: {Math.round(station.direction)}° /{" "}
-              {toCompassPoint(station.direction)}
-            </p>
-          )}
-        </>
-      )}
-      <p className="text-zinc-500">Stand: {formatTimestamp(station.timestamp)}</p>
-    </div>
-  );
-}
-
 // Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
 // synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
 // da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
-// Ein Klick auf einen Marker öffnet zusätzlich zum Popup das Verlaufspanel
-// am unteren Bildschirmrand (onSelect).
+// Ein Klick auf einen Marker öffnet das Verlaufspanel am unteren
+// Bildschirmrand (onSelect) und zeichnet einen Auswahl-Kreis um Pfeil und
+// Text der angeklickten Station statt eines Popups.
 function WindMarkers({
   stations,
   onSelect,
+  selectedStationCode,
 }: {
   stations: WindStation[];
   onSelect: (station: WindStation) => void;
+  selectedStationCode: string | null;
 }) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
   const map = useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
   });
   const scale = getIconScale(zoom);
+  const selectedStation = stations.find(
+    (s) => s.stationCode === selectedStationCode && s.lat !== null && s.lng !== null,
+  );
+  // Radius so bemessen, dass sowohl der Pfeil als auch die Werte-Beschriftung
+  // darunter innerhalb des Kreises liegen (Anker sitzt in der Pfeilmitte).
+  const selectionRadius = Math.round(
+    scale * (ARROW_BASE_SIZE / 2 + LABEL_BASE_HEIGHT) + 4,
+  );
 
   return (
     <>
@@ -207,12 +179,21 @@ function WindMarkers({
                 : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale)
             }
             eventHandlers={{ click: () => onSelect(station) }}
-          >
-            <Popup>
-              <StationPopup station={station} />
-            </Popup>
-          </Marker>
+          />
         ))}
+      {selectedStation && (
+        <CircleMarker
+          center={[selectedStation.lat!, selectedStation.lng!]}
+          radius={selectionRadius}
+          pathOptions={{
+            color: "#2563eb",
+            weight: 1.5,
+            opacity: 0.5,
+            fillOpacity: 0,
+          }}
+          interactive={false}
+        />
+      )}
     </>
   );
 }
@@ -221,7 +202,7 @@ export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [highAltitudeOnly, setHighAltitudeOnly] = useState(false);
-  const [selectedStation, setSelectedStation] = useState<WindStation | null>(null);
+  const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const visibleStations = highAltitudeOnly
@@ -229,6 +210,11 @@ export default function WindMap() {
         (s) => s.altitude !== null && s.altitude > HIGH_ALTITUDE_THRESHOLD_M,
       )
     : stations;
+
+  // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
+  // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
+  // jeder Hintergrund-Aktualisierung von /api/wind mit aktualisiert wird.
+  const selectedStation = stations.find((s) => s.stationCode === selectedStationCode) ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -303,7 +289,11 @@ export default function WindMap() {
             </LayerGroup>
           </LayersControl.BaseLayer>
         </LayersControl>
-        <WindMarkers stations={visibleStations} onSelect={setSelectedStation} />
+        <WindMarkers
+          stations={visibleStations}
+          onSelect={(station) => setSelectedStationCode(station.stationCode)}
+          selectedStationCode={selectedStationCode}
+        />
       </MapContainer>
       <ElevationFilterToggle
         active={highAltitudeOnly}
@@ -327,7 +317,7 @@ export default function WindMap() {
       {selectedStation && (
         <WindHistoryPanel
           station={selectedStation}
-          onClose={() => setSelectedStation(null)}
+          onClose={() => setSelectedStationCode(null)}
         />
       )}
     </div>
