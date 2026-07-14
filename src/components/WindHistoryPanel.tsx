@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getWindColor, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
+import type { ForecastEntry } from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 48 Stunden:
@@ -117,6 +118,9 @@ export default function WindHistoryPanel({
   const [result, setResult] = useState<{
     code: string;
     entries?: HistoryEntry[];
+    // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
+    // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
+    forecast?: ForecastEntry[];
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -127,6 +131,7 @@ export default function WindHistoryPanel({
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
+  const forecast = loading ? null : (result?.forecast ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -136,7 +141,16 @@ export default function WindHistoryPanel({
     async function loadHistory() {
       const code = station.stationCode;
       try {
-        const res = await fetch(`/api/history?station=${encodeURIComponent(code)}`);
+        // Messwerte und Prognose parallel laden. Die Prognose ist additiv:
+        // scheitert sie (Netzfehler, 502, oder Station ohne Prognose), zeigen
+        // wir einfach keine rote Kurve, ohne die Messwerte zu blockieren.
+        const [res, forecastEntries] = await Promise.all([
+          fetch(`/api/history?station=${encodeURIComponent(code)}`),
+          fetch(`/api/forecast?station=${encodeURIComponent(code)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => (d?.entries as ForecastEntry[] | undefined) ?? [])
+            .catch(() => [] as ForecastEntry[]),
+        ]);
         const data = await res.json();
         if (cancelled) return;
         setNow(Date.now());
@@ -146,7 +160,11 @@ export default function WindHistoryPanel({
             error: data.error ?? "Verlauf konnte nicht geladen werden",
           });
         } else {
-          setResult({ code, entries: data.entries as HistoryEntry[] });
+          setResult({
+            code,
+            entries: data.entries as HistoryEntry[],
+            forecast: forecastEntries,
+          });
         }
       } catch {
         if (!cancelled) {
@@ -199,7 +217,21 @@ export default function WindHistoryPanel({
     }))
     .filter((p) => !Number.isNaN(p.t));
 
-  const hasData = points.some((p) => p.speed !== null || p.gust !== null);
+  // Prognose-Punkte genau wie die Messpunkte aufbereiten (nur andere Quelle).
+  const forecastPoints: Point[] = (forecast ?? [])
+    .map((e) => ({
+      t: Date.parse(e.forecast_time),
+      speed: e.speed_kmh,
+      gust: e.gust_kmh,
+      direction: e.direction,
+    }))
+    .filter((p) => !Number.isNaN(p.t));
+
+  // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
+  // werden — nicht fälschlich "Keine Daten verfügbar".
+  const hasData =
+    points.some((p) => p.speed !== null || p.gust !== null) ||
+    forecastPoints.some((p) => p.speed !== null || p.gust !== null);
 
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
@@ -227,7 +259,9 @@ export default function WindHistoryPanel({
   const historyWidth = historyWidth0 * stretch;
   const futureWidth = futureWidth0 * stretch;
 
-  const maxValue = points.reduce(
+  // yMax muss auch die Prognose-Werte einschließen, sonst würde die rote
+  // Kurve oben abgeschnitten.
+  const maxValue = [...points, ...forecastPoints].reduce(
     (m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0),
     0,
   );
@@ -289,6 +323,8 @@ export default function WindHistoryPanel({
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
+  const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
+  const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
 
   return (
     <section
@@ -310,7 +346,13 @@ export default function WindHistoryPanel({
           </span>
         </h2>
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
-          letzte 48 Stunden
+          letzte 48 Stunden{" "}
+          <span className="text-zinc-400 dark:text-zinc-500">
+            — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
+            Messung ·{" "}
+            <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
+            (ICON-CH1)
+          </span>
         </span>
         <button
           type="button"
@@ -422,6 +464,51 @@ export default function WindHistoryPanel({
               >
                 jetzt
               </text>
+
+              {/* Prognose-Kurven (ICON-CH1) in Rot, VOR den schwarzen
+                  Messwert-Kurven gezeichnet: im Überlappungsbereich liegt so
+                  die echte Messung optisch oben; rechts der "jetzt"-Linie
+                  steht Rot ohnehin allein. Gleiche Dick/Dünn-Konvention:
+                  Böen dick, Mittelwind dünn. */}
+              <path
+                d={forecastGustPath}
+                fill="none"
+                strokeWidth={2.6}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-red-600 dark:stroke-red-500"
+              />
+              <path
+                d={forecastSpeedPath}
+                fill="none"
+                strokeWidth={1.4}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-red-600 dark:stroke-red-500"
+              />
+
+              {/* Prognose-Punkte je Zeitpunkt (analog zu den schwarzen
+                  Messpunkten) */}
+              {forecastPoints.map((p) => (
+                <g key={`fdot-${p.t}`}>
+                  {p.gust !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.gust)}
+                      r={2}
+                      className="fill-red-600 dark:fill-red-500"
+                    />
+                  )}
+                  {p.speed !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.speed)}
+                      r={1.7}
+                      className="fill-red-600 dark:fill-red-500"
+                    />
+                  )}
+                </g>
+              ))}
 
               {/* Kurven: Böen dick, Mittelwind dünn (wie im Vorbild) */}
               <path
