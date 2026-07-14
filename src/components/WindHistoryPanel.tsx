@@ -25,7 +25,7 @@ const PAD_X = 10; // linker/rechter Innenabstand des Diagramms
 // als der Bildschirm — dadurch ist das Diagramm sowohl am Desktop als auch am
 // Handy horizontal scrollbar und die Stundenbeschriftungen liegen dicht genug
 // beisammen, um gut lesbar zu sein.
-const PX_PER_HOUR = 56;
+const PX_PER_HOUR = 84;
 const ARROW_SIZE = 15; // Kantenlänge eines Richtungspfeils
 // Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
 // bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
