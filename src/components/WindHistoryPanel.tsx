@@ -74,6 +74,13 @@ function formatTime(t: number): string {
   });
 }
 
+function formatTimestamp(timestamp: string | null): string {
+  if (!timestamp) return "unbekannt";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
 // Baut den SVG-Pfad einer Kurve. Bei fehlenden Werten oder größeren
 // Messlücken wird der Pfad unterbrochen (neues "M"-Segment).
 function buildLinePath(
@@ -297,6 +304,10 @@ export default function WindHistoryPanel({
               ({station.altitude} m)
             </span>
           )}
+          <span className="font-normal text-zinc-500 dark:text-zinc-400">
+            {" "}
+            · Stand: {formatTimestamp(station.timestamp)}
+          </span>
         </h2>
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
           letzte 48 Stunden
