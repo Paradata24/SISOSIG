@@ -21,13 +21,23 @@ const ARROW_ROW_H = 26; // Höhe der Pfeilreihe
 const SVG_H = TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H;
 const PAD_X = 10; // linker/rechter Innenabstand des Diagramms
 
-// Mindestbreite pro Stunde: passt auf breiten Bildschirmen ohne Scrollen,
-// auf dem Handy wird das Diagramm horizontal scrollbar.
-const MIN_PX_PER_HOUR = 26;
+// Breite pro Stunde. Bewusst so groß, dass die volle Zeitspanne breiter ist
+// als der Bildschirm — dadurch ist das Diagramm sowohl am Desktop als auch am
+// Handy horizontal scrollbar und die Stundenbeschriftungen liegen dicht genug
+// beisammen, um gut lesbar zu sein.
+const PX_PER_HOUR = 56;
 const ARROW_SIZE = 15; // Kantenlänge eines Richtungspfeils
-// Lücken größer als diese Schwelle werden nicht durchgezogen, sondern als
-// Loch in der Kurve gezeigt (Messintervall ist normalerweise 10 Minuten).
-const LINE_GAP_MS = 45 * 60 * 1000;
+// Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
+// bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
+// die aktuelle Uhrzeit immer nahe dem rechten Rand steht.
+const HISTORY_HOURS = 48;
+const FUTURE_MARGIN_HOURS = 3;
+// Zwei aufeinanderfolgende Messpunkte werden nur dann zu einer Linie
+// verbunden, wenn sie höchstens so weit auseinanderliegen. Die Sammlung läuft
+// über GitHub Actions faktisch nur etwa alle 1–2 Stunden (der 10-Minuten-Plan
+// wird von GitHub stark verzögert), daher großzügig auf 3 Stunden gesetzt —
+// größere echte Lücken bleiben als Unterbrechung sichtbar.
+const LINE_GAP_MS = 3 * 60 * 60 * 1000;
 
 interface Point {
   t: number; // Zeitstempel (ms)
@@ -93,6 +103,9 @@ export default function WindHistoryPanel({
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerW, setContainerW] = useState(0);
+  // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
+  // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
+  const [now, setNow] = useState(() => Date.now());
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
@@ -108,6 +121,7 @@ export default function WindHistoryPanel({
         const res = await fetch(`/api/history?station=${encodeURIComponent(code)}`);
         const data = await res.json();
         if (cancelled) return;
+        setNow(Date.now());
         if (!res.ok) {
           setResult({
             code,
@@ -170,14 +184,18 @@ export default function WindHistoryPanel({
   const hasData = points.some((p) => p.speed !== null || p.gust !== null);
 
   // --- Skalen ---
-  const minT = points.length > 0 ? points[0].t : 0;
-  const maxT =
-    points.length > 0 ? Math.max(points[points.length - 1].t, minT + 1) : 1;
+  // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
+  // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
+  // richtigen Stelle der Achse, fehlende Zeiträume bleiben als Lücke sichtbar
+  // (statt die wenigen Punkte über die ganze Breite zu strecken), und die
+  // aktuelle Uhrzeit steht dank der 3h-Reserve stets nahe dem rechten Rand.
+  const minT = now - HISTORY_HOURS * 3_600_000;
+  const maxT = now + FUTURE_MARGIN_HOURS * 3_600_000;
   const hoursSpan = (maxT - minT) / 3_600_000;
 
   const svgWidth = Math.max(
     containerW,
-    Math.ceil(hoursSpan * MIN_PX_PER_HOUR) + 2 * PAD_X,
+    Math.ceil(hoursSpan * PX_PER_HOUR) + 2 * PAD_X,
   );
   const innerW = svgWidth - 2 * PAD_X;
 
@@ -206,7 +224,7 @@ export default function WindHistoryPanel({
 
   // --- Stunden-Raster ---
   const hourTicks: Date[] = [];
-  if (points.length > 0) {
+  {
     const first = new Date(minT);
     first.setMinutes(0, 0, 0);
     if (first.getTime() < minT) first.setHours(first.getHours() + 1);
@@ -349,6 +367,26 @@ export default function WindHistoryPanel({
                 );
               })}
 
+              {/* "Jetzt"-Markierung: senkrechte Linie an der aktuellen Uhrzeit,
+                  rechts davon die 3h-Reserve */}
+              <line
+                x1={x(now)}
+                y1={chartTop}
+                x2={x(now)}
+                y2={chartBottom}
+                className="stroke-zinc-900/70 dark:stroke-zinc-100/70"
+                strokeWidth={1.5}
+                strokeDasharray="3 3"
+              />
+              <text
+                x={x(now)}
+                y={chartTop + 10}
+                textAnchor="middle"
+                className="fill-zinc-700 text-[9px] font-semibold dark:fill-zinc-200"
+              >
+                jetzt
+              </text>
+
               {/* Kurven: Böen dick, Mittelwind dünn (wie im Vorbild) */}
               <path
                 d={gustPath}
@@ -366,6 +404,30 @@ export default function WindHistoryPanel({
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
               />
+
+              {/* Messpunkte als kleine Punkte — dadurch bleiben auch einzelne
+                  Werte sichtbar, wenn wegen einer größeren Messlücke keine
+                  Linie zum Nachbarpunkt gezogen wird */}
+              {points.map((p) => (
+                <g key={`dot-${p.t}`}>
+                  {p.gust !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.gust)}
+                      r={1.8}
+                      className="fill-zinc-900 dark:fill-zinc-100"
+                    />
+                  )}
+                  {p.speed !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.speed)}
+                      r={1.5}
+                      className="fill-zinc-900 dark:fill-zinc-100"
+                    />
+                  )}
+                </g>
+              ))}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (Richtung + 180°,
                   Pfeil zeigt wohin der Wind weht) und Farben wie auf der
