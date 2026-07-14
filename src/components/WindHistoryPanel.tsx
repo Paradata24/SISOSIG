@@ -18,7 +18,10 @@ const TIME_LABEL_H = 18; // Zeile mit den Uhrzeiten oben
 const CHART_H = 140; // Höhe des Kurvenbereichs
 const ARROW_GAP = 8; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 26; // Höhe der Pfeilreihe
-const SVG_H = TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H;
+const VALUES_GAP = 4; // Abstand Pfeilreihe → Werte-Text
+const VALUE_LINE_H = 11; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
+const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
+const SVG_H = TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H;
 const PAD_X = 10; // linker/rechter Innenabstand des Diagramms
 
 // Breite pro Stunde. Bewusst so groß, dass die volle Zeitspanne breiter ist
@@ -212,6 +215,9 @@ export default function WindHistoryPanel({
   const chartBottom = TIME_LABEL_H + CHART_H;
   const y = (v: number) => chartBottom - (v / yMax) * CHART_H;
   const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
+  const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
+  const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
+  const gustValueY = speedValueY + VALUE_LINE_H;
 
   // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
   const bands: { from: number; to: number; color: string }[] = [];
@@ -238,7 +244,13 @@ export default function WindHistoryPanel({
 
   // --- Pfeile ggf. ausdünnen, damit sie sich nicht überlappen ---
   const pxPerPoint = points.length > 1 ? innerW / (points.length - 1) : innerW;
-  const arrowStep = Math.max(1, Math.ceil((ARROW_SIZE + 2) / pxPerPoint));
+  // Mindestabstand: die Werte-Texte (bis zu 3-stellig) brauchen mehr Platz
+  // als der Pfeil allein, sonst würden sie sich überlappen.
+  const MIN_LABEL_SPACING = 28;
+  const arrowStep = Math.max(
+    1,
+    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / pxPerPoint),
+  );
   const arrowIndices: number[] = [];
   for (let i = points.length - 1; i >= 0; i -= arrowStep) arrowIndices.push(i);
 
@@ -453,6 +465,35 @@ export default function WindHistoryPanel({
                       strokeLinejoin="round"
                       strokeLinecap="round"
                     />
+                  </g>
+                );
+              })}
+
+              {/* Werte-Text unter jedem Pfeil: oben Mittelwind, darunter Böe
+                  (gleiche Auswahl an Punkten wie die Pfeile, damit nichts
+                  überlappt) */}
+              {arrowIndices.map((i) => {
+                const p = points[i];
+                if (p.direction === null) return null;
+                const tx = x(p.t).toFixed(1);
+                return (
+                  <g key={`values-${p.t}`} className="fill-zinc-700 dark:fill-zinc-300">
+                    <text
+                      x={tx}
+                      y={speedValueY}
+                      textAnchor="middle"
+                      className="text-[9px] tabular-nums"
+                    >
+                      {p.speed !== null ? Math.round(p.speed) : "–"}
+                    </text>
+                    <text
+                      x={tx}
+                      y={gustValueY}
+                      textAnchor="middle"
+                      className="text-[9px] tabular-nums"
+                    >
+                      {p.gust !== null ? Math.round(p.gust) : "–"}
+                    </text>
                   </g>
                 );
               })}
