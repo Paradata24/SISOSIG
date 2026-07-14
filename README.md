@@ -34,22 +34,37 @@ filtern. Die Stationscodes findet man in der Antwort von
 
 ## Wind-Historie (Supabase)
 
+### Wie die Daten gesammelt werden
+
 Die Sammel-Route `src/app/api/collect/route.ts` (Aufruf per **POST** unter
-`/api/collect`) fragt den Wetterdienst ab und schreibt die Windwerte aller
-Stationen in die Supabase-Tabelle `wind_measurements`
-(Schema: `supabase/schema.sql`, einmalig im Supabase SQL-Editor
-ausführen). Einträge älter als 7 Tage werden bei jedem Lauf gelöscht.
+`/api/collect`) fragt denselben Wetterdienst wie `/api/wind` ab und schreibt
+die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
+`wind_measurements` (Schema: `supabase/schema.sql`, einmalig im Supabase
+SQL-Editor ausführen). Bereits vorhandene Messungen werden dabei nicht
+doppelt angelegt (Upsert über `station_code` + `measured_at`), und Einträge
+älter als 7 Tage werden bei jedem Lauf gelöscht.
 
-Die Route wird von **Supabase Cron** angestoßen (früher lief das über einen
-GitHub-Actions-Workflow). Der Cron-Job muss bei jedem Aufruf den Header
-`Authorization: Bearer <CRON_SECRET>` mitschicken — ohne gültiges Token
-antwortet die Route mit `401`.
+Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
+GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
+wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
+mitschicken.
 
-`/api/history?station=<SCODE>` liefert die Messwerte der letzten
-48 Stunden einer Station.
+**Antwort der Route:**
 
-Benötigte Zugangsdaten (niemals in den Code schreiben!), alle als
-**Environment Variables in Vercel** (Settings → Environment Variables):
+- **Erfolg:** Status `200` mit JSON, z. B.
+  `{ "ok": true, "saved": 42, "cleanupBefore": "…", "cleanupOk": true }`
+  (`saved` = Anzahl gespeicherter Stationswerte).
+- **Falsches/fehlendes Token:** Status `401` (`{ "error": "Nicht autorisiert" }`).
+- **Fehlende Server-Variablen:** Status `500`.
+- **Wetterdienst nicht erreichbar / keine Werte:** Status `502`.
+
+`/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
+letzten 48 Stunden einer Station (für den Verlaufsbalken).
+
+### Benötigte Zugangsdaten
+
+Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
+(Settings → Environment Variables), danach einmal **neu deployen**:
 
 | Variable | Wert | Wofür |
 | --- | --- | --- |
@@ -57,18 +72,38 @@ Benötigte Zugangsdaten (niemals in den Code schreiben!), alle als
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect` und `/api/history` |
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 
+Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
+Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
+
 ### Supabase Cron einrichten
 
 1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
    Jobs**) und **Create a new cron job**.
-2. Zeitplan z. B. alle 10 Minuten (`*/10 * * * *`).
-3. Als Aktion einen HTTP-Request wählen:
+2. Zeitplan wählen, z. B. alle 5 oder 10 Minuten (`*/5 * * * *` bzw.
+   `*/10 * * * *`) — je enger, desto feiner die spätere Historie.
+3. Als Aktion **HTTP Request** wählen:
    - Methode: **POST**
-   - URL: `https://<deine-vercel-domain>/api/collect`
-   - Header: `Authorization` = `Bearer <CRON_SECRET>` (denselben Wert wie
-     die Vercel-Variable) und `Content-Type` = `application/json`
-4. Speichern. Im Cron-Protokoll erscheint bei Erfolg eine JSON-Antwort wie
-   `{"ok":true,"saved":42,...}`.
+   - Endpoint URL: `https://<deine-vercel-domain>/api/collect`
+   - Timeout: der zulässige Maximalwert (z. B. 5000 ms) genügt.
+   - Header: `Authorization` = `Bearer <CRON_SECRET>` (derselbe Wert wie die
+     Vercel-Variable) und optional `Content-Type` = `application/json`
+   - Request Body: leer lassen.
+4. Speichern. Im Reiter **Runs/History** erscheint bei Erfolg „Succeeded";
+   dass die Werte auch wirklich in der Tabelle landen, sieht man im
+   **Table Editor → `wind_measurements`** (nach `inserted_at` absteigend
+   sortieren → oben stehen die neuesten Einträge).
+
+### Manuell testen (optional)
+
+Auf einem Rechner mit Internetzugang lässt sich die Route direkt aufrufen:
+
+```bash
+curl -X POST https://<deine-vercel-domain>/api/collect \
+  -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
+`200` samt `{"ok":true,"saved":…}`.
 
 ## Verlaufsbalken (48h-Windverlauf beim Klick auf eine Station)
 

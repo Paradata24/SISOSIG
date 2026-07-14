@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 // Liefert die Wind-Historie der letzten 48 Stunden einer Station aus der
-// Supabase-Tabelle wind_measurements (befüllt durch den GitHub-Actions-
-// Workflow "Winddaten sammeln").
+// Supabase-Tabelle wind_measurements (befüllt von der Sammel-Route
+// /api/collect, die von Supabase Cron angestoßen wird).
 //
 // Aufruf: /api/history?station=<SCODE>
 //

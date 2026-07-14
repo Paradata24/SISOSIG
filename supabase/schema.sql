@@ -9,9 +9,10 @@ create table if not exists public.wind_measurements (
   speed_kmh real,
   gust_kmh real,
   inserted_at timestamptz not null default now(),
-  -- Pro Station und Messzeitpunkt nur ein Eintrag: der Sammel-Job läuft
-  -- alle 10 Minuten, die Stationen messen alle 5-10 Minuten — Duplikate
-  -- werden beim Einfügen einfach ignoriert (Upsert).
+  -- Pro Station und Messzeitpunkt nur ein Eintrag: die Sammel-Route
+  -- /api/collect (per Supabase Cron, z. B. alle 10 Minuten) und die
+  -- Stationen (messen alle 5-10 Minuten) können sich überschneiden —
+  -- Duplikate werden beim Einfügen einfach ignoriert (Upsert).
   unique (station_code, measured_at)
 );
 

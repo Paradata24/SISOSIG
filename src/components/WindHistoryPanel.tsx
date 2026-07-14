@@ -33,10 +33,10 @@ const ARROW_SIZE = 15; // Kantenlänge eines Richtungspfeils
 const HISTORY_HOURS = 48;
 const FUTURE_MARGIN_HOURS = 3;
 // Zwei aufeinanderfolgende Messpunkte werden nur dann zu einer Linie
-// verbunden, wenn sie höchstens so weit auseinanderliegen. Die Sammlung läuft
-// über GitHub Actions faktisch nur etwa alle 1–2 Stunden (der 10-Minuten-Plan
-// wird von GitHub stark verzögert), daher großzügig auf 3 Stunden gesetzt —
-// größere echte Lücken bleiben als Unterbrechung sichtbar.
+// verbunden, wenn sie höchstens so weit auseinanderliegen. Die Sammlung
+// (/api/collect, per Supabase Cron) kann je nach Taktung mal seltener laufen,
+// daher großzügig auf 3 Stunden gesetzt — größere echte Lücken bleiben als
+// Unterbrechung sichtbar.
 const LINE_GAP_MS = 3 * 60 * 60 * 1000;
 
 interface Point {
