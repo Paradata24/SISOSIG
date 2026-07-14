@@ -34,24 +34,41 @@ filtern. Die Stationscodes findet man in der Antwort von
 
 ## Wind-Historie (Supabase)
 
-Ein GitHub-Actions-Workflow (`.github/workflows/collect-wind.yml`) fragt
-alle 10 Minuten den Wetterdienst ab und schreibt die Windwerte aller
+Die Sammel-Route `src/app/api/collect/route.ts` (Aufruf per **POST** unter
+`/api/collect`) fragt den Wetterdienst ab und schreibt die Windwerte aller
 Stationen in die Supabase-Tabelle `wind_measurements`
 (Schema: `supabase/schema.sql`, einmalig im Supabase SQL-Editor
 ausführen). Einträge älter als 7 Tage werden bei jedem Lauf gelöscht.
 
+Die Route wird von **Supabase Cron** angestoßen (früher lief das über einen
+GitHub-Actions-Workflow). Der Cron-Job muss bei jedem Aufruf den Header
+`Authorization: Bearer <CRON_SECRET>` mitschicken — ohne gültiges Token
+antwortet die Route mit `401`.
+
 `/api/history?station=<SCODE>` liefert die Messwerte der letzten
 48 Stunden einer Station.
 
-Benötigte Zugangsdaten (niemals in den Code schreiben!):
+Benötigte Zugangsdaten (niemals in den Code schreiben!), alle als
+**Environment Variables in Vercel** (Settings → Environment Variables):
 
-| Variable | Wert | Wo eintragen |
+| Variable | Wert | Wofür |
 | --- | --- | --- |
-| `SUPABASE_URL` | Project URL des Supabase-Projekts | GitHub: Settings → Secrets and variables → Actions. Vercel: Settings → Environment Variables |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | ebenda |
+| `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect` und `/api/history` |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect` und `/api/history` |
+| `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 
-Die GitHub Secrets braucht der Sammel-Workflow, die Vercel-Variablen
-braucht die `/api/history`-Route.
+### Supabase Cron einrichten
+
+1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
+   Jobs**) und **Create a new cron job**.
+2. Zeitplan z. B. alle 10 Minuten (`*/10 * * * *`).
+3. Als Aktion einen HTTP-Request wählen:
+   - Methode: **POST**
+   - URL: `https://<deine-vercel-domain>/api/collect`
+   - Header: `Authorization` = `Bearer <CRON_SECRET>` (denselben Wert wie
+     die Vercel-Variable) und `Content-Type` = `application/json`
+4. Speichern. Im Cron-Protokoll erscheint bei Erfolg eine JSON-Antwort wie
+   `{"ok":true,"saved":42,...}`.
 
 ## Verlaufsbalken (48h-Windverlauf beim Klick auf eine Station)
 
@@ -76,10 +93,8 @@ Klick auf einen Marker in `src/components/WindMap.tsx`; die Daten kommen
 von `/api/history?station=<SCODE>`.
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
-Messwerte gesammelt werden. Der Sammel-Workflow ist auf alle 10 Minuten
-eingestellt, GitHub Actions führt solche Zeitpläne bei Auslastung aber
-faktisch nur etwa alle 1–2 Stunden aus — die Kurve ist daher eher grob
-aufgelöst.
+Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
+`/api/collect` getaktet ist (empfohlen z. B. alle 10 Minuten).
 
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
