@@ -20,6 +20,9 @@ const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
 const HIGH_ALTITUDE_THRESHOLD_M = 2000;
+const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
+
+type AltitudeFilter = "all" | "high" | "veryHigh";
 
 const ARROW_BASE_SIZE = 22;
 const LABEL_BASE_HEIGHT = 10;
@@ -111,28 +114,44 @@ function createStaleIcon(scale: number) {
   });
 }
 
-// Schalter oben links auf der Karte: blendet Stationen unterhalb der
-// Höhenschwelle aus, sobald aktiviert. Ausreichend groß für Touch-Bedienung.
+// Schalterpaar oben links auf der Karte: blendet Stationen unterhalb der
+// gewählten Höhenschwelle aus. Die beiden Filter schließen sich gegenseitig
+// aus (erneutes Klicken auf den aktiven Filter schaltet zurück auf "Alle").
+// Ausreichend groß für Touch-Bedienung.
 function ElevationFilterToggle({
-  active,
-  onToggle,
+  filter,
+  onChange,
 }: {
-  active: boolean;
-  onToggle: () => void;
+  filter: AltitudeFilter;
+  onChange: (filter: AltitudeFilter) => void;
 }) {
+  function buttonClass(active: boolean) {
+    return `rounded-md border px-3 py-2.5 text-sm font-medium shadow-lg transition-colors ${
+      active
+        ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
+        : "border-black/10 bg-white/90 text-zinc-700 hover:bg-white dark:border-white/10 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-900"
+    }`;
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={active}
-      className={`absolute top-20 left-3 z-[1000] rounded-md border px-3 py-2.5 text-sm font-medium shadow-lg transition-colors ${
-        active
-          ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
-          : "border-black/10 bg-white/90 text-zinc-700 hover:bg-white dark:border-white/10 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-900"
-      }`}
-    >
-      Nur Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M}m
-    </button>
+    <div className="absolute top-20 left-3 z-[1000] flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(filter === "high" ? "all" : "high")}
+        aria-pressed={filter === "high"}
+        className={buttonClass(filter === "high")}
+      >
+        Nur Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(filter === "veryHigh" ? "all" : "veryHigh")}
+        aria-pressed={filter === "veryHigh"}
+        className={buttonClass(filter === "veryHigh")}
+      >
+        Nur Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
+      </button>
+    </div>
   );
 }
 
@@ -201,15 +220,20 @@ function WindMarkers({
 export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [highAltitudeOnly, setHighAltitudeOnly] = useState(false);
+  const [altitudeFilter, setAltitudeFilter] = useState<AltitudeFilter>("all");
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const visibleStations = highAltitudeOnly
-    ? stations.filter(
-        (s) => s.altitude !== null && s.altitude > HIGH_ALTITUDE_THRESHOLD_M,
-      )
-    : stations;
+  const altitudeThreshold =
+    altitudeFilter === "veryHigh"
+      ? VERY_HIGH_ALTITUDE_THRESHOLD_M
+      : altitudeFilter === "high"
+        ? HIGH_ALTITUDE_THRESHOLD_M
+        : null;
+  const visibleStations =
+    altitudeThreshold === null
+      ? stations
+      : stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
@@ -307,10 +331,7 @@ export default function WindMap() {
           selectedStationCode={selectedStationCode}
         />
       </MapContainer>
-      <ElevationFilterToggle
-        active={highAltitudeOnly}
-        onToggle={() => setHighAltitudeOnly((v) => !v)}
-      />
+      <ElevationFilterToggle filter={altitudeFilter} onChange={setAltitudeFilter} />
       <WindLegend />
       {lastUpdated && (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
