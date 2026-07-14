@@ -121,6 +121,30 @@ Supabase.
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled.
 
+6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
+   Function** (Deno, not Next.js!) for phase 3: fetches ICON-CH1 wind
+   forecasts from Open-Meteo (`models=meteoswiss_icon_ch1`, rolling window
+   `past_hours=24` + `forecast_hours=4`, `wind_speed_unit=kmh`,
+   `timeformat=unixtime` so times are unambiguous UTC) for every station
+   that has wind sensors and coordinates — derived from the same two Bozen
+   webservice calls as `/api/wind` — and upserts into the table
+   `wind_forecasts` (schema in `supabase/forecast-schema.sql`;
+   `on_conflict=station_code,model,forecast_time`, 7-day retention). The
+   `model` column exists so ICON-D2 can later be added as extra rows, no
+   schema change. Stations are queried in batches of 50 (comma-separated
+   coordinates; the response list has the same order as the request) and
+   hours where Open-Meteo returns only nulls (station at/outside the model
+   edge) are skipped. Triggered hourly at minute 10 by pg_cron + pg_net
+   (`supabase/forecast-cron.sql`; project URL + service_role key live in
+   Supabase Vault, never in the repo). Auth mirrors `/api/collect`: POST
+   with `Authorization: Bearer <service_role key>` or 401 — deploy the
+   function with JWT verification **disabled** since it does its own check.
+   Because this is Deno code, `supabase/functions` is excluded in
+   `tsconfig.json` and ignored in `eslint.config.mjs`; `WIND_API_BASE_URL`
+   and `OPEN_METEO_BASE_URL` allow pointing both upstreams at a local mock
+   for testing (the function also runs under Node if you provide a tiny
+   `Deno.env`/`Deno.serve` shim before importing it).
+
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**
 - The webservice's station list (`/stations`) has been observed in two
