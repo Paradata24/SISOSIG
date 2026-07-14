@@ -270,17 +270,29 @@ export default function WindMap() {
         className="h-full w-full"
       >
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Standard">
+          <LayersControl.BaseLayer name="Standard">
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
           </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="Relief">
+          <LayersControl.BaseLayer checked name="Relief (Grau)">
             <LayerGroup>
               <TileLayer
                 attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
                 url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
+              />
+              <TileLayer
+                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+              />
+            </LayerGroup>
+          </LayersControl.BaseLayer>
+          <LayersControl.BaseLayer name="Relief (Sepia)">
+            <LayerGroup>
+              <TileLayer
+                attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}"
               />
               <TileLayer
                 attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
