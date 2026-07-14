@@ -29,6 +29,11 @@ select cron.schedule(
             where name = 'project_url') || '/functions/v1/fetch-wind-forecasts',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
+      -- Der Supabase-Gateway vor der Edge Function verlangt einen apikey-
+      -- Header (sonst 401 "No API key found in request"), die Edge Function
+      -- selbst prüft zusätzlich den Authorization-Bearer.
+      'apikey', (select decrypted_secret from vault.decrypted_secrets
+                 where name = 'service_role_key'),
       'Authorization', 'Bearer ' || (select decrypted_secret
                                      from vault.decrypted_secrets
                                      where name = 'service_role_key')

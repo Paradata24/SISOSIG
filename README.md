@@ -193,12 +193,16 @@ sie in die Tabelle `wind_forecasts` (Schema:
 
 ```bash
 curl -X POST https://<projekt-ref>.supabase.co/functions/v1/fetch-wind-forecasts \
+  -H "apikey: <SERVICE_ROLE_KEY>" \
   -H "Authorization: Bearer <SERVICE_ROLE_KEY>"
 ```
 
-Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
-`200` samt `{"ok":true,"saved":…}`. Die Logs der Funktion stehen im
-Dashboard unter **Edge Functions → fetch-wind-forecasts → Logs**.
+Der `apikey`-Header ist nötig, weil der Supabase-Gateway sonst schon vor der
+Funktion mit `401 "No API key found in request"` abweist; die Funktion selbst
+prüft danach den `Authorization`-Bearer. Ohne/mit falschem Token muss `401`
+zurückkommen, mit korrektem Token `200` samt `{"ok":true,"saved":…}`. Die Logs
+der Funktion stehen im Dashboard unter
+**Edge Functions → fetch-wind-forecasts → Logs**.
 
 Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
 Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
