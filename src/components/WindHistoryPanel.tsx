@@ -312,21 +312,11 @@ export default function WindHistoryPanel({
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
           letzte 48 Stunden
         </span>
-        <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-zinc-600 dark:text-zinc-300">
-          <span className="flex items-center gap-1.5">
-            <span className="h-px w-5 bg-zinc-900 dark:bg-zinc-100" />
-            Mittelwind
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-[3px] w-5 rounded-full bg-zinc-900 dark:bg-zinc-100" />
-            Böen
-          </span>
-        </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Verlauf schließen"
-          className="shrink-0 rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          className="ml-auto shrink-0 rounded-md p-1.5 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
             <path
