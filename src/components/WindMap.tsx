@@ -14,6 +14,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { getWindColor, toCompassPoint, type WindStation } from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
+import WindHistoryPanel from "@/components/WindHistoryPanel";
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
@@ -177,7 +178,15 @@ function StationPopup({ station }: { station: WindStation }) {
 // Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
 // synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
 // da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
-function WindMarkers({ stations }: { stations: WindStation[] }) {
+// Ein Klick auf einen Marker öffnet zusätzlich zum Popup das Verlaufspanel
+// am unteren Bildschirmrand (onSelect).
+function WindMarkers({
+  stations,
+  onSelect,
+}: {
+  stations: WindStation[];
+  onSelect: (station: WindStation) => void;
+}) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
   const map = useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
@@ -197,6 +206,7 @@ function WindMarkers({ stations }: { stations: WindStation[] }) {
                 ? createStaleIcon(scale)
                 : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale)
             }
+            eventHandlers={{ click: () => onSelect(station) }}
           >
             <Popup>
               <StationPopup station={station} />
@@ -211,6 +221,7 @@ export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [highAltitudeOnly, setHighAltitudeOnly] = useState(false);
+  const [selectedStation, setSelectedStation] = useState<WindStation | null>(null);
 
   const visibleStations = highAltitudeOnly
     ? stations.filter(
@@ -273,7 +284,7 @@ export default function WindMap() {
             </LayerGroup>
           </LayersControl.BaseLayer>
         </LayersControl>
-        <WindMarkers stations={visibleStations} />
+        <WindMarkers stations={visibleStations} onSelect={setSelectedStation} />
       </MapContainer>
       <ElevationFilterToggle
         active={highAltitudeOnly}
@@ -284,6 +295,12 @@ export default function WindMap() {
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}
         </div>
+      )}
+      {selectedStation && (
+        <WindHistoryPanel
+          station={selectedStation}
+          onClose={() => setSelectedStation(null)}
+        />
       )}
     </div>
   );
