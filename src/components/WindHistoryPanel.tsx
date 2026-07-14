@@ -13,23 +13,31 @@ import type { HistoryEntry } from "@/app/api/history/route";
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
 // Pfeile (getWindColor bzw. Richtung + 180°), damit nichts auseinanderläuft.
 
-// Geometrie des SVG (alle Angaben in px)
-const TIME_LABEL_H = 18; // Zeile mit den Uhrzeiten oben
-const CHART_H = 140; // Höhe des Kurvenbereichs
-const ARROW_GAP = 8; // Abstand Kurvenbereich → Pfeilreihe
-const ARROW_ROW_H = 26; // Höhe der Pfeilreihe
-const VALUES_GAP = 4; // Abstand Pfeilreihe → Werte-Text
-const VALUE_LINE_H = 11; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
+// Geometrie des SVG (alle Angaben in px). Gegenüber der ursprünglichen
+// Version bewusst ca. 10% größer und mit mehr Abstand zwischen den Zeilen,
+// damit das Panel nicht mehr gedrängt wirkt.
+const TIME_LABEL_H = 20; // Zeile mit den Uhrzeiten oben
+const CHART_H = 154; // Höhe des Kurvenbereichs
+const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
+const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
+const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
+const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
-const SVG_H = TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H;
-const PAD_X = 10; // linker/rechter Innenabstand des Diagramms
+const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
+const SVG_H =
+  TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H + BOTTOM_PAD;
+const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
-// Breite pro Stunde. Bewusst so groß, dass die volle Zeitspanne breiter ist
-// als der Bildschirm — dadurch ist das Diagramm sowohl am Desktop als auch am
-// Handy horizontal scrollbar und die Stundenbeschriftungen liegen dicht genug
-// beisammen, um gut lesbar zu sein.
-const PX_PER_HOUR = 84;
-const ARROW_SIZE = 15; // Kantenlänge eines Richtungspfeils
+// Breite pro Stunde für den Geschichts-Teil (jetzt − 48h bis jetzt). Bewusst
+// so groß, dass die volle Zeitspanne breiter ist als der Bildschirm —
+// dadurch ist das Diagramm sowohl am Desktop als auch am Handy horizontal
+// scrollbar und die Stundenbeschriftungen liegen dicht genug beisammen, um
+// gut lesbar zu sein.
+const HISTORY_PX_PER_HOUR = 92;
+// Die 3h-Reserve rechts von der "jetzt"-Linie enthält keine echten Messwerte
+// mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
+const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
+const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
 // Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
 // bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
 // die aktuelle Uhrzeit immer nahe dem rechten Rand steht.
@@ -194,13 +202,23 @@ export default function WindHistoryPanel({
   // aktuelle Uhrzeit steht dank der 3h-Reserve stets nahe dem rechten Rand.
   const minT = now - HISTORY_HOURS * 3_600_000;
   const maxT = now + FUTURE_MARGIN_HOURS * 3_600_000;
-  const hoursSpan = (maxT - minT) / 3_600_000;
+
+  // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / 3h-Reserve).
+  // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
+  const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
+  const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
+  const contentWidth0 = historyWidth0 + futureWidth0;
 
   const svgWidth = Math.max(
     containerW,
-    Math.ceil(hoursSpan * PX_PER_HOUR) + 2 * PAD_X,
+    Math.ceil(contentWidth0) + 2 * PAD_X,
   );
   const innerW = svgWidth - 2 * PAD_X;
+  // Auf breiten Bildschirmen füllt das Diagramm die volle Breite; beide
+  // Abschnitte werden dabei im gleichen Verhältnis gestreckt.
+  const stretch = innerW / contentWidth0;
+  const historyWidth = historyWidth0 * stretch;
+  const futureWidth = futureWidth0 * stretch;
 
   const maxValue = points.reduce(
     (m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0),
@@ -210,7 +228,10 @@ export default function WindHistoryPanel({
   const yMax = Math.max(20, Math.ceil(maxValue / 10) * 10);
   const yTickStep = yMax > 50 ? 20 : 10;
 
-  const x = (t: number) => PAD_X + ((t - minT) / (maxT - minT)) * innerW;
+  const x = (t: number) =>
+    t <= now
+      ? PAD_X + ((t - minT) / (now - minT)) * historyWidth
+      : PAD_X + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
   const chartTop = TIME_LABEL_H;
   const chartBottom = TIME_LABEL_H + CHART_H;
   const y = (v: number) => chartBottom - (v / yMax) * CHART_H;
@@ -238,15 +259,17 @@ export default function WindHistoryPanel({
       hourTicks.push(d);
     }
   }
-  const pxPerHour = hoursSpan > 0 ? innerW / hoursSpan : innerW;
+  // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
+  // 3h-Reserve keine überlappenden Beschriftungen bekommt.
+  const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
   // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
   const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
   // --- Pfeile ggf. ausdünnen, damit sie sich nicht überlappen ---
-  const pxPerPoint = points.length > 1 ? innerW / (points.length - 1) : innerW;
+  const pxPerPoint = points.length > 1 ? historyWidth / (points.length - 1) : historyWidth;
   // Mindestabstand: die Werte-Texte (bis zu 3-stellig) brauchen mehr Platz
   // als der Pfeil allein, sonst würden sie sich überlappen.
-  const MIN_LABEL_SPACING = 28;
+  const MIN_LABEL_SPACING = 31;
   const arrowStep = Math.max(
     1,
     Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / pxPerPoint),
@@ -305,7 +328,7 @@ export default function WindHistoryPanel({
         </button>
       </header>
 
-      <div className="flex px-1 pb-2">
+      <div className="flex px-1 pb-4">
         <div
           ref={scrollRef}
           className="min-w-0 flex-1 overflow-x-auto"
@@ -370,7 +393,7 @@ export default function WindHistoryPanel({
                         x={tx}
                         y={TIME_LABEL_H - 6}
                         textAnchor="middle"
-                        className="fill-zinc-500 text-[10px] tabular-nums dark:fill-zinc-400"
+                        className="fill-zinc-500 text-[11px] tabular-nums dark:fill-zinc-400"
                       >
                         {formatHourLabel(d)}
                       </text>
@@ -387,14 +410,14 @@ export default function WindHistoryPanel({
                 x2={x(now)}
                 y2={chartBottom}
                 className="stroke-zinc-900/70 dark:stroke-zinc-100/70"
-                strokeWidth={1.5}
+                strokeWidth={1.6}
                 strokeDasharray="3 3"
               />
               <text
                 x={x(now)}
-                y={chartTop + 10}
+                y={chartTop + 11}
                 textAnchor="middle"
-                className="fill-zinc-700 text-[9px] font-semibold dark:fill-zinc-200"
+                className="fill-zinc-700 text-[10px] font-semibold dark:fill-zinc-200"
               >
                 jetzt
               </text>
@@ -403,7 +426,7 @@ export default function WindHistoryPanel({
               <path
                 d={gustPath}
                 fill="none"
-                strokeWidth={2.4}
+                strokeWidth={2.6}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
@@ -411,7 +434,7 @@ export default function WindHistoryPanel({
               <path
                 d={speedPath}
                 fill="none"
-                strokeWidth={1.3}
+                strokeWidth={1.4}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
@@ -426,7 +449,7 @@ export default function WindHistoryPanel({
                     <circle
                       cx={x(p.t)}
                       cy={y(p.gust)}
-                      r={1.8}
+                      r={2}
                       className="fill-zinc-900 dark:fill-zinc-100"
                     />
                   )}
@@ -434,7 +457,7 @@ export default function WindHistoryPanel({
                     <circle
                       cx={x(p.t)}
                       cy={y(p.speed)}
-                      r={1.5}
+                      r={1.7}
                       className="fill-zinc-900 dark:fill-zinc-100"
                     />
                   )}
@@ -482,7 +505,7 @@ export default function WindHistoryPanel({
                       x={tx}
                       y={speedValueY}
                       textAnchor="middle"
-                      className="text-[9px] tabular-nums"
+                      className="text-[10px] tabular-nums"
                     >
                       {p.speed !== null ? Math.round(p.speed) : "–"}
                     </text>
@@ -490,7 +513,7 @@ export default function WindHistoryPanel({
                       x={tx}
                       y={gustValueY}
                       textAnchor="middle"
-                      className="text-[9px] tabular-nums"
+                      className="text-[10px] tabular-nums"
                     >
                       {p.gust !== null ? Math.round(p.gust) : "–"}
                     </text>
@@ -505,7 +528,7 @@ export default function WindHistoryPanel({
             Scrollen sichtbar bleibt */}
         {!loading && !error && hasData && (
           <div
-            className="relative w-9 shrink-0 text-[10px] text-zinc-500 dark:text-zinc-400"
+            className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
             style={{ height: SVG_H }}
           >
             {yTicks.map((v) => (
