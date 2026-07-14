@@ -46,6 +46,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Bei mehreren betroffenen Dateien: alle auflisten, nicht nur
   zusammenfassen
 
+## Eigenständige Umsetzung von Änderungen
+- Änderungen, die ich (Claude) fachlich für richtig und sinnvoll
+  halte, immer direkt umsetzen — nicht nur vorschlagen und auf eine
+  ausdrückliche Freigabe warten. Der Projektbesitzer ist
+  Nicht-Programmierer und vertraut hier auf die fachliche Einschätzung.
+- Weiterhin ZUERST nachfragen bei: riskanten oder schwer umkehrbaren
+  Aktionen (z.B. Datenbank löschen, force push) und bei Änderungen an
+  den oben unter „Wichtige Entscheidungen" gelisteten Punkten.
+- Jede umgesetzte Änderung danach kurz und in einfacher Sprache
+  erklären (was, warum, in welcher Datei) — siehe „Kommunikation bei
+  Änderungen".
+
 ## Commands
 
 ```bash

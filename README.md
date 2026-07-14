@@ -204,6 +204,37 @@ zurückkommen, mit korrektem Token `200` samt `{"ok":true,"saved":…}`. Die Log
 der Funktion stehen im Dashboard unter
 **Edge Functions → fetch-wind-forecasts → Logs**.
 
+### Fehlersuche
+
+Bleibt die Tabelle `wind_forecasts` leer, obwohl der Cron-Job als
+„succeeded" gilt (`select * from cron.job_run_details order by start_time
+desc limit 10;`)? Das heißt nur, dass die Anfrage *abgeschickt* wurde — nicht,
+dass sie ankam. Die tatsächliche HTTP-Antwort des pg_net-Aufrufs zeigen:
+
+```sql
+select id, status_code, content, created
+from net._http_response order by created desc limit 5;
+```
+
+Zwei Ursachen, die hier bereits aufgetreten sind:
+
+- **`404` / `{"code":"PGRST125", … "Invalid path specified in request URL"}`**
+  — die im Vault gespeicherte `project_url` ist falsch. Sie muss die *reine*
+  Basis-URL sein (`https://<projekt-ref>.supabase.co`), **ohne** `/rest/v1/`
+  und **ohne** Schrägstrich am Ende; sonst entsteht `…/rest/v1//functions/v1/…`
+  und die Anfrage landet beim Datenbank-Teil (PostgREST) statt bei der
+  Funktion. Prüfen mit `select decrypted_secret from vault.decrypted_secrets
+  where name = 'project_url';`, korrigieren mit `select vault.update_secret(
+  (select id from vault.secrets where name = 'project_url'),
+  'https://<projekt-ref>.supabase.co', 'project_url');`.
+- **`401` / `{"message":"No API key found in request"}`** — dem Cron-Job fehlt
+  der `apikey`-Header. Achtung: Ein bereits angelegter Cron-Job wird **nicht**
+  automatisch aktualisiert, wenn `supabase/forecast-cron.sql` später geändert
+  wird; die Datei dann erneut im SQL-Editor ausführen (`cron.schedule` mit
+  gleichem Job-Namen überschreibt den alten Eintrag) und mit `select jobid,
+  jobname, command from cron.job;` kontrollieren, dass die `apikey`-Zeile in
+  der Spalte `command` steht.
+
 Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
 Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
 `OPEN_METEO_BASE_URL`).
