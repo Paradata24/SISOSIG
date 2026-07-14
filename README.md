@@ -134,6 +134,76 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
 
+## Windprognosen ICON-CH1 (Supabase Edge Function)
+
+Die Supabase Edge Function `fetch-wind-forecasts`
+(Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
+ICON-CH1-Windprognosen von [Open-Meteo](https://open-meteo.com) für alle
+Stationen, die auch auf der Karte erscheinen (Windsensoren + Koordinaten,
+abgeleitet aus demselben Bozner Wetterdienst wie `/api/wind`), und schreibt
+sie in die Tabelle `wind_forecasts` (Schema:
+`supabase/forecast-schema.sql`). Details:
+
+- Zeitfenster: letzte 24 Stunden + kommende ~3 Stunden (gleitendes
+  Fenster, deshalb läuft der Abruf stündlich, obwohl das Modell nur alle
+  3 Stunden neu rechnet).
+- Einheiten wie in `wind_measurements`: Wind/Böen in **km/h**, Richtung in
+  Grad, Prognosezeiten als UTC (`timestamptz`).
+- Die Spalte `model` (aktuell immer `'icon_ch1'`) macht die Tabelle
+  erweiterbar: ICON-D2 kommt später einfach als zusätzliche Zeilen dazu.
+- Upsert über `station_code` + `model` + `forecast_time` — wiederholte
+  Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
+  Prognosen älter als 7 Tage werden bei jedem Lauf gelöscht.
+- Stationen am/außerhalb des Modellrands liefern `null` und werden
+  übersprungen (in der Antwort als `skippedNullHours` gezählt).
+- Zugriffsschutz wie bei `/api/collect`: nur **POST** mit
+  `Authorization: Bearer <service_role Key>`, sonst `401`.
+
+**Antwort der Funktion (Erfolg):** Status `200` mit z. B.
+`{ "ok": true, "model": "icon_ch1", "stations": 120, "saved": 3300,
+"skippedNullHours": 0, "batchErrors": [], … }`.
+
+### Einmalige Einrichtung
+
+1. **Tabelle anlegen:** In Supabase links **SQL Editor** öffnen, den
+   Inhalt von `supabase/forecast-schema.sql` einfügen und **Run** klicken.
+2. **Edge Function deployen:** In Supabase links **Edge Functions** →
+   **Deploy a new function** → **Via Editor**. Als Namen exakt
+   `fetch-wind-forecasts` eintragen, den kompletten Inhalt von
+   `supabase/functions/fetch-wind-forecasts/index.ts` in den Editor
+   einfügen und **Deploy** klicken.
+3. **JWT-Prüfung ausschalten:** Auf der Seite der neuen Funktion den
+   Schalter **„Enforce JWT verification"** (je nach Dashboard-Version auch
+   „Verify JWT with legacy secret") **deaktivieren** — die Funktion prüft
+   den service_role Key selbst und lehnt fremde Aufrufe mit `401` ab.
+   Eigene Secrets müssen **nicht** gesetzt werden (`SUPABASE_URL` und
+   `SUPABASE_SERVICE_ROLE_KEY` stellt Supabase automatisch bereit).
+4. **Stündlichen Abruf einrichten:** Wieder im **SQL Editor** den Inhalt
+   von `supabase/forecast-cron.sql` einfügen, vorher die zwei Platzhalter
+   ersetzen (Projekt-URL und service_role Key — dieselben Werte wie in den
+   Vercel-Umgebungsvariablen), dann **Run** klicken. Die echten Werte
+   niemals in die Datei im Repository zurückschreiben!
+5. **Prüfen:** Nach dem nächsten vollen Stundenwechsel (Minute 10) im
+   **Table Editor → `wind_forecasts`** nachsehen (nach `fetched_at`
+   absteigend sortieren). Ob der Cron-Job lief, zeigt
+   `select * from cron.job_run_details order by start_time desc limit 10;`
+   im SQL Editor.
+
+### Manuell testen (optional)
+
+```bash
+curl -X POST https://<projekt-ref>.supabase.co/functions/v1/fetch-wind-forecasts \
+  -H "Authorization: Bearer <SERVICE_ROLE_KEY>"
+```
+
+Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
+`200` samt `{"ok":true,"saved":…}`. Die Logs der Funktion stehen im
+Dashboard unter **Edge Functions → fetch-wind-forecasts → Logs**.
+
+Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
+Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
+`OPEN_METEO_BASE_URL`).
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz
