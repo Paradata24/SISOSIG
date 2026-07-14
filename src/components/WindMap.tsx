@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   CircleMarker,
+  GeoJSON,
   LayerGroup,
   LayersControl,
   MapContainer,
@@ -15,6 +16,11 @@ import "leaflet/dist/leaflet.css";
 import { getWindColor, type WindStation } from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
+import suedtirolGrenze from "@/data/suedtirol-grenze.json";
+import staatsgrenzen from "@/data/staatsgrenzen.json";
+
+const GRENZE_STYLE = { color: "#555555", weight: 1, opacity: 0.8, fill: false };
+const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
@@ -312,19 +318,17 @@ export default function WindMap() {
               />
             </LayerGroup>
           </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer name="Relief (Sepia)">
-            <LayerGroup>
-              <TileLayer
-                attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}"
-              />
-              <TileLayer
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-              />
-            </LayerGroup>
-          </LayersControl.BaseLayer>
         </LayersControl>
+        <GeoJSON
+          data={suedtirolGrenze as GeoJSON.GeoJsonObject}
+          style={GRENZE_STYLE}
+          interactive={false}
+        />
+        <GeoJSON
+          data={staatsgrenzen as GeoJSON.GeoJsonObject}
+          style={STAATSGRENZE_STYLE}
+          interactive={false}
+        />
         <WindMarkers
           stations={visibleStations}
           onSelect={(station) => setSelectedStationCode(station.stationCode)}
