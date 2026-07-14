@@ -8,7 +8,8 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 48 Stunden:
 //  - Zeitachse (Lokalzeit) oben
-//  - Liniendiagramm: Mittelwind (dünn) und Böen (dick) vor horizontalen
+//  - Liniendiagramm: Mittelwind (unten) und Böen (oben), beide gleich dick,
+//    mit halbtransparent gefüllter Fläche dazwischen, vor horizontalen
 //    Farbbändern der Windstärke-Skala
 //  - darunter eine Reihe Windrichtungs-Pfeile
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
@@ -102,6 +103,52 @@ function buildLinePath(
     d += `${cmd}${x(p.t).toFixed(1)} ${y(v).toFixed(1)} `;
     prevT = p.t;
   }
+  return d.trim();
+}
+
+// Baut den SVG-Pfad der Fläche zwischen zwei Kurven (oben = Böen,
+// unten = Mittelwind). Für jeden zusammenhängenden Abschnitt (beide Werte
+// vorhanden, benachbarte Punkte ≤ LINE_GAP_MS auseinander) entsteht ein
+// geschlossenes Polygon: erst oben (Böen) von links nach rechts, dann unten
+// (Mittelwind) von rechts nach links zurück. Bei Lücken/fehlenden Werten
+// bleibt die Fläche — wie die Linien — unterbrochen.
+function buildAreaPath(
+  points: Point[],
+  getUpper: (p: Point) => number | null,
+  getLower: (p: Point) => number | null,
+  x: (t: number) => number,
+  y: (v: number) => number,
+): string {
+  let d = "";
+  let run: Point[] = [];
+  const flush = () => {
+    if (run.length >= 2) {
+      let top = "";
+      for (const p of run) {
+        const cmd = top === "" ? "M" : "L";
+        top += `${cmd}${x(p.t).toFixed(1)} ${y(getUpper(p)!).toFixed(1)} `;
+      }
+      let bottom = "";
+      for (let i = run.length - 1; i >= 0; i--) {
+        const p = run[i];
+        bottom += `L${x(p.t).toFixed(1)} ${y(getLower(p)!).toFixed(1)} `;
+      }
+      d += `${top}${bottom}Z `;
+    }
+    run = [];
+  };
+  let prevT: number | null = null;
+  for (const p of points) {
+    if (getUpper(p) === null || getLower(p) === null) {
+      flush();
+      prevT = null;
+      continue;
+    }
+    if (prevT !== null && p.t - prevT > LINE_GAP_MS) flush();
+    run.push(p);
+    prevT = p.t;
+  }
+  flush();
   return d.trim();
 }
 
@@ -323,8 +370,19 @@ export default function WindHistoryPanel({
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
+  const areaPath = buildAreaPath(points, (p) => p.gust, (p) => p.speed, x, y);
   const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
   const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
+  const forecastAreaPath = buildAreaPath(
+    forecastPoints,
+    (p) => p.gust,
+    (p) => p.speed,
+    x,
+    y,
+  );
+
+  // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
+  const LINE_WIDTH = 1.8;
 
   return (
     <section
@@ -465,15 +523,21 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
-              {/* Prognose-Kurven (ICON-CH1) in Rot, VOR den schwarzen
-                  Messwert-Kurven gezeichnet: im Überlappungsbereich liegt so
-                  die echte Messung optisch oben; rechts der "jetzt"-Linie
-                  steht Rot ohnehin allein. Gleiche Dick/Dünn-Konvention:
-                  Böen dick, Mittelwind dünn. */}
+              {/* Prognose (ICON-CH1) in Rot, VOR den schwarzen Messwert-Kurven
+                  gezeichnet: im Überlappungsbereich liegt so die echte Messung
+                  optisch oben; rechts der "jetzt"-Linie steht Rot ohnehin
+                  allein. Beide Linien gleich dick, die Fläche dazwischen in
+                  derselben Farbe mit 30% Deckkraft. */}
+              <path
+                d={forecastAreaPath}
+                stroke="none"
+                fillOpacity={0.3}
+                className="fill-red-600 dark:fill-red-500"
+              />
               <path
                 d={forecastGustPath}
                 fill="none"
-                strokeWidth={2.6}
+                strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-red-600 dark:stroke-red-500"
@@ -481,7 +545,7 @@ export default function WindHistoryPanel({
               <path
                 d={forecastSpeedPath}
                 fill="none"
-                strokeWidth={1.4}
+                strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-red-600 dark:stroke-red-500"
@@ -510,11 +574,19 @@ export default function WindHistoryPanel({
                 </g>
               ))}
 
-              {/* Kurven: Böen dick, Mittelwind dünn (wie im Vorbild) */}
+              {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
+                  unten), die Fläche dazwischen in derselben Farbe mit 30%
+                  Deckkraft. */}
+              <path
+                d={areaPath}
+                stroke="none"
+                fillOpacity={0.3}
+                className="fill-zinc-900 dark:fill-zinc-100"
+              />
               <path
                 d={gustPath}
                 fill="none"
-                strokeWidth={2.6}
+                strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
@@ -522,7 +594,7 @@ export default function WindHistoryPanel({
               <path
                 d={speedPath}
                 fill="none"
-                strokeWidth={1.4}
+                strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
