@@ -208,6 +208,47 @@ Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
 Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
 `OPEN_METEO_BASE_URL`).
 
+### Stolpersteine bei der Ersteinrichtung (aus der Praxis)
+
+- **Zwei Schlüssel-Systeme in Supabase:** Neuere Projekte zeigen unter
+  **Project Settings → API Keys** zuerst die *neuen* Schlüssel
+  (`sb_publishable_…` / `sb_secret_…`). Die Edge Function bekommt von
+  Supabase aber automatisch den **alten** Schlüssel eingesetzt — den
+  findet man erst im Reiter **„Legacy anon, service_role API keys"**,
+  Zeile **`service_role`** (beginnt mit `eyJ…`). Für den Cron-Aufruf und
+  jeden manuellen Test **immer diesen legacy `service_role`-Schlüssel**
+  verwenden, sonst antwortet die Funktion mit `401`.
+- **`apikey`-Header nicht vergessen:** Der Supabase-Gateway vor der
+  Funktion verlangt zusätzlich zum `Authorization`-Header einen
+  `apikey`-Header (sonst `401 "No API key found in request"`, noch bevor
+  die Funktion überhaupt läuft) — siehe Beispiel oben.
+- **Richtige URL:** `/functions/v1/fetch-wind-forecasts` ruft die
+  Funktion auf; `/rest/v1/wind_forecasts` spricht direkt die Tabelle an
+  (kein Funktionsaufruf, führt bestenfalls zu einem Datenbankfehler).
+
+**Testlauf vom 14.07.2026:** Aufruf über `net.http_post` im SQL Editor
+ergab `200` mit `{"ok":true,"saved":84,"cleanupBefore":"…","cleanupOk":true}`
+— die Kette Funktion → Open-Meteo → Supabase funktioniert grundsätzlich.
+**Offen:** `saved: 84` wirkt niedrig für die Gesamtzahl der Windstationen
+(84 = z. B. nur 3 Stationen × 28 Stunden) und die Antwort enthielt nicht
+die erwarteten Zusatzfelder `model`/`skippedNullHours` — das deutet auf
+eine ältere/vereinfachte Version der Funktion im Supabase-Dashboard hin,
+nicht auf ein Problem im Code hier im Repository. Vor dem produktiven
+Einsatz prüfen mit:
+
+```sql
+select model, count(*) as zeilen, count(distinct station_code) as stationen,
+       min(forecast_time) as fruehester, max(forecast_time) as spaetester
+from wind_forecasts group by model;
+```
+
+Erwartet: `stationen` in der Größenordnung aller Windstationen (siehe
+Anzahl der Marker auf der Karte), Zeitspanne von ca. „jetzt − 24h" bis
+„jetzt + 3h". Falls die Zahlen deutlich abweichen: im Supabase-Dashboard
+unter **Edge Functions → fetch-wind-forecasts** den Funktionscode mit
+`supabase/functions/fetch-wind-forecasts/index.ts` aus diesem Repository
+vergleichen/neu deployen.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz

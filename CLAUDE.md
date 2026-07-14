@@ -145,6 +145,29 @@ Supabase.
    for testing (the function also runs under Node if you provide a tiny
    `Deno.env`/`Deno.serve` shim before importing it).
 
+   **Deployment gotcha (this project's Supabase instance specifically):**
+   it exposes both the new API key format (`sb_publishable_…` /
+   `sb_secret_…`, shown first under Project Settings → API Keys) and the
+   legacy `anon`/`service_role` keys (under the "Legacy anon, service_role
+   API keys" tab). The Edge Function's auto-injected
+   `SUPABASE_SERVICE_ROLE_KEY` is the **legacy** `service_role` key
+   (`eyJ…`) — the pg_cron job and any manual `net.http_post` test must use
+   that one (plus an explicit `apikey` header, since the Supabase gateway
+   in front of the function rejects requests without it, independently of
+   the function's own bearer check). See README's "Stolpersteine"
+   subsection for the exact symptoms (401 at the gateway vs. 401 from the
+   function vs. hitting `/rest/v1/wind_forecasts` by mistake instead of
+   `/functions/v1/fetch-wind-forecasts`).
+
+   **Status as of 2026-07-14:** first live test against the real Supabase
+   project returned `200 {"ok":true,"saved":84,...}` — the fetch chain
+   works end-to-end, but `saved: 84` looks low for the full station count
+   and the response was missing the `model`/`skippedNullHours` fields the
+   current function returns, suggesting Supabase may still be running an
+   older/simplified deploy of `index.ts`. Not yet re-verified with the
+   diagnostic query in the README — check that before building on top of
+   this data or assuming full station coverage.
+
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**
 - The webservice's station list (`/stations`) has been observed in two
