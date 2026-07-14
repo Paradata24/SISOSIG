@@ -33,7 +33,7 @@ const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 // dadurch ist das Diagramm sowohl am Desktop als auch am Handy horizontal
 // scrollbar und die Stundenbeschriftungen liegen dicht genug beisammen, um
 // gut lesbar zu sein.
-const HISTORY_PX_PER_HOUR = 92;
+const HISTORY_PX_PER_HOUR = 118;
 // Die 3h-Reserve rechts von der "jetzt"-Linie enthält keine echten Messwerte
 // mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
 const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
