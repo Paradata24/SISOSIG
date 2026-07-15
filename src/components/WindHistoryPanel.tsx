@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { getWindColor, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry } from "@/app/api/forecast/route";
+import {
+  berechneTendenz,
+  tendenzKopfzeile,
+  FENSTER_STUNDEN,
+  REAL_MITTEL_SAMPLES,
+} from "@/lib/tendenz";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 48 Stunden:
@@ -451,6 +457,127 @@ export default function WindHistoryPanel({
   // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
   const LINE_WIDTH = 1.8;
 
+  // --- Tendenzkurve ("korrigierte Prognose") für den Mittelwind ---------
+  // Zusätzlicher, rein additiver Layer (türkis): verankert die Prognose am
+  // aktuellen realen Messwert und blendet über FENSTER_STUNDEN zurück auf die
+  // rohe Prognose. Die reine Rechnung steckt in src/lib/tendenz.ts (dort auch
+  // die ausführliche Erklärung + Unit-Tests); hier bauen wir nur die Eingaben
+  // aus den vorhandenen Mess- und Prognosepunkten zusammen und zeichnen das
+  // Ergebnis. Am bestehenden Diagramm (weiße/rote Linien, Achsen, Farbbänder,
+  // Pfeile, Zahlen) ändert sich dadurch NICHTS.
+  //
+  // TODO (v2, siehe Auftrag §8): Bewusst NUR Mittelwind, keine Tendenzlinie
+  // für die Böe — Mittel und Böe brauchen getrennte Offsets (z. B. Mittel-
+  // Offset +19 bei gleichzeitig Böe-Offset ≈ −3). Böe kommt später als eigene
+  // Ausbaustufe.
+
+  // Wie weit ein Prognosepunkt zeitlich von "jetzt" entfernt sein darf, um
+  // noch als Prognosewert "jetzt" (t0) zu gelten. Prognose ist stündlich, der
+  // nächste Punkt liegt also ≤ 30 min entfernt; 90 min lässt etwas Luft für
+  // Datenlücken, ohne einen weit entfernten Punkt fälschlich zu nehmen.
+  const TENDENZ_JETZT_TOLERANZ_MS = 90 * 60 * 1000;
+
+  // Eingaben für die Berechnung zusammensuchen (nur wenn es überhaupt eine
+  // Prognose für diese Station gibt — sonst ist die Tendenz gegenstandslos).
+  let tendenz: ReturnType<typeof berechneTendenz> | null = null;
+  // Zeitpunkte (ms) je Tendenz-Stunde für die x-Position beim Zeichnen:
+  // Stunde 0 sitzt auf "jetzt", die Zukunftsstunden auf den echten
+  // Prognose-Zeitpunkten, damit die Kurve am Ende SICHTBAR auf der roten
+  // Prognoselinie landet (dort liegen genau diese Prognosepunkte).
+  let tendenzZeiten: number[] = [];
+
+  if (forecastPoints.length > 0) {
+    // Letzte realen Mittelwind-Messungen (neueste zuletzt), nur echte Werte.
+    const realMittelLetzte = points
+      .map((p) => p.speed)
+      .filter((v): v is number => v !== null)
+      .slice(-REAL_MITTEL_SAMPLES);
+    // Aktuelle reale Windrichtung = jüngste vorhandene Richtung.
+    let realRichtungJetzt = NaN;
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (points[i].direction !== null) {
+        realRichtungJetzt = points[i].direction as number;
+        break;
+      }
+    }
+
+    // Prognosepunkt am nächsten zu "jetzt" (liefert t0 + prognostizierte
+    // Richtung "jetzt").
+    let jetztIdx = -1;
+    let jetztDist = Infinity;
+    forecastPoints.forEach((p, i) => {
+      if (p.speed === null || p.direction === null) return;
+      const dist = Math.abs(p.t - now);
+      if (dist < jetztDist) {
+        jetztDist = dist;
+        jetztIdx = i;
+      }
+    });
+
+    if (jetztIdx >= 0 && jetztDist <= TENDENZ_JETZT_TOLERANZ_MS) {
+      // Die nächsten FENSTER_STUNDEN Prognosepunkte in der Zukunft (nach dem
+      // "jetzt"-Punkt und rechts von der jetzt-Linie).
+      const zukunft: Point[] = [];
+      for (
+        let i = jetztIdx + 1;
+        i < forecastPoints.length && zukunft.length < FENSTER_STUNDEN;
+        i++
+      ) {
+        const p = forecastPoints[i];
+        if (p.speed === null) continue;
+        if (p.t <= now) continue;
+        zukunft.push(p);
+      }
+
+      const jetztP = forecastPoints[jetztIdx];
+      // prognMittel = [t0(jetzt), +1h, +2h, +3h]; berechneTendenz prüft selbst,
+      // ob die Länge stimmt (sonst "Daten fehlen").
+      const prognMittel = [
+        jetztP.speed as number,
+        ...zukunft.map((p) => p.speed as number),
+      ];
+      tendenzZeiten = [now, ...zukunft.map((p) => p.t)];
+      tendenz = berechneTendenz(
+        realMittelLetzte,
+        realRichtungJetzt,
+        prognMittel,
+        jetztP.direction as number,
+      );
+    } else {
+      // Kein Prognosewert nahe "jetzt" → Berechnung meldet "Daten fehlen".
+      tendenz = berechneTendenz(realMittelLetzte, realRichtungJetzt, [], NaN);
+    }
+  }
+
+  // SVG-Pfade der Tendenz (nur wenn gezeichnet werden soll).
+  let tendenzLinePath = "";
+  let tendenzBandPath = "";
+  if (tendenz && tendenz.zeichnen) {
+    const pts = tendenz.punkte;
+    // Linie durch die korrigierten Werte.
+    tendenzLinePath = pts
+      .map(
+        (pt, i) =>
+          `${i === 0 ? "M" : "L"}${x(tendenzZeiten[i]).toFixed(1)} ${y(pt.wert).toFixed(1)}`,
+      )
+      .join(" ");
+    // Unsicherheitsband: oben von links nach rechts, unten zurück (geschlossen).
+    const oben = pts
+      .map(
+        (pt, i) =>
+          `${i === 0 ? "M" : "L"}${x(tendenzZeiten[i]).toFixed(1)} ${y(pt.oben).toFixed(1)}`,
+      )
+      .join(" ");
+    let unten = "";
+    for (let i = pts.length - 1; i >= 0; i--) {
+      unten += `L${x(tendenzZeiten[i]).toFixed(1)} ${y(pts[i].unten).toFixed(1)} `;
+    }
+    tendenzBandPath = `${oben} ${unten}Z`;
+  }
+
+  // Kopfzeile-Text nur, wenn es überhaupt eine Prognose gibt.
+  const tendenzText = tendenz ? tendenzKopfzeile(tendenz) : null;
+
   return (
     <section
       aria-label={`Windverlauf ${station.stationName}`}
@@ -476,7 +603,9 @@ export default function WindHistoryPanel({
             — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
             Messung ·{" "}
             <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
-            (ICON-CH1)
+            (ICON-CH1) ·{" "}
+            <span className="text-teal-600 dark:text-teal-400">türkis</span>:
+            Tendenz (Mittelwind)
           </span>
         </span>
         <button
@@ -495,6 +624,20 @@ export default function WindHistoryPanel({
           </svg>
         </button>
       </header>
+
+      {/* Kopfzeile der Tendenzkurve (§10): ein kurzer, laienverständlicher
+          Satz über dem Diagramm — trifft das Modell gerade gut, unter-/
+          übertreibt es, welche Tendenz? Bei Richtungskonflikt oder fehlenden
+          Daten steht hier stattdessen der Warnhinweis. Nur sichtbar, wenn es
+          für die Station eine Prognose gibt. */}
+      {!loading && !error && hasData && tendenzText && (
+        <p className="px-3 pb-1 text-xs text-teal-700 dark:text-teal-300">
+          {tendenz && !tendenz.zeichnen && (
+            <span aria-hidden="true">⚠ </span>
+          )}
+          {tendenzText}
+        </p>
+      )}
 
       <div className="flex px-1 pb-4">
         <div
@@ -522,6 +665,16 @@ export default function WindHistoryPanel({
               role="img"
               aria-label="Windverlauf: Mittelwind und Böen der letzten 48 Stunden"
             >
+              {/* Begrenzung für die Tendenzkurve: damit ihr Unsicherheitsband
+                  nicht über den Kurvenbereich hinaus in die Zeit-/Pfeilzeilen
+                  ragt, wird sie auf die Höhe des Diagramms zugeschnitten. So
+                  bleibt zugleich die y-Achse (yMax) unverändert. */}
+              <defs>
+                <clipPath id="tendenz-clip">
+                  <rect x={0} y={chartTop} width={svgWidth} height={CHART_H} />
+                </clipPath>
+              </defs>
+
               {/* Farbbänder der Windstärke-Bereiche (gleiche Skala wie die
                   Kartenpfeile), leicht transparent, damit die Kurven gut
                   lesbar bleiben */}
@@ -690,6 +843,53 @@ export default function WindHistoryPanel({
                   )}
                 </g>
               ))}
+
+              {/* Tendenzkurve (türkis), NUR Zukunft (jetzt … +3 h): startet auf
+                  dem realen Mittelwind und endet sichtbar auf der roten
+                  Mittel-Prognoselinie. Zuletzt gezeichnet und damit optisch
+                  oben, mit eigener klar unterscheidbarer Farbe. Bei
+                  Richtungskonflikt / fehlenden Daten (tendenz.zeichnen=false)
+                  wird bewusst KEINE Linie gezeichnet — dann steht nur der
+                  Warnhinweis in der Kopfzeile über dem Diagramm. */}
+              {tendenz && tendenz.zeichnen && (
+                <g clipPath="url(#tendenz-clip)">
+                  {/* Unsicherheitsband: halbtransparente Fläche, weitet sich
+                      nach rechts trichterförmig auf. */}
+                  <path
+                    d={tendenzBandPath}
+                    stroke="none"
+                    fillOpacity={0.22}
+                    className="fill-teal-500 dark:fill-teal-400"
+                  />
+                  {/* Durchgezogene Tendenzlinie. */}
+                  <path
+                    d={tendenzLinePath}
+                    fill="none"
+                    strokeWidth={LINE_WIDTH}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    className="stroke-teal-500 dark:stroke-teal-400"
+                  />
+                  {/* Auswertepunkte bei +1 h, +2 h, +3 h (Stunde 0 = "jetzt"
+                      liegt schon auf der realen Linie und braucht keinen
+                      eigenen Marker). */}
+                  {tendenz.punkte.map((pt) =>
+                    pt.stunde === 0 ? null : (
+                      <circle
+                        key={`tdot-${pt.stunde}`}
+                        cx={x(tendenzZeiten[pt.stunde])}
+                        cy={y(pt.wert)}
+                        r={2.4}
+                        className="fill-teal-500 dark:fill-teal-400"
+                      >
+                        <title>
+                          {`Tendenz +${pt.stunde} h — Mittelwind ~${Math.round(pt.wert)} km/h (${Math.round(pt.unten)}–${Math.round(pt.oben)} km/h)`}
+                        </title>
+                      </circle>
+                    ),
+                  )}
+                </g>
+              )}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (Richtung + 180°,
                   Pfeil zeigt wohin der Wind weht) und Farben wie auf der

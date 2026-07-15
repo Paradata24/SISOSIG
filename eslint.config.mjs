@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     // Supabase Edge Functions laufen unter Deno (eigene Globals wie `Deno`),
     // nicht unter Node/Next.js — daher vom Next-Lint ausgenommen.
     "supabase/functions/**",
+    // Unit-Tests laufen über Node (node --test) und brauchen .ts-Endungen in
+    // den Imports — vom Next-Lint ausgenommen, damit das nicht kollidiert.
+    "**/*.test.ts",
   ]),
 ]);
 
