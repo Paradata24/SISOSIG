@@ -364,17 +364,55 @@ export default function WindHistoryPanel({
   // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
   const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
-  // --- Pfeile ggf. ausdünnen, damit sie sich nicht überlappen ---
-  const pxPerPoint = points.length > 1 ? historyWidth / (points.length - 1) : historyWidth;
+  // --- "Stündliche" Messpunkte bestimmen ---
+  // Die ICON-CH1-Prognose (oben, rot) liefert stündliche Werte. Damit man sie
+  // gut mit den Messwerten vergleichen kann, heben wir unten die "stündlichen"
+  // Messwerte hervor: je voller Stunde den zeitlich nächstgelegenen Messpunkt
+  // (höchstens 30 min von der vollen Stunde entfernt). Diese Punkte werden
+  // immer angezeigt und ihre Werte fett dargestellt.
+  const hourlyPointIndices = new Set<number>();
+  {
+    const bestByHour = new Map<number, { idx: number; dist: number }>();
+    points.forEach((p, idx) => {
+      if (p.speed === null && p.gust === null) return;
+      const hourStart = new Date(p.t);
+      hourStart.setMinutes(0, 0, 0);
+      const lower = hourStart.getTime();
+      const upper = lower + 3_600_000;
+      // Auf die näher gelegene volle Stunde runden.
+      const hourKey = p.t - lower <= upper - p.t ? lower : upper;
+      const dist = Math.abs(p.t - hourKey);
+      const cur = bestByHour.get(hourKey);
+      if (!cur || dist < cur.dist) bestByHour.set(hourKey, { idx, dist });
+    });
+    for (const { idx, dist } of bestByHour.values()) {
+      if (dist <= 30 * 60 * 1000) hourlyPointIndices.add(idx);
+    }
+  }
+
+  // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
   // Mindestabstand: die Werte-Texte (bis zu 3-stellig) brauchen mehr Platz
   // als der Pfeil allein, sonst würden sie sich überlappen.
   const MIN_LABEL_SPACING = 31;
-  const arrowStep = Math.max(
-    1,
-    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / pxPerPoint),
-  );
+  // Auswahl: zuerst die stündlichen Punkte (Pflicht, damit der Vergleich mit
+  // der Prognose immer sichtbar ist), danach weitere Punkte als Lückenfüller —
+  // aber nur, solange sie den Mindestabstand zu allen bereits gewählten Punkten
+  // einhalten. Die stündlichen Punkte liegen mindestens eine Stunde (also klar
+  // mehr als MIN_LABEL_SPACING) auseinander und passen daher immer alle rein.
   const arrowIndices: number[] = [];
-  for (let i = points.length - 1; i >= 0; i -= arrowStep) arrowIndices.push(i);
+  const selectedX: number[] = [];
+  const tryAdd = (i: number) => {
+    const px = x(points[i].t);
+    if (selectedX.some((sx) => Math.abs(px - sx) < MIN_LABEL_SPACING)) return;
+    selectedX.push(px);
+    arrowIndices.push(i);
+  };
+  for (let i = points.length - 1; i >= 0; i--) {
+    if (hourlyPointIndices.has(i)) tryAdd(i);
+  }
+  for (let i = points.length - 1; i >= 0; i--) {
+    if (!hourlyPointIndices.has(i)) tryAdd(i);
+  }
 
   // Dieselbe Ausdünnung für die roten Prognose-Werte/Pfeile oben im
   // Diagramm, aber auf Basis der (stündlichen) Prognosepunkte statt der
@@ -688,13 +726,20 @@ export default function WindHistoryPanel({
                 const p = points[i];
                 if (p.direction === null) return null;
                 const tx = x(p.t).toFixed(1);
+                // Stündliche Messwerte fett und kräftiger, damit sie sich zum
+                // Vergleich mit der (ebenfalls stündlichen) roten Prognose von
+                // den Zwischenwerten abheben.
+                const isHourly = hourlyPointIndices.has(i);
+                const emphasisClass = isHourly
+                  ? "font-bold fill-zinc-900 dark:fill-zinc-100"
+                  : "fill-zinc-500 dark:fill-zinc-400";
                 return (
-                  <g key={`values-${p.t}`} className="fill-zinc-700 dark:fill-zinc-300">
+                  <g key={`values-${p.t}`}>
                     <text
                       x={tx}
                       y={speedValueY}
                       textAnchor="middle"
-                      className="text-[10px] tabular-nums"
+                      className={`text-[10px] tabular-nums ${emphasisClass}`}
                     >
                       {p.speed !== null ? Math.round(p.speed) : "–"}
                     </text>
@@ -702,7 +747,7 @@ export default function WindHistoryPanel({
                       x={tx}
                       y={gustValueY}
                       textAnchor="middle"
-                      className="text-[10px] tabular-nums"
+                      className={`text-[10px] tabular-nums ${emphasisClass}`}
                     >
                       {p.gust !== null ? Math.round(p.gust) : "–"}
                     </text>
