@@ -132,6 +132,20 @@ Supabase.
    runs less often than configured, and every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled.
+   On top of the white (real) and red (forecast) lines it draws a third,
+   **turquoise "Tendenzkurve"** layer for the mean wind only: a pure
+   observation-anchored nowcast that starts at "now" on the smoothed real mean
+   and blends back onto the raw forecast over 3h, with a widening uncertainty
+   band and a one-line header verdict. All the maths (and the reasoning) live
+   in `src/lib/tendenz.ts` (`berechneTendenz`), unit-tested in
+   `src/lib/tendenz.test.ts` (`npm test`, run by Node's own TS-capable test
+   runner — that file is excluded from tsconfig/eslint because it imports with
+   a `.ts` extension) and documented for the non-programmer owner in
+   `docs/TENDENZKURVE.md`. It's strictly **additive**: the panel assembles the
+   inputs from the existing measurement/forecast points and draws the extra
+   layer without touching the existing lines, axes, colour bands, arrows or
+   value rows. Gusts are deliberately out of scope for v1 (mean and gust need
+   separate offsets — see the TODO).
 
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
    Function** (Deno, not Next.js!) for phase 3: fetches ICON-CH1 wind
