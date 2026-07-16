@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { WindStation } from "@/lib/wind";
+import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
@@ -168,23 +169,36 @@ export async function GET(request: Request) {
           : null,
       timestamp,
       stale,
+      source: "bolzano",
     };
   }
 
-  // Alle Stationen mit Windsensoren und Koordinaten — optional gefiltert
-  // über ?station=CODE1,CODE2 (für Tests/Debugging).
-  let codes = [...byStation.keys()];
+  const bolzanoStations = [...byStation.keys()]
+    .map(buildWindStation)
+    .filter((s): s is WindStation => s !== null);
+
+  // OpenWindMap/Pioupiou-Stationen sind additiv: schlägt der Abruf fehl
+  // (Netzfehler, Dienst nicht erreichbar), zeigt die Karte trotzdem die
+  // Bozner Stationen statt komplett zu scheitern.
+  let openWindMapStations: WindStation[] = [];
+  try {
+    openWindMapStations = await fetchOpenWindMapStations();
+  } catch (err) {
+    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
+  }
+
+  let stations = [...bolzanoStations, ...openWindMapStations].sort((a, b) =>
+    a.stationName.localeCompare(b.stationName, "de"),
+  );
+
+  // Optional gefiltert über ?station=CODE1,CODE2 (für Tests/Debugging;
+  // funktioniert auch mit Pioupiou-Codes wie "pioupiou-413").
   if (requestedStations) {
     const wanted = new Set(
       requestedStations.split(",").map((c) => c.trim()).filter(Boolean),
     );
-    codes = codes.filter((c) => wanted.has(c));
+    stations = stations.filter((s) => wanted.has(s.stationCode));
   }
-
-  const stations = codes
-    .map(buildWindStation)
-    .filter((s): s is WindStation => s !== null)
-    .sort((a, b) => a.stationName.localeCompare(b.stationName, "de"));
 
   if (stations.length === 0) {
     return NextResponse.json(

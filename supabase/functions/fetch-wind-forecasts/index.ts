@@ -1,5 +1,6 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt ICON-CH1-Windprognosen
-// von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren und
+// von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
+// (Bozner Wetterdienst UND Südtiroler OpenWindMap/Pioupiou-Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -12,9 +13,10 @@
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
 //      (gleiches Muster wie CRON_SECRET bei /api/collect).
-//   2. Stationsliste aus dem Bozner Wetterdienst ableiten — exakt dieselbe
-//      Logik wie /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
-//      deterministisch nach Stationscode sortiert.
+//   2. Stationsliste ableiten: Bozner Wetterdienst — exakt dieselbe Logik
+//      wie /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
+//      deterministisch nach Stationscode sortiert — plus Südtiroler
+//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
 //   3. Open-Meteo in Batches (je 50 Stationen, Koordinaten komma-getrennt)
 //      abfragen: Modell meteoswiss_icon_ch1, letzte 24 h + kommende ~3 h,
 //      Einheit km/h (wie in wind_measurements), Zeiten als Unix-Sekunden
@@ -36,6 +38,15 @@ const WIND_API_BASE =
 
 const OPEN_METEO_BASE =
   Deno.env.get("OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com";
+
+const PIOUPIOU_API_BASE =
+  Deno.env.get("PIOUPIOU_API_BASE_URL") ?? "https://api.pioupiou.fr/v1";
+
+// Grobe Bounding Box Südtirol — identisch zu src/lib/pioupiou.ts (dort für
+// /api/wind und /api/collect, hier separat dupliziert, weil diese Edge
+// Function unter Deno läuft und nichts aus src/lib importieren kann).
+const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
+const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
 // Modellname in der Datenbank (Spalte "model") — kurz und stabil, damit
 // ICON-D2 später einfach als 'icon_d2' dazukommen kann.
@@ -155,6 +166,49 @@ async function loadStations(): Promise<Station[]> {
   return stations;
 }
 
+// Antwortform einer Pioupiou-Station (nur die für die Prognose nötigen
+// Felder — dieselbe Quelle wie /api/wind und /api/collect).
+interface PioupiouStation {
+  id: number;
+  location?: { latitude?: number; longitude?: number; success?: boolean };
+}
+
+// Südtiroler Pioupiou-Stationen laden (Bounding-Box-Filter, siehe oben).
+// Läuft unabhängig von loadStations() — ein Fehler hier lässt die Bozner
+// Prognosen trotzdem weiterlaufen (siehe try/catch beim Aufruf).
+async function loadOpenWindMapStations(): Promise<Station[]> {
+  const res = await fetch(`${PIOUPIOU_API_BASE}/live/all`);
+  if (!res.ok) {
+    throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
+  }
+  const body: unknown = await res.json();
+  const raw: PioupiouStation[] = Array.isArray(body)
+    ? (body as PioupiouStation[])
+    : ((body as { data?: PioupiouStation[] })?.data ?? []);
+
+  const stations: Station[] = [];
+  for (const s of raw) {
+    const loc = s.location;
+    if (
+      !loc?.success ||
+      typeof loc.latitude !== "number" ||
+      typeof loc.longitude !== "number"
+    ) {
+      continue;
+    }
+    if (
+      loc.latitude < SOUTH_TYROL_BBOX.latMin ||
+      loc.latitude > SOUTH_TYROL_BBOX.latMax ||
+      loc.longitude < SOUTH_TYROL_BBOX.lngMin ||
+      loc.longitude > SOUTH_TYROL_BBOX.lngMax
+    ) {
+      continue;
+    }
+    stations.push({ code: `${PIOUPIOU_CODE_PREFIX}${s.id}`, lat: loc.latitude, lng: loc.longitude });
+  }
+  return stations;
+}
+
 // Einen Batch Stationen bei Open-Meteo abfragen und zu Tabellenzeilen
 // aufbereiten. Die Antwort ist eine Liste in derselben Reihenfolge wie die
 // übergebenen Koordinaten (bei nur einer Station ein einzelnes Objekt).
@@ -246,13 +300,20 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Nicht autorisiert" }, 401);
   }
 
-  // 2) Stationsliste ableiten.
+  // 2) Stationsliste ableiten: Bozner Stationen (Pflicht) + Südtiroler
+  //    OpenWindMap-Stationen (additiv — ein Fehler hier bricht den Lauf
+  //    nicht ab, es gibt dann eben keine Prognosen für diese Stationen).
   let stations: Station[];
   try {
     stations = await loadStations();
   } catch (err) {
     console.error("Stationsliste nicht abrufbar:", err);
     return json({ error: `Stationsliste nicht abrufbar: ${(err as Error).message}` }, 502);
+  }
+  try {
+    stations = [...stations, ...(await loadOpenWindMapStations())];
+  } catch (err) {
+    console.error("OpenWindMap-Stationsliste nicht abrufbar:", err);
   }
   if (stations.length === 0) {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);

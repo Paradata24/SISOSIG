@@ -84,7 +84,13 @@ Supabase.
    wind sensors and known coordinates as a JSON array (`WindStation[]`,
    typed in `src/lib/wind.ts`). Two upstream requests cover every station:
    `/sensors` (current readings for all stations at once) and `/stations`
-   (metadata: name, coordinates, altitude).
+   (metadata: name, coordinates, altitude). It then merges in South Tyrol's
+   OpenWindMap/Pioupiou stations via `fetchOpenWindMapStations()`
+   (`src/lib/pioupiou.ts`) — additive: a failed Pioupiou fetch just means
+   fewer markers, not a broken map. Each `WindStation` now carries a
+   `source: "bolzano" | "openwindmap"` field (see `SOURCE_INFO` in
+   `src/lib/wind.ts` for the matching display label/link, shown as a
+   "Quelle:" line at the bottom of the Verlaufsbalken).
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
    colored by speed on a 10-step scale modeled after the XC-Therm legend
@@ -102,15 +108,22 @@ Supabase.
    OSM tiles vs. an Esri hillshade + CARTO place-name overlay); markers are
    rendered outside the base-layer group so they stay visible on both.
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
-   **Supabase Cron** (formerly a GitHub Actions workflow, now removed). It
-   re-fetches the same upstream API, upserts rows into the Supabase table
-   `wind_measurements` (schema in `supabase/schema.sql`), and deletes rows
-   older than 7 days, then answers with a small JSON summary
+   **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
+   configured for **every 20 minutes** and covering both sources (Bozen +
+   OpenWindMap). It re-fetches the same upstream APIs as `/api/wind`
+   (Bozen webservice + `fetchOpenWindMapStations()`, the latter additive —
+   a failed Pioupiou fetch doesn't block the Bozen rows), upserts rows into
+   the Supabase table `wind_measurements` (schema in `supabase/schema.sql`,
+   including a `source` column so each row's origin is known), and deletes
+   rows older than 7 days, then answers with a small JSON summary
    (`{ ok, saved, ... }`). It is guarded by a bearer token: callers must
    send `Authorization: Bearer <CRON_SECRET>` or the route returns 401
    (`CRON_SECRET` is a Vercel env var). This deliberately reuses the same
    sensor-parsing logic as `/api/wind` but is a separate route because it
-   *writes* to Supabase rather than serving the map.
+   *writes* to Supabase rather than serving the map. Existing databases
+   created before the `source` column existed need
+   `supabase/add-source-column.sql` run once (non-destructive `alter table
+   ... add column if not exists`).
 4. `src/app/api/history/route.ts` — reads the last 48h for one station
    (`?station=<SCODE>`) straight from Supabase via the REST API (no
    `@supabase/supabase-js` dependency, just `fetch`).
@@ -139,8 +152,12 @@ Supabase.
    `past_hours=24` + `forecast_hours=4`, `wind_speed_unit=kmh`,
    `timeformat=unixtime` so times are unambiguous UTC) for every station
    that has wind sensors and coordinates — derived from the same two Bozen
-   webservice calls as `/api/wind` — and upserts into the table
-   `wind_forecasts` (schema in `supabase/forecast-schema.sql`;
+   webservice calls as `/api/wind`, **plus** South Tyrol's OpenWindMap
+   stations (`loadOpenWindMapStations()`, same bounding-box filter as
+   `src/lib/pioupiou.ts` but duplicated here since Deno can't import from
+   `src/lib`; additive — a failed Pioupiou fetch just means no forecasts
+   for those stations, the Bozen ones still run) — and upserts into the
+   table `wind_forecasts` (schema in `supabase/forecast-schema.sql`;
    `on_conflict=station_code,model,forecast_time`, 7-day retention). The
    `model` column exists so ICON-D2 can later be added as extra rows, no
    schema change. Stations are queried in batches of 50 (comma-separated
@@ -152,10 +169,27 @@ Supabase.
    with `Authorization: Bearer <service_role key>` or 401 — deploy the
    function with JWT verification **disabled** since it does its own check.
    Because this is Deno code, `supabase/functions` is excluded in
-   `tsconfig.json` and ignored in `eslint.config.mjs`; `WIND_API_BASE_URL`
-   and `OPEN_METEO_BASE_URL` allow pointing both upstreams at a local mock
-   for testing (the function also runs under Node if you provide a tiny
-   `Deno.env`/`Deno.serve` shim before importing it).
+   `tsconfig.json` and ignored in `eslint.config.mjs`; `WIND_API_BASE_URL`,
+   `OPEN_METEO_BASE_URL` and `PIOUPIOU_API_BASE_URL` allow pointing all
+   upstreams at a local mock for testing (the function also runs under
+   Node if you provide a tiny `Deno.env`/`Deno.serve` shim before importing
+   it).
+7. `src/lib/pioupiou.ts` — shared logic (used by `/api/wind` and
+   `/api/collect`, but *not* importable by the Deno edge function, see
+   above) that fetches `https://api.pioupiou.fr/v1/live/all` (all stations
+   worldwide, no region filter) and keeps only those inside a rough South
+   Tyrol bounding box (`SOUTH_TYROL_BBOX`: lat 46.2–47.1, lng 10.3–12.5 —
+   adjust here if needed). Station codes are prefixed `pioupiou-<id>` to
+   avoid colliding with Bozen SCODEs. Internal unit is km/h for both
+   sources — Pioupiou's API docs say `wind_speed_avg`/`wind_speed_max` are
+   already km/h, so `toKmh()` here is currently a no-op, kept as a single
+   named conversion point in case that assumption turns out wrong (outbound
+   requests to `api.pioupiou.fr` are blocked in some sandboxes, so this
+   couldn't be verified against live data during development — sanity-check
+   displayed values against a known windy day after deploying). Staleness
+   reuses the same 2h/missing-value rule as Bozen stations (battery-powered
+   sensors that don't report continuously). `PIOUPIOU_API_BASE_URL`
+   overrides the endpoint for local mock testing.
 
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**
@@ -182,9 +216,15 @@ Supabase.
 webservice URL override; see the README's setup table.
 
 **Sandboxed dev environments:** outbound requests to
-`daten.buergernetz.bz.it`, `tile.openstreetmap.org`, and Supabase may be
-blocked by network policy in some sandboxes. When that's the case,
-`/api/wind` and `/api/history` will return their real error responses
-(502/500) rather than throwing — this is expected there, not a bug. Set
-`WIND_API_BASE_URL` to a local mock HTTP server to test the route logic
-without live network access.
+`daten.buergernetz.bz.it`, `tile.openstreetmap.org`, `api.pioupiou.fr`, and
+Supabase may be blocked by network policy in some sandboxes. When that's
+the case, `/api/wind` and `/api/history` will return their real error
+responses (502/500) rather than throwing — this is expected there, not a
+bug. Set `WIND_API_BASE_URL` / `PIOUPIOU_API_BASE_URL` to a local mock HTTP
+server to test the route logic without live network access.
+
+**License requirement:** OpenWindMap's free Community License requires a
+visible credit with a link wherever its data is shown. That lives in the
+site footer, `src/app/page.tsx` — "Winddaten © contributors of the
+OpenWindMap wind network, openwindmap.org" — don't remove it while
+OpenWindMap stations are displayed.

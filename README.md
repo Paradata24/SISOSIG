@@ -32,17 +32,38 @@ Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
 filtern. Die Stationscodes findet man in der Antwort von
 `/services/meteo/v1/stations`.
 
+Zusätzlich holt `/api/wind` über `src/lib/pioupiou.ts` die Südtiroler
+Stationen des **OpenWindMap/Pioupiou-Netzwerks** dazu (Endpunkt
+`https://api.pioupiou.fr/v1/live/all`, gefiltert über eine grobe
+Südtirol-Bounding-Box, da die API keinen Regionsfilter kennt) und zeigt sie
+genau wie die Bozner Stationen auf der Karte an — Pfeil, Farbskala,
+Klick-Historie, alles identisch. Ihre Stationscodes haben das Format
+`pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie nicht mit den Bozner
+SCODEs kollidieren. Schlägt der Abruf fehl, zeigt die Karte trotzdem die
+Bozner Stationen (additiv, kein Blocker). Details zu Lizenz und Einheiten
+siehe unten unter „OpenWindMap/Pioupiou-Stationen".
+
 ## Wind-Historie (Supabase)
 
 ### Wie die Daten gesammelt werden
 
 Die Sammel-Route `src/app/api/collect/route.ts` (Aufruf per **POST** unter
-`/api/collect`) fragt denselben Wetterdienst wie `/api/wind` ab und schreibt
-die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
-`wind_measurements` (Schema: `supabase/schema.sql`, einmalig im Supabase
-SQL-Editor ausführen). Bereits vorhandene Messungen werden dabei nicht
-doppelt angelegt (Upsert über `station_code` + `measured_at`), und Einträge
-älter als 7 Tage werden bei jedem Lauf gelöscht.
+`/api/collect`) fragt denselben Wetterdienst wie `/api/wind` ab — sowohl den
+Bozner Wetterdienst als auch die Südtiroler OpenWindMap/Pioupiou-Stationen
+(siehe oben) — und schreibt die aktuellen Windwerte aller Stationen in die
+Supabase-Tabelle `wind_measurements` (Schema: `supabase/schema.sql`,
+einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
+`source` die Herkunft (`bolzano` oder `openwindmap`), damit sich das später
+auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
+Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
+`measured_at`), und Einträge älter als 7 Tage werden bei jedem Lauf
+gelöscht.
+
+**Wenn `wind_measurements` schon vor dieser Änderung angelegt wurde:**
+einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
+(ergänzt nur die neue Spalte `source`, ohne bestehende Daten zu löschen —
+bei einer komplett neuen Installation über `schema.sql` ist das nicht
+nötig, die Spalte ist dort schon enthalten).
 
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
@@ -79,8 +100,11 @@ Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
 
 1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
    Jobs**) und **Create a new cron job**.
-2. Zeitplan wählen, z. B. alle 5 oder 10 Minuten (`*/5 * * * *` bzw.
-   `*/10 * * * *`) — je enger, desto feiner die spätere Historie.
+2. Zeitplan **alle 20 Minuten** wählen (`*/20 * * * *`) — dieser Takt gilt
+   für alle Stationen (Bozen und OpenWindMap gemeinsam). Läuft bei dir
+   bereits ein Cron-Job mit einem anderen Takt (z. B. `*/10 * * * *`), den
+   bestehenden Job öffnen und den Zeitplan auf `*/20 * * * *` ändern statt
+   einen zweiten anzulegen.
 3. Als Aktion **HTTP Request** wählen:
    - Methode: **POST**
    - Endpoint URL: `https://<deine-vercel-domain>/api/collect`
@@ -129,7 +153,7 @@ von `/api/history?station=<SCODE>`.
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
-`/api/collect` getaktet ist (empfohlen z. B. alle 10 Minuten).
+`/api/collect` getaktet ist (empfohlen alle 20 Minuten, siehe oben).
 
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
@@ -139,9 +163,12 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 Die Supabase Edge Function `fetch-wind-forecasts`
 (Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
 ICON-CH1-Windprognosen von [Open-Meteo](https://open-meteo.com) für alle
-Stationen, die auch auf der Karte erscheinen (Windsensoren + Koordinaten,
-abgeleitet aus demselben Bozner Wetterdienst wie `/api/wind`), und schreibt
-sie in die Tabelle `wind_forecasts` (Schema:
+Stationen, die auch auf der Karte erscheinen — Bozner Stationen
+(Windsensoren + Koordinaten, abgeleitet aus demselben Bozner Wetterdienst
+wie `/api/wind`) **und** die Südtiroler OpenWindMap/Pioupiou-Stationen
+(gleiche Bounding-Box-Filterung wie in `src/lib/pioupiou.ts`, hier in der
+Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
+— und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
 - Zeitfenster: letzte 24 Stunden + kommende ~3 Stunden (gleitendes
@@ -239,10 +266,57 @@ Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
 Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
 `OPEN_METEO_BASE_URL`).
 
+## OpenWindMap/Pioupiou-Stationen
+
+Zusätzlich zu den Bozner Stationen zeigt die Karte Südtiroler Stationen aus
+dem **OpenWindMap/Pioupiou-Netzwerk** (batteriebetriebene, private
+Windsensoren, vor allem an Startplätzen für Gleitschirmflieger). Code:
+`src/lib/pioupiou.ts` (genutzt von `/api/wind` und `/api/collect`), in der
+Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert
+(siehe oben).
+
+- **Endpunkt:** `https://api.pioupiou.fr/v1/live/all` liefert ALLE
+  Stationen weltweit ohne Regionsfilter. Südtirol wird über eine grobe
+  Bounding Box herausgefiltert (Breite 46.2–47.1, Länge 10.3–12.5,
+  `SOUTH_TYROL_BBOX` in `src/lib/pioupiou.ts` — bei Bedarf dort
+  nachjustieren).
+- **Stationscodes:** `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie
+  nicht mit den Bozner SCODEs kollidieren.
+- **Einheit:** Intern gilt für alle Quellen einheitlich **km/h** (wie bei
+  den Bozner Stationen). Laut Pioupiou-API-Dokumentation liefert die API
+  `wind_speed_avg`/`wind_speed_max` bereits in km/h, es findet also keine
+  Umrechnung statt — die Stelle dafür (`toKmh()` in `src/lib/pioupiou.ts`)
+  ist trotzdem vorbereitet, falls sich das mit echten Live-Daten als falsch
+  herausstellen sollte (in dieser Sandbox war der Pioupiou-Dienst durch die
+  Netzwerk-Richtlinie nicht erreichbar, die Werte ließen sich hier also
+  nicht an echten Daten gegenprüfen — nach dem Deployment einmal die
+  angezeigten Werte an einem bekannten Tag plausibilisieren).
+- **Veraltete Werte:** Pioupiou-Stationen melden nicht durchgehend
+  (nachts/windstill teils gar nicht). Es gilt dieselbe Regel wie bei Bozen:
+  fehlt Richtung/Geschwindigkeit oder ist die letzte Messung älter als 2
+  Stunden, erscheint die Station als grauer Punkt statt als Windpfeil.
+- **Ausfallsicher:** Schlägt der Abruf fehl (Dienst nicht erreichbar),
+  zeigen `/api/wind`, `/api/collect` und die Prognose-Edge-Function
+  trotzdem weiterhin die Bozner Stationen — die OpenWindMap-Stationen
+  fallen für diesen einen Durchlauf einfach weg, statt alles zu blockieren.
+- **Herkunft:** In `wind_measurements` markiert die Spalte `source`
+  (`bolzano`/`openwindmap`), woher eine Zeile stammt. Im Verlaufsbalken
+  steht unten außerdem ein direkter „Quelle:"-Link zur jeweiligen Station.
+- **Mock-Server für lokale Tests:** `PIOUPIOU_API_BASE_URL` überschreibt
+  den Endpunkt, analog zu `WIND_API_BASE_URL`/`OPEN_METEO_BASE_URL`.
+
+**Pflicht-Lizenzhinweis:** Die OpenWindMap-Daten stehen unter der
+kostenlosen Community-Lizenz, die einen sichtbaren Credit mit Link
+verlangt. Dieser steht in der Fußzeile jeder Seite (`src/app/page.tsx`):
+„Winddaten © contributors of the OpenWindMap wind network,
+[openwindmap.org](https://openwindmap.org)". Dieser Hinweis darf nicht
+entfernt werden, solange OpenWindMap-Daten angezeigt werden.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz
-Bozen als auch die OpenStreetMap-Kartenkacheln durch die
-Netzwerk-Richtlinie der Umgebung blockiert (nur eine begrenzte Liste an
-Hosts ist erlaubt). Lokal auf dem eigenen Rechner oder nach einem
-Deployment (z. B. auf Vercel) sind beide öffentlich frei erreichbar.
+Bozen als auch die OpenStreetMap-Kartenkacheln und die Pioupiou-API
+(`api.pioupiou.fr`) durch die Netzwerk-Richtlinie der Umgebung blockiert
+(nur eine begrenzte Liste an Hosts ist erlaubt). Lokal auf dem eigenen
+Rechner oder nach einem Deployment (z. B. auf Vercel) sind alle drei
+öffentlich frei erreichbar.

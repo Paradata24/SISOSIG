@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getWindColor, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
+import { getWindColor, SOURCE_INFO, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry } from "@/app/api/forecast/route";
 
@@ -830,6 +830,18 @@ export default function WindHistoryPanel({
           </div>
         )}
       </div>
+
+      <p className="border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+        Quelle:{" "}
+        <a
+          href={SOURCE_INFO[station.source].url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
+        >
+          {SOURCE_INFO[station.source].label}
+        </a>
+      </p>
     </section>
   );
 }

@@ -15,7 +15,18 @@ export interface WindStation {
   timestamp: string | null;
   /** true, wenn die Station Windsensoren hat, aber keine aktuellen Werte liefert */
   stale: boolean;
+  /** Datenquelle: Bozner Wetterdienst oder OpenWindMap/Pioupiou-Netzwerk */
+  source: "bolzano" | "openwindmap";
 }
+
+/** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
+export const SOURCE_INFO: Record<
+  WindStation["source"],
+  { label: string; url: string }
+> = {
+  bolzano: { label: "Land Südtirol – Wetterdienst", url: "https://wetter.provinz.bz.it" },
+  openwindmap: { label: "OpenWindMap / Pioupiou", url: "https://openwindmap.org" },
+};
 
 export interface WindColorStop {
   /** Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe. */
