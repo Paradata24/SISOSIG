@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 
 // Sammel-Route: ruft den Open-Data-Wetterdienst der Provinz Bozen ab und
 // schreibt die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
     direction: number | null;
     speed_kmh: number | null;
     gust_kmh: number | null;
+    source: "bolzano" | "openwindmap";
   }> = [];
 
   for (const [code, readings] of byStation) {
@@ -134,7 +136,29 @@ export async function POST(request: Request) {
       direction,
       speed_kmh: speedKmh,
       gust_kmh: gust?.VALUE != null ? round1(toKmh(gust.VALUE, gust.UNIT)) : null,
+      source: "bolzano",
     });
+  }
+
+  // 3b) OpenWindMap/Pioupiou-Stationen dazuholen — additiv: schlägt der
+  //     Abruf fehl, werden trotzdem die Bozner Messwerte gespeichert statt
+  //     den ganzen Lauf abzubrechen.
+  try {
+    const openWindMapStations = await fetchOpenWindMapStations();
+    for (const s of openWindMapStations) {
+      if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
+      if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+      rows.push({
+        station_code: s.stationCode,
+        measured_at: s.timestamp,
+        direction: s.direction,
+        speed_kmh: s.speedKmh,
+        gust_kmh: s.gustKmh,
+        source: "openwindmap",
+      });
+    }
+  } catch (err) {
+    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
   }
 
   if (rows.length === 0) {

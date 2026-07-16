@@ -8,6 +8,10 @@ create table if not exists public.wind_measurements (
   direction real,
   speed_kmh real,
   gust_kmh real,
+  -- Woher der Messwert stammt: 'bolzano' (Bozner Wetterdienst) oder
+  -- 'openwindmap' (Pioupiou-Netzwerk). Erleichtert die geplante Erweiterung
+  -- auf weitere Regionen/Quellen (siehe CLAUDE.md, Phase 2).
+  source text not null default 'bolzano',
   inserted_at timestamptz not null default now(),
   -- Pro Station und Messzeitpunkt nur ein Eintrag: die Sammel-Route
   -- /api/collect (per Supabase Cron, z. B. alle 10 Minuten) und die
