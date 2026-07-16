@@ -30,24 +30,24 @@ const SVG_H =
   TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H + BOTTOM_PAD;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
-// Breite pro Stunde für den Geschichts-Teil (jetzt − 48h bis jetzt). Bewusst
-// so groß, dass die volle Zeitspanne breiter ist als der Bildschirm —
-// dadurch ist das Diagramm sowohl am Desktop als auch am Handy horizontal
-// scrollbar und die Stundenbeschriftungen liegen dicht genug beisammen, um
-// gut lesbar zu sein. Dies ist nur der GRUNDWERT: liegen die Messungen einer
-// Station so dicht beieinander, dass Pfeile/Zahlen sonst ausgedünnt werden
-// müssten, wird die Achse zur Laufzeit proportional breiter gezogen (bis
-// HISTORY_PX_PER_HOUR_MAX), damit alle Messungen leserlich Platz haben.
-const HISTORY_PX_PER_HOUR_BASE = 118;
-// Obergrenze der dynamischen Dehnung. Schützt vor absurd breiten Diagrammen
-// bei extrem dichten Messreihen; darüber greift wieder die bestehende
-// Ausdünnung. 472 px/h reichen, um Messungen bis ~4 min Abstand voll zu zeigen.
-const HISTORY_PX_PER_HOUR_MAX = 472;
-const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
 // Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
-// (bis zu 3-stelligen) Zahlen nicht überlappen. Bestimmt sowohl die dynamische
-// Achsen-Breite als auch – als Sicherheitsnetz – die Ausdünnung weiter unten.
+// (bis zu 3-stelligen) Zahlen nicht überlappen. Bestimmt die feste Achsen-
+// Breite und – als Sicherheitsnetz – die Ausdünnung weiter unten.
 const MIN_LABEL_SPACING = 31;
+// Gewünschte Anzeige-Dichte: zu jeder vollen Stunde eine Messung, dazwischen
+// alle 10 Minuten eine — also 6 Werte pro Stunde.
+const LABEL_INTERVAL_MIN = 10;
+// Breite pro Stunde für den Geschichts-Teil (jetzt − 48h bis jetzt). FEST (nicht
+// datenabhängig) so gewählt, dass die 6 Messungen pro Stunde (alle 10 min) mit
+// dem Mindestabstand nebeneinander Platz haben — mit kleinem Puffer, damit genau
+// 10 min auseinanderliegende Werte sicher über dem Mindestabstand liegen.
+// Dadurch ist die Achse zugleich breiter als der Bildschirm → das Diagramm
+// bleibt horizontal scrollbar.
+const HISTORY_PX_PER_HOUR = Math.ceil((60 / LABEL_INTERVAL_MIN) * (MIN_LABEL_SPACING + 2));
+// Die 3h-Reserve rechts von der "jetzt"-Linie enthält keine echten Messwerte
+// mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
+const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
+const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
 // Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
 // bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
 // die aktuelle Uhrzeit immer nahe dem rechten Rand steht.
@@ -288,37 +288,6 @@ export default function WindHistoryPanel({
     points.some((p) => p.speed !== null || p.gust !== null) ||
     forecastPoints.some((p) => p.speed !== null || p.gust !== null);
 
-  // --- Dynamische Achsen-Breite ---
-  // Grundsatz: das Layout (Pfeile, zweizeilige Zahlen) bleibt unverändert.
-  // Damit trotzdem ALLE Messungen nebeneinander leserlich Platz haben, dehnen
-  // wir bei Bedarf die horizontale Achse: In der Historie ist der Pixelabstand
-  // zweier Messungen = Stundenabstand × Pixel-pro-Stunde. Aus dem kleinsten
-  // tatsächlich vorkommenden Zeitabstand ergibt sich, wie viele Pixel/Stunde
-  // nötig sind, damit dieser engste Abstand mindestens MIN_LABEL_SPACING breit
-  // wird — begrenzt auf HISTORY_PX_PER_HOUR_MAX (darüber greift wieder die
-  // Ausdünnung).
-  let historyPxPerHour = HISTORY_PX_PER_HOUR_BASE;
-  {
-    const times = points
-      .filter((p) => p.speed !== null || p.gust !== null || p.direction !== null)
-      .map((p) => p.t)
-      .sort((a, b) => a - b);
-    let minGapMs = Infinity;
-    for (let i = 1; i < times.length; i++) {
-      const gap = times[i] - times[i - 1];
-      if (gap > 0 && gap < minGapMs) minGapMs = gap;
-    }
-    if (minGapMs !== Infinity) {
-      const requiredPxPerHour = MIN_LABEL_SPACING / (minGapMs / 3_600_000);
-      historyPxPerHour = Math.min(
-        HISTORY_PX_PER_HOUR_MAX,
-        Math.max(HISTORY_PX_PER_HOUR_BASE, requiredPxPerHour),
-      );
-    }
-  }
-  // Die 3h-Reserve rechts von "jetzt" bleibt halb so breit pro Stunde.
-  const futurePxPerHour = historyPxPerHour / 2;
-
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
   // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
@@ -330,8 +299,8 @@ export default function WindHistoryPanel({
 
   // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / 3h-Reserve).
   // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
-  const historyWidth0 = HISTORY_HOURS * historyPxPerHour;
-  const futureWidth0 = FUTURE_MARGIN_HOURS * futurePxPerHour;
+  const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
+  const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
   const contentWidth0 = historyWidth0 + futureWidth0;
 
   const svgWidth = Math.max(
@@ -399,7 +368,7 @@ export default function WindHistoryPanel({
   }
   // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
   // 3h-Reserve keine überlappenden Beschriftungen bekommt.
-  const pxPerHour = Math.min(historyPxPerHour, futurePxPerHour) * stretch;
+  const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
   // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
   const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
@@ -430,9 +399,9 @@ export default function WindHistoryPanel({
   }
 
   // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
-  // Sicherheitsnetz: greift nur noch, wenn die Achse schon auf
-  // HISTORY_PX_PER_HOUR_MAX gedehnt ist und die Messungen trotzdem dichter
-  // liegen (Mindestabstand MIN_LABEL_SPACING, oben im Modul definiert).
+  // Die Achse ist fest so breit, dass 6 Messungen/Stunde (alle 10 min) passen.
+  // Bei genau dieser Dichte wird nichts ausgedünnt; nur wenn eine Station noch
+  // dichter misst, dünnt der Mindestabstand (MIN_LABEL_SPACING) auf ~10 min aus.
   // Auswahl: zuerst die stündlichen Punkte (Pflicht, damit der Vergleich mit
   // der Prognose immer sichtbar ist), danach weitere Punkte als Lückenfüller —
   // aber nur, solange sie den Mindestabstand zu allen bereits gewählten Punkten
