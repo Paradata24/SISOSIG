@@ -100,10 +100,10 @@ Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
 
 1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
    Jobs**) und **Create a new cron job**.
-2. Zeitplan **alle 20 Minuten** wählen (`*/20 * * * *`) — dieser Takt gilt
+2. Zeitplan **alle 10 Minuten** wählen (`*/10 * * * *`) — dieser Takt gilt
    für alle Stationen (Bozen und OpenWindMap gemeinsam). Läuft bei dir
-   bereits ein Cron-Job mit einem anderen Takt (z. B. `*/10 * * * *`), den
-   bestehenden Job öffnen und den Zeitplan auf `*/20 * * * *` ändern statt
+   bereits ein Cron-Job mit einem anderen Takt (z. B. `*/20 * * * *`), den
+   bestehenden Job öffnen und den Zeitplan auf `*/10 * * * *` ändern statt
    einen zweiten anzulegen.
 3. Als Aktion **HTTP Request** wählen:
    - Methode: **POST**
@@ -153,7 +153,7 @@ von `/api/history?station=<SCODE>`.
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
-`/api/collect` getaktet ist (empfohlen alle 20 Minuten, siehe oben).
+`/api/collect` getaktet ist (empfohlen alle 10 Minuten, siehe oben).
 
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".

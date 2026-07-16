@@ -109,7 +109,7 @@ Supabase.
    rendered outside the base-layer group so they stay visible on both.
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
-   configured for **every 20 minutes** and covering both sources (Bozen +
+   configured for **every 10 minutes** and covering both sources (Bozen +
    OpenWindMap). It re-fetches the same upstream APIs as `/api/wind`
    (Bozen webservice + `fetchOpenWindMapStations()`, the latter additive —
    a failed Pioupiou fetch doesn't block the Bozen rows), upserts rows into
