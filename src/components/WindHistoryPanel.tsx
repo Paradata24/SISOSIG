@@ -23,8 +23,12 @@ const CHART_H = 154; // Höhe des Kurvenbereichs
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
-const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
-const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
+const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (nur noch für die Prognose oben)
+// Werte-Labels der Messungen stehen jetzt senkrecht (vertikal) unter dem
+// Diagramm: je Messpunkt eine schmale Zahlenspalte "Mittelwind / Böe". Dadurch
+// passen ALLE Messungen nebeneinander, ohne sich zu überlappen — auch wenn sie
+// zeitlich dicht beieinanderliegen.
+const VALUES_ROW_H = 50; // Höhe der (vertikalen) Werte-Zeile je Messpunkt
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 const SVG_H =
   TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H + BOTTOM_PAD;
@@ -325,8 +329,8 @@ export default function WindHistoryPanel({
   const y = (v: number) => chartBottom - (v / yMax) * CHART_H;
   const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
   const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
-  const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
-  const gustValueY = speedValueY + VALUE_LINE_H;
+  // Oberkante der senkrechten Werte-Labels (Mittelwind / Böe je Messpunkt).
+  const valuesTop = arrowRowBottom + VALUES_GAP + 2;
 
   // Prognose-Werte (rot) oben im Diagramm, unter der "jetzt"-Beschriftung:
   // erst die zwei Textzeilen (Mittelwind, Böe), darunter der Windpfeil.
@@ -719,12 +723,13 @@ export default function WindHistoryPanel({
                 );
               })}
 
-              {/* Werte-Text unter jedem Pfeil: oben Mittelwind, darunter Böe
-                  (gleiche Auswahl an Punkten wie die Pfeile, damit nichts
-                  überlappt) */}
-              {arrowIndices.map((i) => {
-                const p = points[i];
-                if (p.direction === null) return null;
+              {/* Werte-Text unter dem Diagramm — jetzt für JEDE Messung, nicht
+                  mehr nur für die ausgedünnten Pfeil-Punkte. Damit sich die
+                  Zahlen auch bei dicht beieinanderliegenden Messungen nicht
+                  überlappen, stehen sie senkrecht: je Messpunkt eine schmale
+                  Spalte "Mittelwind / Böe" (oben Mittelwind, unten Böe). */}
+              {points.map((p, i) => {
+                if (p.speed === null && p.gust === null) return null;
                 const tx = x(p.t).toFixed(1);
                 // Stündliche Messwerte fett und kräftiger, damit sie sich zum
                 // Vergleich mit der (ebenfalls stündlichen) roten Prognose von
@@ -733,25 +738,18 @@ export default function WindHistoryPanel({
                 const emphasisClass = isHourly
                   ? "font-bold fill-zinc-900 dark:fill-zinc-100"
                   : "fill-zinc-500 dark:fill-zinc-400";
+                const speedText = p.speed !== null ? String(Math.round(p.speed)) : "–";
+                const gustText = p.gust !== null ? String(Math.round(p.gust)) : "–";
                 return (
-                  <g key={`values-${p.t}`}>
-                    <text
-                      x={tx}
-                      y={speedValueY}
-                      textAnchor="middle"
-                      className={`text-[10px] tabular-nums ${emphasisClass}`}
-                    >
-                      {p.speed !== null ? Math.round(p.speed) : "–"}
-                    </text>
-                    <text
-                      x={tx}
-                      y={gustValueY}
-                      textAnchor="middle"
-                      className={`text-[10px] tabular-nums ${emphasisClass}`}
-                    >
-                      {p.gust !== null ? Math.round(p.gust) : "–"}
-                    </text>
-                  </g>
+                  <text
+                    key={`values-${p.t}`}
+                    transform={`translate(${tx} ${valuesTop}) rotate(90)`}
+                    textAnchor="start"
+                    dominantBaseline="middle"
+                    className={`text-[10px] tabular-nums ${emphasisClass}`}
+                  >
+                    {`${speedText} / ${gustText}`}
+                  </text>
                 );
               })}
 
