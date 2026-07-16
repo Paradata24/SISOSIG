@@ -23,12 +23,8 @@ const CHART_H = 154; // Höhe des Kurvenbereichs
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
-const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (nur noch für die Prognose oben)
-// Werte-Labels der Messungen stehen jetzt senkrecht (vertikal) unter dem
-// Diagramm: je Messpunkt eine schmale Zahlenspalte "Mittelwind / Böe". Dadurch
-// passen ALLE Messungen nebeneinander, ohne sich zu überlappen — auch wenn sie
-// zeitlich dicht beieinanderliegen.
-const VALUES_ROW_H = 50; // Höhe der (vertikalen) Werte-Zeile je Messpunkt
+const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
+const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 const SVG_H =
   TIME_LABEL_H + CHART_H + ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H + BOTTOM_PAD;
@@ -38,12 +34,20 @@ const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 // so groß, dass die volle Zeitspanne breiter ist als der Bildschirm —
 // dadurch ist das Diagramm sowohl am Desktop als auch am Handy horizontal
 // scrollbar und die Stundenbeschriftungen liegen dicht genug beisammen, um
-// gut lesbar zu sein.
-const HISTORY_PX_PER_HOUR = 118;
-// Die 3h-Reserve rechts von der "jetzt"-Linie enthält keine echten Messwerte
-// mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
-const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
+// gut lesbar zu sein. Dies ist nur der GRUNDWERT: liegen die Messungen einer
+// Station so dicht beieinander, dass Pfeile/Zahlen sonst ausgedünnt werden
+// müssten, wird die Achse zur Laufzeit proportional breiter gezogen (bis
+// HISTORY_PX_PER_HOUR_MAX), damit alle Messungen leserlich Platz haben.
+const HISTORY_PX_PER_HOUR_BASE = 118;
+// Obergrenze der dynamischen Dehnung. Schützt vor absurd breiten Diagrammen
+// bei extrem dichten Messreihen; darüber greift wieder die bestehende
+// Ausdünnung. 472 px/h reichen, um Messungen bis ~4 min Abstand voll zu zeigen.
+const HISTORY_PX_PER_HOUR_MAX = 472;
 const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
+// Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
+// (bis zu 3-stelligen) Zahlen nicht überlappen. Bestimmt sowohl die dynamische
+// Achsen-Breite als auch – als Sicherheitsnetz – die Ausdünnung weiter unten.
+const MIN_LABEL_SPACING = 31;
 // Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
 // bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
 // die aktuelle Uhrzeit immer nahe dem rechten Rand steht.
@@ -284,6 +288,37 @@ export default function WindHistoryPanel({
     points.some((p) => p.speed !== null || p.gust !== null) ||
     forecastPoints.some((p) => p.speed !== null || p.gust !== null);
 
+  // --- Dynamische Achsen-Breite ---
+  // Grundsatz: das Layout (Pfeile, zweizeilige Zahlen) bleibt unverändert.
+  // Damit trotzdem ALLE Messungen nebeneinander leserlich Platz haben, dehnen
+  // wir bei Bedarf die horizontale Achse: In der Historie ist der Pixelabstand
+  // zweier Messungen = Stundenabstand × Pixel-pro-Stunde. Aus dem kleinsten
+  // tatsächlich vorkommenden Zeitabstand ergibt sich, wie viele Pixel/Stunde
+  // nötig sind, damit dieser engste Abstand mindestens MIN_LABEL_SPACING breit
+  // wird — begrenzt auf HISTORY_PX_PER_HOUR_MAX (darüber greift wieder die
+  // Ausdünnung).
+  let historyPxPerHour = HISTORY_PX_PER_HOUR_BASE;
+  {
+    const times = points
+      .filter((p) => p.speed !== null || p.gust !== null || p.direction !== null)
+      .map((p) => p.t)
+      .sort((a, b) => a - b);
+    let minGapMs = Infinity;
+    for (let i = 1; i < times.length; i++) {
+      const gap = times[i] - times[i - 1];
+      if (gap > 0 && gap < minGapMs) minGapMs = gap;
+    }
+    if (minGapMs !== Infinity) {
+      const requiredPxPerHour = MIN_LABEL_SPACING / (minGapMs / 3_600_000);
+      historyPxPerHour = Math.min(
+        HISTORY_PX_PER_HOUR_MAX,
+        Math.max(HISTORY_PX_PER_HOUR_BASE, requiredPxPerHour),
+      );
+    }
+  }
+  // Die 3h-Reserve rechts von "jetzt" bleibt halb so breit pro Stunde.
+  const futurePxPerHour = historyPxPerHour / 2;
+
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
   // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
@@ -295,8 +330,8 @@ export default function WindHistoryPanel({
 
   // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / 3h-Reserve).
   // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
-  const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
-  const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
+  const historyWidth0 = HISTORY_HOURS * historyPxPerHour;
+  const futureWidth0 = FUTURE_MARGIN_HOURS * futurePxPerHour;
   const contentWidth0 = historyWidth0 + futureWidth0;
 
   const svgWidth = Math.max(
@@ -329,8 +364,8 @@ export default function WindHistoryPanel({
   const y = (v: number) => chartBottom - (v / yMax) * CHART_H;
   const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
   const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
-  // Oberkante der senkrechten Werte-Labels (Mittelwind / Böe je Messpunkt).
-  const valuesTop = arrowRowBottom + VALUES_GAP + 2;
+  const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
+  const gustValueY = speedValueY + VALUE_LINE_H;
 
   // Prognose-Werte (rot) oben im Diagramm, unter der "jetzt"-Beschriftung:
   // erst die zwei Textzeilen (Mittelwind, Böe), darunter der Windpfeil.
@@ -364,7 +399,7 @@ export default function WindHistoryPanel({
   }
   // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
   // 3h-Reserve keine überlappenden Beschriftungen bekommt.
-  const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
+  const pxPerHour = Math.min(historyPxPerHour, futurePxPerHour) * stretch;
   // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
   const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
@@ -395,9 +430,9 @@ export default function WindHistoryPanel({
   }
 
   // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
-  // Mindestabstand: die Werte-Texte (bis zu 3-stellig) brauchen mehr Platz
-  // als der Pfeil allein, sonst würden sie sich überlappen.
-  const MIN_LABEL_SPACING = 31;
+  // Sicherheitsnetz: greift nur noch, wenn die Achse schon auf
+  // HISTORY_PX_PER_HOUR_MAX gedehnt ist und die Messungen trotzdem dichter
+  // liegen (Mindestabstand MIN_LABEL_SPACING, oben im Modul definiert).
   // Auswahl: zuerst die stündlichen Punkte (Pflicht, damit der Vergleich mit
   // der Prognose immer sichtbar ist), danach weitere Punkte als Lückenfüller —
   // aber nur, solange sie den Mindestabstand zu allen bereits gewählten Punkten
@@ -723,13 +758,12 @@ export default function WindHistoryPanel({
                 );
               })}
 
-              {/* Werte-Text unter dem Diagramm — jetzt für JEDE Messung, nicht
-                  mehr nur für die ausgedünnten Pfeil-Punkte. Damit sich die
-                  Zahlen auch bei dicht beieinanderliegenden Messungen nicht
-                  überlappen, stehen sie senkrecht: je Messpunkt eine schmale
-                  Spalte "Mittelwind / Böe" (oben Mittelwind, unten Böe). */}
-              {points.map((p, i) => {
-                if (p.speed === null && p.gust === null) return null;
+              {/* Werte-Text unter jedem Pfeil: oben Mittelwind, darunter Böe
+                  (gleiche Auswahl an Punkten wie die Pfeile, damit nichts
+                  überlappt) */}
+              {arrowIndices.map((i) => {
+                const p = points[i];
+                if (p.direction === null) return null;
                 const tx = x(p.t).toFixed(1);
                 // Stündliche Messwerte fett und kräftiger, damit sie sich zum
                 // Vergleich mit der (ebenfalls stündlichen) roten Prognose von
@@ -738,18 +772,25 @@ export default function WindHistoryPanel({
                 const emphasisClass = isHourly
                   ? "font-bold fill-zinc-900 dark:fill-zinc-100"
                   : "fill-zinc-500 dark:fill-zinc-400";
-                const speedText = p.speed !== null ? String(Math.round(p.speed)) : "–";
-                const gustText = p.gust !== null ? String(Math.round(p.gust)) : "–";
                 return (
-                  <text
-                    key={`values-${p.t}`}
-                    transform={`translate(${tx} ${valuesTop}) rotate(90)`}
-                    textAnchor="start"
-                    dominantBaseline="middle"
-                    className={`text-[10px] tabular-nums ${emphasisClass}`}
-                  >
-                    {`${speedText} / ${gustText}`}
-                  </text>
+                  <g key={`values-${p.t}`}>
+                    <text
+                      x={tx}
+                      y={speedValueY}
+                      textAnchor="middle"
+                      className={`text-[10px] tabular-nums ${emphasisClass}`}
+                    >
+                      {p.speed !== null ? Math.round(p.speed) : "–"}
+                    </text>
+                    <text
+                      x={tx}
+                      y={gustValueY}
+                      textAnchor="middle"
+                      className={`text-[10px] tabular-nums ${emphasisClass}`}
+                    >
+                      {p.gust !== null ? Math.round(p.gust) : "–"}
+                    </text>
+                  </g>
                 );
               })}
 
