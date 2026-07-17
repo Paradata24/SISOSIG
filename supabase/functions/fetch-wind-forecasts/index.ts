@@ -17,11 +17,13 @@
 //      wie /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
-//   3. Open-Meteo in Batches (je 50 Stationen, Koordinaten komma-getrennt)
-//      abfragen: Modell meteoswiss_icon_ch1, letzte 24 h + kommende ~3 h,
-//      Einheit km/h (wie in wind_measurements), Zeiten als Unix-Sekunden
-//      (eindeutig UTC). Die Antwort-Liste hat dieselbe Reihenfolge wie die
-//      Koordinaten und wird per Index den Stationen zugeordnet.
+//   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
+//      abfragen — für ZWEI Modelle: meteoswiss_icon_ch1 (model 'icon_ch1')
+//      und dwd_icon_d2 (model 'icon_d2'), damit sich beide Prognosen
+//      vergleichen lassen. Letzte 24 h + kommende ~3 h, Einheit km/h (wie in
+//      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
+//      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
+//      per Index den Stationen zugeordnet.
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
@@ -53,21 +55,24 @@ const PIOUPIOU_API_BASE =
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
-// Modellname in der Datenbank (Spalte "model") — kurz und stabil, damit
-// ICON-D2 später einfach als 'icon_d2' dazukommen kann.
+// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil. Es werden
+// drei Zeilen-Sorten gespeichert:
+//   'icon_ch1'      — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
+//   'icon_d2'       — Bodenwind aus DWD ICON-D2 (blaue Kurve im Panel)
+//   'icon_d2_upper' — Höhenwind (Druckfläche) aus ICON-D2 (blau gestrichelt),
+//                     nur für die Windanzeiger-Stationen, mit pressure_level/height_m
 const MODEL_DB = "icon_ch1";
-// Höhenwind landet als eigene Zeilen mit diesem Modellnamen (zusätzlich zu
-// Druckfläche + Höhe in eigenen Spalten), damit /api/forecast Boden- und
-// Höhenwind sauber trennen kann.
+const MODEL_D2_DB = "icon_d2";
 const MODEL_UPPER_DB = "icon_d2_upper";
-// Modellname, den die Open-Meteo-API für den BODENWIND erwartet.
+// Modellname, den die Open-Meteo-API für ICON-CH1 erwartet (nur Bodenwind).
 const MODEL_API = "meteoswiss_icon_ch1";
-// Modellname, den die Open-Meteo-API für den HÖHENWIND (Druckflächen) erwartet.
-// Bewusst NICHT ICON-CH1: MeteoSwiss ICON-CH1 liefert bei Open-Meteo keine
-// Druckflächen-Daten (die Abfrage kommt leer zurück, upperSaved bleibt 0).
-// DWD ICON-D2 ist hochauflösend (~2 km), deckt den Alpenraum inkl. Südtirol ab
-// und bietet die Druckflächen-Winde (inkl. 800 hPa) an.
-const MODEL_UPPER_API = "dwd_icon_d2";
+// Modellname, den die Open-Meteo-API für ICON-D2 erwartet — genutzt für den
+// D2-Bodenwind UND den Höhenwind. Bewusst NICHT ICON-CH1 für den Höhenwind:
+// MeteoSwiss ICON-CH1 liefert bei Open-Meteo keine Druckflächen-Daten (die
+// Abfrage kommt leer zurück, upperSaved bleibt 0). DWD ICON-D2 ist
+// hochauflösend (~2 km), deckt den Alpenraum inkl. Südtirol ab und bietet die
+// Druckflächen-Winde (inkl. 800 hPa) an.
+const MODEL_D2_API = "dwd_icon_d2";
 
 // Kandidaten-Druckflächen (hPa) für den Höhenwind. Für JEDE wird eine eigene
 // Open-Meteo-Anfrage gestellt (nicht alle zusammen), damit eine vom Modell
@@ -83,7 +88,14 @@ const UPPER_CANDIDATE_LEVELS = [850, 800, 700];
 // ohne Leerzeichen/Binde-/Schrägstriche). Bewusst identisch zur Liste in
 // src/lib/wind.ts gehalten — diese Deno-Funktion kann aus src/lib nichts
 // importieren, daher hier dupliziert. Beim Ändern beide Stellen anpassen.
-const WINDANZEIGER_STATION_NAMES = ["rittner horn"];
+const WINDANZEIGER_STATION_NAMES = [
+  "rittner horn", // Ritten Rittner Horn
+  "schöntaufspitze", // Sulden Schöntaufspitze
+  "wilder freiger", // Signalgipfel Wilder Freiger
+  "lengspitze", // Prettau Lengspitze
+  "pisciadu", // Abtei Piz Pisciadu
+  "plose", // Plose
+];
 
 const PAST_HOURS = 24;
 const FORECAST_HOURS = 4;
@@ -280,11 +292,13 @@ async function loadOpenWindMapStations(): Promise<Station[]> {
 async function fetchForecastBatch(
   batch: Station[],
   fetchedAt: string,
+  modelApi: string,
+  modelDb: string,
 ): Promise<{ rows: ForecastRow[]; skippedNullHours: number }> {
   const params = new URLSearchParams({
     latitude: batch.map((s) => s.lat).join(","),
     longitude: batch.map((s) => s.lng).join(","),
-    models: MODEL_API,
+    models: modelApi,
     hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),
@@ -330,7 +344,7 @@ async function fetchForecastBatch(
       }
       rows.push({
         station_code: station.code,
-        model: MODEL_DB,
+        model: modelDb,
         forecast_time: new Date(t * 1000).toISOString(),
         direction,
         speed_kmh: speed !== null ? round1(speed) : null,
@@ -373,9 +387,9 @@ async function fetchUpperLevel(
   const params = new URLSearchParams({
     latitude: stations.map((s) => s.lat).join(","),
     longitude: stations.map((s) => s.lng).join(","),
-    // Höhenwind kommt aus ICON-D2 (siehe MODEL_UPPER_API) — ICON-CH1 hat keine
+    // Höhenwind kommt aus ICON-D2 (siehe MODEL_D2_API) — ICON-CH1 hat keine
     // Druckflächen-Daten.
-    models: MODEL_UPPER_API,
+    models: MODEL_D2_API,
     hourly: `${speedKey},${dirKey},${heightKey}`,
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),
@@ -529,24 +543,32 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
 
-  // 3) Open-Meteo batchweise abfragen. Ein fehlgeschlagener Batch bricht
-  //    nicht den ganzen Lauf ab — die übrigen Stationen werden trotzdem
-  //    gespeichert, der Fehler wird geloggt und in der Antwort gemeldet.
+  // 3) Bodenwind batchweise abfragen — für BEIDE Modelle (ICON-CH1 und
+  //    ICON-D2), damit sich die zwei Prognosen im Panel vergleichen lassen.
+  //    Ein fehlgeschlagener Batch bricht nicht den ganzen Lauf ab — die
+  //    übrigen Stationen werden trotzdem gespeichert, der Fehler wird
+  //    geloggt und in der Antwort gemeldet.
   const fetchedAt = new Date().toISOString();
   const rows: ForecastRow[] = [];
   let skippedNullHours = 0;
   const batchErrors: string[] = [];
 
-  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
-    const batch = stations.slice(i, i + BATCH_SIZE);
-    try {
-      const result = await fetchForecastBatch(batch, fetchedAt);
-      rows.push(...result.rows);
-      skippedNullHours += result.skippedNullHours;
-    } catch (err) {
-      const message = `Batch ab Station ${batch[0].code}: ${(err as Error).message}`;
-      console.error(message);
-      batchErrors.push(message);
+  const surfaceModels = [
+    { api: MODEL_API, db: MODEL_DB },
+    { api: MODEL_D2_API, db: MODEL_D2_DB },
+  ];
+  for (const model of surfaceModels) {
+    for (let i = 0; i < stations.length; i += BATCH_SIZE) {
+      const batch = stations.slice(i, i + BATCH_SIZE);
+      try {
+        const result = await fetchForecastBatch(batch, fetchedAt, model.api, model.db);
+        rows.push(...result.rows);
+        skippedNullHours += result.skippedNullHours;
+      } catch (err) {
+        const message = `Batch ${model.db} ab Station ${batch[0].code}: ${(err as Error).message}`;
+        console.error(message);
+        batchErrors.push(message);
+      }
     }
   }
 
@@ -620,9 +642,11 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   return json({
     ok: true,
-    model: MODEL_DB,
+    models: [MODEL_DB, MODEL_D2_DB, MODEL_UPPER_DB],
     stations: stations.length,
     saved: rows.length,
+    ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
+    d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
     skippedNullHours,
     batchErrors,
     windanzeigerStations: windanzeigerStations.length,

@@ -28,9 +28,12 @@ export interface UpperForecast {
   entries: ForecastEntry[];
 }
 
-// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function). Der
-// Höhenwind kommt aus ICON-D2, weil ICON-CH1 keine Druckflächen-Daten liefert.
+// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function). Es gibt
+// zwei Bodenwind-Prognosen zum Vergleich (ICON-CH1 = rot, ICON-D2 = blau) und
+// den Höhenwind (blau gestrichelt, aus ICON-D2, weil ICON-CH1 keine
+// Druckflächen-Daten liefert).
 const MODEL_SURFACE = "icon_ch1";
+const MODEL_SURFACE_D2 = "icon_d2";
 const MODEL_UPPER = "icon_d2_upper";
 
 // Eine Zeile der Höhenwind-Abfrage inkl. der beiden Zusatzspalten.
@@ -97,21 +100,27 @@ export async function GET(request: Request) {
     Authorization: `Bearer ${serviceKey}`,
   };
 
-  // Bodenwind (Pflicht) und Höhenwind (additiv) parallel abfragen.
+  // Bodenwind ICON-CH1 (Pflicht) sowie ICON-D2-Bodenwind und Höhenwind
+  // (beide additiv) parallel abfragen.
   const surfaceQuery =
     `${baseUrl}&model=eq.${MODEL_SURFACE}` +
+    `&select=forecast_time,direction,speed_kmh,gust_kmh`;
+  const surfaceD2Query =
+    `${baseUrl}&model=eq.${MODEL_SURFACE_D2}` +
     `&select=forecast_time,direction,speed_kmh,gust_kmh`;
   const upperQuery =
     `${baseUrl}&model=eq.${MODEL_UPPER}` +
     `&select=forecast_time,direction,speed_kmh,gust_kmh,pressure_level,height_m`;
 
   let res: Response;
+  let d2Res: Response | null = null;
   let upperRes: Response | null = null;
   try {
-    [res, upperRes] = await Promise.all([
+    [res, d2Res, upperRes] = await Promise.all([
       fetch(surfaceQuery, { headers, cache: "no-store" }),
-      // Der Höhenwind ist optional: ein Fehler hier darf den Bodenwind nicht
-      // blockieren, deshalb separat aufgefangen (upperRes bleibt dann null).
+      // ICON-D2-Bodenwind und Höhenwind sind optional: ein Fehler hier darf den
+      // ICON-CH1-Bodenwind nicht blockieren, deshalb separat aufgefangen.
+      fetch(surfaceD2Query, { headers, cache: "no-store" }).catch(() => null),
       fetch(upperQuery, { headers, cache: "no-store" }).catch(() => null),
     ]);
   } catch {
@@ -130,6 +139,15 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
+  let entriesD2: ForecastEntry[] = [];
+  if (d2Res?.ok) {
+    try {
+      entriesD2 = (await d2Res.json()) as ForecastEntry[];
+    } catch {
+      entriesD2 = [];
+    }
+  }
+
   let upper: UpperForecast | null = null;
   if (upperRes?.ok) {
     try {
@@ -144,6 +162,7 @@ export async function GET(request: Request) {
     hours: HISTORY_HOURS,
     count: entries.length,
     entries,
+    entriesD2,
     upper,
   });
 }

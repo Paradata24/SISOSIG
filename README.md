@@ -190,11 +190,11 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
 
-## Windprognosen ICON-CH1 (Supabase Edge Function)
+## Windprognosen ICON-CH1 & ICON-D2 (Supabase Edge Function)
 
 Die Supabase Edge Function `fetch-wind-forecasts`
 (Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
-ICON-CH1-Windprognosen von [Open-Meteo](https://open-meteo.com) für alle
+Windprognosen von [Open-Meteo](https://open-meteo.com) für alle
 Stationen, die auch auf der Karte erscheinen — Bozner Stationen
 (Windsensoren + Koordinaten, abgeleitet aus demselben Bozner Wetterdienst
 wie `/api/wind`) **und** die Südtiroler OpenWindMap/Pioupiou-Stationen
@@ -203,13 +203,15 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
 — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
+- **Zwei Modelle zum Vergleich:** Der Bodenwind wird sowohl aus
+  **ICON-CH1** (`model = 'icon_ch1'`, im Panel rot) als auch aus **ICON-D2**
+  (`model = 'icon_d2'`, im Panel blau) geholt. Dazu kommt der Höhenwind
+  (`icon_d2_upper`, blau gestrichelt, siehe unten).
 - Zeitfenster: letzte 24 Stunden + kommende ~3 Stunden (gleitendes
-  Fenster, deshalb läuft der Abruf stündlich, obwohl das Modell nur alle
-  3 Stunden neu rechnet).
+  Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
+  paar Stunden neu rechnen).
 - Einheiten wie in `wind_measurements`: Wind/Böen in **km/h**, Richtung in
   Grad, Prognosezeiten als UTC (`timestamptz`).
-- Die Spalte `model` (aktuell immer `'icon_ch1'`) macht die Tabelle
-  erweiterbar: ICON-D2 kommt später einfach als zusätzliche Zeilen dazu.
 - Upsert über `station_code` + `model` + `forecast_time` — wiederholte
   Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
   Prognosen älter als 7 Tage werden bei jedem Lauf gelöscht.
@@ -219,9 +221,10 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   `Authorization: Bearer <service_role Key>`, sonst `401`.
 
 **Antwort der Funktion (Erfolg):** Status `200` mit z. B.
-`{ "ok": true, "model": "icon_ch1", "stations": 120, "saved": 3300,
-"skippedNullHours": 0, "batchErrors": [], "windanzeigerStations": 1,
-"upperSaved": 28, "upperNotes": [], … }`.
+`{ "ok": true, "models": ["icon_ch1","icon_d2","icon_d2_upper"],
+"stations": 89, "saved": 5000, "ch1Saved": 2500, "d2Saved": 2500,
+"skippedNullHours": 0, "batchErrors": [], "windanzeigerStations": 6,
+"upperSaved": 168, "upperNotes": [], … }`.
 
 ### Höhenwind für die Windanzeiger-Stationen
 
