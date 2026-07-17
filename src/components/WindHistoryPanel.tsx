@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getWindColor, SOURCE_INFO, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
+import {
+  getWindColor,
+  snapDirectionTo8,
+  SOURCE_INFO,
+  WIND_COLOR_SCALE,
+  type WindStation,
+} from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
 
@@ -13,7 +19,9 @@ import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
 //    Farbbändern der Windstärke-Skala
 //  - darunter eine Reihe Windrichtungs-Pfeile
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
-// Pfeile (getWindColor bzw. Richtung + 180°), damit nichts auseinanderläuft.
+// Pfeile (getWindColor bzw. auf 8 Himmelsrichtungen eingerastete Richtung
+// + 180°), damit nichts auseinanderläuft. Der exakte Grad-Wert bleibt in
+// den Tooltips (title) der Pfeile erhalten.
 
 // Geometrie des SVG (alle Angaben in px). Gegenüber der ursprünglichen
 // Version bewusst ca. 10% größer und mit mehr Abstand zwischen den Zeilen,
@@ -771,13 +779,14 @@ export default function WindHistoryPanel({
                 </g>
               ))}
 
-              {/* Windrichtungs-Pfeile: gleiche Form, Drehung (Richtung + 180°,
-                  Pfeil zeigt wohin der Wind weht) und Farben wie auf der
-                  Karte (Füllung = Mittelwind, Rand = Böe) */}
+              {/* Windrichtungs-Pfeile: gleiche Form, Drehung (auf 8
+                  Himmelsrichtungen eingerastete Richtung + 180°, Pfeil zeigt
+                  wohin der Wind weht) und Farben wie auf der Karte (Füllung =
+                  Mittelwind, Rand = Böe) */}
               {arrowIndices.map((i) => {
                 const p = points[i];
                 if (p.direction === null) return null;
-                const rotation = (p.direction + 180) % 360;
+                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
                 return (
                   <g
                     key={p.t}
@@ -867,7 +876,7 @@ export default function WindHistoryPanel({
               {forecastArrowIndices.map((i) => {
                 const p = forecastPoints[i];
                 if (p.direction === null) return null;
-                const rotation = (p.direction + 180) % 360;
+                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
                 return (
                   <g
                     key={`farrow-${p.t}`}
