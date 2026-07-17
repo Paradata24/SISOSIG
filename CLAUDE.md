@@ -121,8 +121,9 @@ Supabase.
    Top-left `StationFilterToggle` offers three mutually-exclusive station
    filters: **"Windanzeiger"** (shows only the curated list of stations the
    owner picked — `WINDANZEIGER_STATION_NAMES`/`isWindanzeigerStation` in
-   `src/lib/wind.ts`, matched by name, currently just "Rittner Horn"; add a
-   station there) and the two altitude thresholds (>2000 m / >3000 m).
+   `src/lib/wind.ts`, matched by name — currently Rittner Horn, Schöntaufspitze,
+   Wilder Freiger, Lengspitze, Piz Pisciadu, Plose; add a station there) and the
+   two altitude thresholds (>2000 m / >3000 m).
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
    configured for **every 10 minutes** and covering both sources (Bozen +
@@ -153,11 +154,13 @@ Supabase.
    the last 48h: a **fixed** time axis from `now − 48h` to `now + 3h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
-   arrows below. Three layers can appear: **black** = measurement, **red** =
-   ICON-CH1 ground-wind forecast, and **blue dashed** = the Höhenwind (upper-air
-   wind, only present for Windanzeiger stations — from `/api/forecast`'s `upper`
-   field, labelled "Höhenwind … hPa ≈ … m" above the chart; no gust line since
-   pressure levels have no gusts). Colors and arrow rotation deliberately reuse
+   arrows below. Four layers can appear: **black** = measurement, **red** =
+   ICON-CH1 ground-wind forecast, **blue solid** = ICON-D2 ground-wind forecast
+   (`/api/forecast`'s `entriesD2`, same representation as the red CH1 layer — its
+   own arrows+values row sits below the measurement row), and **blue dashed** =
+   the Höhenwind (upper-air wind, only present for Windanzeiger stations — from
+   `/api/forecast`'s `upper` field, labelled "Höhenwind … hPa ≈ … m" above the
+   chart; no gust line since pressure levels have no gusts). Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
    convention so the panel and the map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
@@ -168,9 +171,12 @@ Supabase.
    error / "Keine Daten verfügbar" states are handled.
 
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
-   Function** (Deno, not Next.js!) for phase 3: fetches ICON-CH1 wind
-   forecasts from Open-Meteo (`models=meteoswiss_icon_ch1`, rolling window
-   `past_hours=24` + `forecast_hours=4`, `wind_speed_unit=kmh`,
+   Function** (Deno, not Next.js!) for phase 3: fetches ground-wind
+   forecasts from Open-Meteo for **two models** to compare — ICON-CH1
+   (`models=meteoswiss_icon_ch1`, DB `model='icon_ch1'`, red) and ICON-D2
+   (`models=dwd_icon_d2`, DB `model='icon_d2'`, blue) — via a parameterized
+   `fetchForecastBatch(batch, fetchedAt, modelApi, modelDb)` run once per model
+   (rolling window `past_hours=24` + `forecast_hours=4`, `wind_speed_unit=kmh`,
    `timeformat=unixtime` so times are unambiguous UTC) for every station
    that has wind sensors and coordinates — derived from the same two Bozen
    webservice calls as `/api/wind`, **plus** South Tyrol's OpenWindMap
@@ -186,12 +192,15 @@ Supabase.
    hours where Open-Meteo returns only nulls (station at/outside the model
    edge) are skipped. **Höhenwind (upper-air wind)** is fetched additionally,
    but **only for the Windanzeiger stations** (`isWindanzeigerName`, duplicated
-   from `src/lib/wind.ts`): for each it requests the candidate pressure levels
+   from `src/lib/wind.ts`) and **from DWD ICON-D2** (`MODEL_UPPER_API`), *not*
+   ICON-CH1 — MeteoSwiss ICON-CH1 returns no pressure-level data on Open-Meteo
+   (comes back empty, `upperSaved` stays 0), while ICON-D2 (~2 km, covers the
+   Alps) does. For each station it requests the candidate pressure levels
    `UPPER_CANDIDATE_LEVELS` (850/800/700 hPa) — one request per level so a
    level the model doesn't offer (HTTP 400) is skipped, not fatal — plus each
    level's `geopotential_height`, and keeps the level whose real height is
    closest to the station altitude. Those rows are stored with
-   `model='icon_ch1_upper'` and the extra columns `pressure_level`/`height_m`
+   `model='icon_d2_upper'` and the extra columns `pressure_level`/`height_m`
    (migration `supabase/add-forecast-altitude-columns.sql` for existing DBs;
    `gust_kmh` stays null). `/api/forecast` returns them as its `upper` field. Triggered hourly at minute 10 by pg_cron + pg_net
    (`supabase/forecast-cron.sql`; project URL + service_role key live in

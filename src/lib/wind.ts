@@ -38,7 +38,14 @@ export const SOURCE_INFO: Record<
  * Zum Hinzufügen einer Station hier einfach einen weiteren Namensbestandteil
  * ergänzen.
  */
-export const WINDANZEIGER_STATION_NAMES: string[] = ["rittner horn"];
+export const WINDANZEIGER_STATION_NAMES: string[] = [
+  "rittner horn", // Ritten Rittner Horn
+  "schöntaufspitze", // Sulden Schöntaufspitze
+  "wilder freiger", // Signalgipfel Wilder Freiger
+  "lengspitze", // Prettau Lengspitze
+  "pisciadu", // Abtei Piz Pisciadu
+  "plose", // Plose
+];
 
 /** Klein schreiben und Leerzeichen/Binde-/Schrägstriche entfernen (für den Namensvergleich). */
 function normalizeStationName(name: string): string {
