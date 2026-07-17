@@ -97,3 +97,12 @@ export function toCompassPoint(degrees: number): string {
   const normalized = ((degrees % 360) + 360) % 360;
   return COMPASS_POINTS[Math.round(normalized / 22.5) % 16];
 }
+
+/**
+ * Rastet eine Windrichtung (Grad) auf die 8 Haupt-Himmelsrichtungen ein
+ * (0/45/90/135/180/225/270/315°). Wird für die Pfeil-Drehung auf der Karte
+ * genutzt, damit die Anzeige nicht "krumme" Zwischenwinkel zeigt.
+ */
+export function snapDirectionTo8(degrees: number): number {
+  return (Math.round(degrees / 45) * 45) % 360;
+}
