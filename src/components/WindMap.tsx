@@ -13,7 +13,13 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { getWindColor, isWindanzeigerStation, type WindStation } from "@/lib/wind";
+import {
+  getWindColor,
+  isWindanzeigerStation,
+  snapDirectionTo8,
+  toCompassPoint8,
+  type WindStation,
+} from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
@@ -49,7 +55,10 @@ function getIconScale(zoom: number): number {
 
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
-// die Richtung meldet, AUS der der Wind kommt). Die Füllfarbe zeigt den
+// die Richtung meldet, AUS der der Wind kommt). Die angezeigte Richtung wird
+// dabei auf die 8 Haupt-Himmelsrichtungen (0/45/…/315°) eingerastet, damit der
+// Pfeil nicht "krumme" Zwischenwinkel zeigt; der exakte Grad-Wert bleibt im
+// Tooltip (title) erhalten, z. B. "SW · 213°". Die Füllfarbe zeigt den
 // Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala).
 function createWindIcon(
   direction: number | null,
@@ -59,7 +68,10 @@ function createWindIcon(
 ) {
   const fillColor = getWindColor(speedKmh);
   const strokeColor = getWindColor(gustKmh);
-  const rotation = direction !== null ? (direction + 180) % 360 : 0;
+  const snappedDirection = direction !== null ? snapDirectionTo8(direction) : null;
+  const rotation = snappedDirection !== null ? (snappedDirection + 180) % 360 : 0;
+  const directionTitle =
+    direction !== null ? `${toCompassPoint8(direction)} · ${Math.round(direction)}°` : "";
   const speedLabel = speedKmh !== null ? Math.round(speedKmh) : "–";
   const gustLabel = gustKmh !== null ? Math.round(gustKmh) : "–";
 
@@ -71,7 +83,7 @@ function createWindIcon(
   const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
 
   const html = `
-    <div style="display: flex; flex-direction: column; align-items: center; width: ${arrowSize}px;">
+    <div title="${directionTitle}" style="display: flex; flex-direction: column; align-items: center; width: ${arrowSize}px;">
       <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px;">
         <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
           <path
