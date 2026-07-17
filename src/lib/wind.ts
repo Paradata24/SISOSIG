@@ -98,8 +98,6 @@ export function toCompassPoint(degrees: number): string {
   return COMPASS_POINTS[Math.round(normalized / 22.5) % 16];
 }
 
-const COMPASS_POINTS_8 = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
-
 /**
  * Rastet eine Windrichtung (Grad) auf die 8 Haupt-Himmelsrichtungen ein
  * (0/45/90/135/180/225/270/315°). Wird für die Pfeil-Drehung auf der Karte
@@ -107,10 +105,4 @@ const COMPASS_POINTS_8 = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"];
  */
 export function snapDirectionTo8(degrees: number): number {
   return (Math.round(degrees / 45) * 45) % 360;
-}
-
-/** Wandelt Grad (0-360) in eine 8-teilige Himmelsrichtung um, z. B. 213 → SW. */
-export function toCompassPoint8(degrees: number): string {
-  const normalized = ((degrees % 360) + 360) % 360;
-  return COMPASS_POINTS_8[Math.round(normalized / 45) % 8];
 }
