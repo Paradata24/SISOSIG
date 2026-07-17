@@ -118,6 +118,11 @@ Supabase.
    itself offers two base layers via Leaflet's `LayersControl` (Standard
    OSM tiles vs. an Esri hillshade + CARTO place-name overlay); markers are
    rendered outside the base-layer group so they stay visible on both.
+   Top-left `StationFilterToggle` offers three mutually-exclusive station
+   filters: **"Windanzeiger"** (shows only the curated list of stations the
+   owner picked — `WINDANZEIGER_STATION_NAMES`/`isWindanzeigerStation` in
+   `src/lib/wind.ts`, matched by name, currently just "Rittner Horn"; add a
+   station there) and the two altitude thresholds (>2000 m / >3000 m).
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
    configured for **every 10 minutes** and covering both sources (Bozen +
@@ -143,11 +148,16 @@ Supabase.
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
    the screen, opened by clicking a station marker in `WindMap.tsx` (the
    marker's `click` handler calls `onSelect`, which sets `selectedStation`).
-   It fetches `/api/history?station=<SCODE>` and draws an SVG chart of the
-   last 48h: a **fixed** time axis from `now − 48h` to `now + 3h` (dashed
+   It fetches `/api/history?station=<SCODE>` **and** `/api/forecast` (additive:
+   a failed forecast never blocks the measurements) and draws an SVG chart of
+   the last 48h: a **fixed** time axis from `now − 48h` to `now + 3h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
-   arrows below. Colors and arrow rotation deliberately reuse
+   arrows below. Three layers can appear: **black** = measurement, **red** =
+   ICON-CH1 ground-wind forecast, and **blue dashed** = the Höhenwind (upper-air
+   wind, only present for Windanzeiger stations — from `/api/forecast`'s `upper`
+   field, labelled "Höhenwind … hPa ≈ … m" above the chart; no gust line since
+   pressure levels have no gusts). Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
    convention so the panel and the map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
@@ -174,7 +184,16 @@ Supabase.
    schema change. Stations are queried in batches of 50 (comma-separated
    coordinates; the response list has the same order as the request) and
    hours where Open-Meteo returns only nulls (station at/outside the model
-   edge) are skipped. Triggered hourly at minute 10 by pg_cron + pg_net
+   edge) are skipped. **Höhenwind (upper-air wind)** is fetched additionally,
+   but **only for the Windanzeiger stations** (`isWindanzeigerName`, duplicated
+   from `src/lib/wind.ts`): for each it requests the candidate pressure levels
+   `UPPER_CANDIDATE_LEVELS` (850/800/700 hPa) — one request per level so a
+   level the model doesn't offer (HTTP 400) is skipped, not fatal — plus each
+   level's `geopotential_height`, and keeps the level whose real height is
+   closest to the station altitude. Those rows are stored with
+   `model='icon_ch1_upper'` and the extra columns `pressure_level`/`height_m`
+   (migration `supabase/add-forecast-altitude-columns.sql` for existing DBs;
+   `gust_kmh` stays null). `/api/forecast` returns them as its `upper` field. Triggered hourly at minute 10 by pg_cron + pg_net
    (`supabase/forecast-cron.sql`; project URL + service_role key live in
    Supabase Vault, never in the repo). Auth mirrors `/api/collect`: POST
    with `Authorization: Bearer <service_role key>` or 401 — deploy the

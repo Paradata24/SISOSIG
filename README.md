@@ -220,7 +220,42 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
 
 **Antwort der Funktion (Erfolg):** Status `200` mit z. B.
 `{ "ok": true, "model": "icon_ch1", "stations": 120, "saved": 3300,
-"skippedNullHours": 0, "batchErrors": [], … }`.
+"skippedNullHours": 0, "batchErrors": [], "windanzeigerStations": 1,
+"upperSaved": 28, "upperNotes": [], … }`.
+
+### Höhenwind für die Windanzeiger-Stationen
+
+Zusätzlich zum Bodenwind holt dieselbe Edge Function den **Höhenwind** – aber
+**nur für die kuratierten „Windanzeiger"-Stationen** (aktuell nur das Rittner
+Horn; die Liste steht in `src/lib/wind.ts` und – für Deno dupliziert – in der
+Edge Function). So läuft er:
+
+- „Höhenwind" ist der Wind auf einer **Druckfläche** (in hPa) statt am Boden.
+  Höhere Luft hat weniger Druck; grobe Faustregel: 850 hPa ≈ 1.500 m,
+  800 hPa ≈ 1.900 m, 700 hPa ≈ 3.000 m.
+- Statt die Fläche aus einer festen Tabelle zu raten, fragt die Funktion für
+  jede Windanzeiger-Station mehrere **Kandidaten-Flächen** (`850, 800, 700 hPa`)
+  einzeln bei Open-Meteo ab – inklusive deren echter (geopotentieller) Höhe –
+  und nimmt die Fläche, deren Höhe der Stationshöhe am nächsten liegt. Für das
+  Rittner Horn (≈ 2.260 m) ist das i. d. R. **800 hPa (≈ 1.900 m)**. Jede
+  Fläche kommt in einer eigenen Anfrage, damit eine vom Modell nicht
+  angebotene Fläche (Open-Meteo antwortet mit `400`) die übrigen nicht
+  mitreißt – solche Fälle stehen als `upperNotes` in der Antwort.
+- Gespeichert wird der Höhenwind als **eigene Zeilen** in `wind_forecasts`
+  mit `model = 'icon_ch1_upper'` und den beiden Zusatzspalten
+  `pressure_level` (hPa) und `height_m` (Höhe in Metern). Auf Druckflächen
+  gibt es **keine Böen**, deshalb ist `gust_kmh` dort leer.
+- Angezeigt wird der Höhenwind im **Verlaufsbalken** als **blau gestrichelte
+  Linie** (zusätzlich zum schwarzen Messwert und der roten Bodenwind-Prognose),
+  mit einer Beschriftung „Höhenwind … hPa ≈ … m" – nur bei den
+  Windanzeiger-Stationen, sonst bleibt sie aus.
+
+> **Bestehende Datenbank:** Wurde `wind_forecasts` schon **vor** dieser
+> Änderung angelegt, fehlen die zwei neuen Spalten. Dann einmalig im
+> **SQL Editor** den Inhalt von `supabase/add-forecast-altitude-columns.sql`
+> ausführen (nicht-destruktiv, es wird nichts gelöscht). Bei einer neuen
+> Installation ist das nicht nötig – die Spalten stehen bereits in
+> `supabase/forecast-schema.sql`.
 
 ### Einmalige Einrichtung
 

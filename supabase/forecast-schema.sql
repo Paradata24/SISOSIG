@@ -19,6 +19,12 @@ create table if not exists public.wind_forecasts (
   direction real,
   speed_kmh real,
   gust_kmh real,
+  -- Nur für den Höhenwind (model = 'icon_ch1_upper') gesetzt, sonst null:
+  -- die verwendete Druckfläche in Hektopascal (z. B. 800) und deren vom
+  -- Modell gerechnete (geopotentielle) Höhe in Metern. Der Bodenwind
+  -- (model = 'icon_ch1') lässt beide Felder leer.
+  pressure_level integer,
+  height_m real,
   -- Wann dieser Wert zuletzt von Open-Meteo abgerufen wurde.
   fetched_at timestamptz not null default now(),
   -- Pro Station, Modell und Prognosestunde nur ein Eintrag: der stündliche
