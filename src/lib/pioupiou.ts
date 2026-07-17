@@ -37,6 +37,13 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // mit den Bozner SCODEs kollidieren (z. B. "pioupiou-413").
 const CODE_PREFIX = "pioupiou-";
 
+// Der Abruf wird 60 s im Next.js-Daten-Cache gehalten (gleiche Dauer wie
+// die Bozner Messwerte in /api/wind, siehe dort). Die Pioupiou-Stationen
+// melden ohnehin nur alle paar Minuten. Auch für /api/collect (läuft nur
+// alle 10 Minuten) sind bis zu 60 s alte Werte unschädlich: gespeichert
+// wird der Mess-Zeitstempel der Station, Duplikate fängt der Upsert ab.
+const REVALIDATE_S = 60;
+
 interface PioupiouStation {
   id: number;
   meta?: { name?: string };
@@ -82,7 +89,9 @@ function round1(value: number): number {
  * stale-Verhalten, gleiche Karten-/Verlaufsbalken-Darstellung).
  */
 export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
-  const res = await fetch(`${API_BASE}/live/all`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/live/all`, {
+    next: { revalidate: REVALIDATE_S },
+  });
   if (!res.ok) {
     throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
   }

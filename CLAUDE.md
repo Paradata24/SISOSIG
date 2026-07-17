@@ -90,7 +90,18 @@ Supabase.
    fewer markers, not a broken map. Each `WindStation` now carries a
    `source: "bolzano" | "openwindmap"` field (see `SOURCE_INFO` in
    `src/lib/wind.ts` for the matching display label/link, shown as a
-   "Quelle:" line at the bottom of the Verlaufsbalken).
+   "Quelle:" line at the bottom of the Verlaufsbalken). **Caching** (don't
+   revert to `cache: "no-store"` — stations only measure every 5-10 min, so
+   per-request upstream fetches are pure waste): `/sensors` and the Pioupiou
+   fetch use `next: { revalidate: 60 }`, `/stations` metadata (essentially
+   static) uses 6h, and the successful JSON response carries
+   `Cache-Control: s-maxage=60, stale-while-revalidate=240` so Vercel's CDN
+   shares one response across concurrent visitors. Error responses are
+   deliberately NOT CDN-cached (no Cache-Control header) so a brief upstream
+   outage can't stick for 60s. The `stale` flag is still computed against
+   the current time on every actual route run; ≤60s-old cached readings are
+   irrelevant against the 2h staleness threshold. See README section
+   "Zwischenspeicherung (Caching)".
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
    colored by speed on a 10-step scale modeled after the XC-Therm legend
@@ -189,7 +200,11 @@ Supabase.
    displayed values against a known windy day after deploying). Staleness
    reuses the same 2h/missing-value rule as Bozen stations (battery-powered
    sensors that don't report continuously). `PIOUPIOU_API_BASE_URL`
-   overrides the endpoint for local mock testing.
+   overrides the endpoint for local mock testing. The `/live/all` fetch is
+   cached 60s via `next: { revalidate: 60 }` (same duration as the Bozen
+   sensors fetch in `/api/wind`); this is harmless for `/api/collect` too —
+   it runs every 10 min and stores the station's own measurement timestamp,
+   with the upsert absorbing duplicates.
 
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**

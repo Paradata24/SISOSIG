@@ -43,6 +43,38 @@ SCODEs kollidieren. Schlägt der Abruf fehl, zeigt die Karte trotzdem die
 Bozner Stationen (additiv, kein Blocker). Details zu Lizenz und Einheiten
 siehe unten unter „OpenWindMap/Pioupiou-Stationen".
 
+### Zwischenspeicherung (Caching)
+
+Die Stationen messen nur alle 5–10 Minuten. Deshalb fragt nicht jeder
+Seitenaufruf die fremden Dienste neu ab, sondern `/api/wind` nutzt drei
+Cache-Ebenen (alle in `src/app/api/wind/route.ts` bzw.
+`src/lib/pioupiou.ts` konfiguriert):
+
+| Was wird gecacht?                            | Wie lange? | Warum?                                       |
+| -------------------------------------------- | ---------- | -------------------------------------------- |
+| Messwerte Bozen (`/sensors`)                 | 60 Sekunden | Neue Messungen kommen eh nur alle 5–10 min   |
+| Messwerte OpenWindMap/Pioupiou (`/live/all`) | 60 Sekunden | dito                                         |
+| Stationsmetadaten Bozen (`/stations`)        | 6 Stunden   | Name/Koordinaten/Höhe ändern sich praktisch nie |
+
+Zusätzlich wird die **fertige JSON-Antwort** von `/api/wind` über den
+`Cache-Control`-Header (`s-maxage=60`) 60 Sekunden vom Vercel-CDN
+geteilt: Rufen mehrere Besucher die Seite gleichzeitig auf, bekommen
+alle dieselbe Antwort, ohne dass der Server die Daten mehrfach
+zusammenbaut. Fehlerantworten (z. B. wenn der Bozner Dienst nicht
+erreichbar ist) werden bewusst **nicht** gecacht, damit sich ein kurzer
+Ausfall nicht festsetzt.
+
+Praktische Folgen:
+
+- Angezeigte Werte können bis zu ~1–2 Minuten „alt" sein — bei
+  Messintervallen von 5–10 Minuten ist das ohne Bedeutung.
+- Die Sammel-Route `/api/collect` (läuft alle 10 Minuten) ist davon
+  nicht betroffen: gespeichert wird immer der Mess-Zeitstempel der
+  Station, Duplikate fängt der Upsert in Supabase ab.
+- Beim lokalen Entwickeln: ein „harter" Browser-Reload
+  (Strg+Shift+R bzw. Cmd+Shift+R) umgeht den Cache, falls man beim
+  Testen wirklich frische Daten sehen will.
+
 ## Wind-Historie (Supabase)
 
 ### Wie die Daten gesammelt werden
