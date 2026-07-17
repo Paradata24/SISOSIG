@@ -84,17 +84,19 @@ const MODEL_D2_API = "dwd_icon_d2";
 // hier bei Bedarf 925/600 hPa ergänzen.
 const UPPER_CANDIDATE_LEVELS = [850, 800, 700];
 
-// Kuratierte "Windanzeiger"-Stationen (Namensabgleich, klein geschrieben und
-// ohne Leerzeichen/Binde-/Schrägstriche). Bewusst identisch zur Liste in
-// src/lib/wind.ts gehalten — diese Deno-Funktion kann aus src/lib nichts
-// importieren, daher hier dupliziert. Beim Ändern beide Stellen anpassen.
+// Kuratierte "Windanzeiger"-Stationen (Namensabgleich, klein geschrieben,
+// ohne Leerzeichen/Binde-/Schrägstriche und ohne Akzente/Umlaut-Punkte).
+// Bewusst identisch zur Liste in src/lib/wind.ts gehalten — diese Deno-Funktion
+// kann aus src/lib nichts importieren, daher hier dupliziert. Beim Ändern
+// beide Stellen anpassen.
 const WINDANZEIGER_STATION_NAMES = [
   "rittner horn", // Ritten Rittner Horn
   "schöntaufspitze", // Sulden Schöntaufspitze
   "wilder freiger", // Signalgipfel Wilder Freiger
   "lengspitze", // Prettau Lengspitze
-  "pisciadu", // Abtei Piz Pisciadu
+  "pisciadu", // Abtei Piz Pisciadù (Akzent wird beim Vergleich ignoriert)
   "plose", // Plose
+  "raujoch", // Pfelders Raujoch
 ];
 
 const PAST_HOURS = 24;
@@ -145,7 +147,11 @@ interface ForecastRow {
 }
 
 function normalizeStationName(name: string): string {
-  return name.toLowerCase().replace(/[\s/-]+/g, "");
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "") // diakritische Zeichen (Akzente, Umlaut-Punkte) entfernen
+    .replace(/[\s/-]+/g, "");
 }
 
 // true, wenn der Stationsname zur kuratierten Windanzeiger-Liste passt.

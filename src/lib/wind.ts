@@ -31,10 +31,11 @@ export const SOURCE_INFO: Record<
 /**
  * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
  * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
- * diese Stationen an. Jeder Eintrag wird (klein geschrieben und ohne
- * Leerzeichen/Binde-/Schrägstriche) als Teilstring gegen den Stationsnamen
- * geprüft, damit kleine Schreibweise-Unterschiede der Datenquelle
- * (z. B. "Ritten Rittner Horn" vs. "Rittnerhorn") kein Problem sind.
+ * diese Stationen an. Jeder Eintrag wird (klein geschrieben, ohne
+ * Leerzeichen/Binde-/Schrägstriche und ohne Akzente/Umlaut-Punkte) als
+ * Teilstring gegen den Stationsnamen geprüft, damit kleine Schreibweise-
+ * Unterschiede der Datenquelle (z. B. "Ritten Rittner Horn" vs. "Rittnerhorn",
+ * oder "Pisciadù" mit Akzent) kein Problem sind.
  * Zum Hinzufügen einer Station hier einfach einen weiteren Namensbestandteil
  * ergänzen.
  */
@@ -43,13 +44,22 @@ export const WINDANZEIGER_STATION_NAMES: string[] = [
   "schöntaufspitze", // Sulden Schöntaufspitze
   "wilder freiger", // Signalgipfel Wilder Freiger
   "lengspitze", // Prettau Lengspitze
-  "pisciadu", // Abtei Piz Pisciadu
+  "pisciadu", // Abtei Piz Pisciadù (Akzent wird beim Vergleich ignoriert)
   "plose", // Plose
+  "raujoch", // Pfelders Raujoch
 ];
 
-/** Klein schreiben und Leerzeichen/Binde-/Schrägstriche entfernen (für den Namensvergleich). */
+/**
+ * Klein schreiben und für den Namensvergleich vereinheitlichen: Akzente und
+ * Umlaut-Punkte entfernen (NFD-Zerlegung + diakritische Zeichen streichen,
+ * z. B. "à"→"a", "ö"→"o") sowie Leerzeichen/Binde-/Schrägstriche entfernen.
+ */
 function normalizeStationName(name: string): string {
-  return name.toLowerCase().replace(/[\s/-]+/g, "");
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "") // diakritische Zeichen (Akzente, Umlaut-Punkte) entfernen
+    .replace(/[\s/-]+/g, "");
 }
 
 /** true, wenn die Station Teil des kuratierten "Windanzeiger"-Filters ist. */
