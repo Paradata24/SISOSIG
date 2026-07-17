@@ -28,6 +28,31 @@ export const SOURCE_INFO: Record<
   openwindmap: { label: "OpenWindMap / Pioupiou", url: "https://openwindmap.org" },
 };
 
+/**
+ * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
+ * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
+ * diese Stationen an. Jeder Eintrag wird (klein geschrieben und ohne
+ * Leerzeichen/Binde-/Schrägstriche) als Teilstring gegen den Stationsnamen
+ * geprüft, damit kleine Schreibweise-Unterschiede der Datenquelle
+ * (z. B. "Ritten Rittner Horn" vs. "Rittnerhorn") kein Problem sind.
+ * Zum Hinzufügen einer Station hier einfach einen weiteren Namensbestandteil
+ * ergänzen.
+ */
+export const WINDANZEIGER_STATION_NAMES: string[] = ["rittner horn"];
+
+/** Klein schreiben und Leerzeichen/Binde-/Schrägstriche entfernen (für den Namensvergleich). */
+function normalizeStationName(name: string): string {
+  return name.toLowerCase().replace(/[\s/-]+/g, "");
+}
+
+/** true, wenn die Station Teil des kuratierten "Windanzeiger"-Filters ist. */
+export function isWindanzeigerStation(station: WindStation): boolean {
+  const name = normalizeStationName(station.stationName);
+  return WINDANZEIGER_STATION_NAMES.some((needle) =>
+    name.includes(normalizeStationName(needle)),
+  );
+}
+
 export interface WindColorStop {
   /** Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe. */
   max: number;

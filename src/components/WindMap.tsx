@@ -13,7 +13,7 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { getWindColor, type WindStation } from "@/lib/wind";
+import { getWindColor, isWindanzeigerStation, type WindStation } from "@/lib/wind";
 import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
@@ -26,7 +26,11 @@ const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
 const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
 
-type AltitudeFilter = "all" | "high" | "veryHigh";
+// "all"/"high"/"veryHigh": Höhenfilter (alle Stationen bzw. nur oberhalb einer
+// Höhenschwelle). "windanzeiger": der benannte, kuratierte Filter, der nur die
+// vom Projektbesitzer ausgewählten Stationen zeigt (siehe isWindanzeigerStation
+// in src/lib/wind.ts). Alle Filter schließen sich gegenseitig aus.
+type StationFilter = "all" | "high" | "veryHigh" | "windanzeiger";
 
 const ARROW_BASE_SIZE = 22;
 const LABEL_BASE_HEIGHT = 10;
@@ -118,16 +122,17 @@ function createStaleIcon(scale: number) {
   });
 }
 
-// Schalterpaar oben links auf der Karte: blendet Stationen unterhalb der
-// gewählten Höhenschwelle aus. Die beiden Filter schließen sich gegenseitig
-// aus (erneutes Klicken auf den aktiven Filter schaltet zurück auf "Alle").
-// Ausreichend groß für Touch-Bedienung.
-function ElevationFilterToggle({
+// Schalter oben links auf der Karte: filtern, welche Stationen angezeigt
+// werden. "Windanzeiger" zeigt nur die kuratierten Wunsch-Stationen, die
+// beiden Höhen-Schalter blenden Stationen unterhalb einer Höhenschwelle aus.
+// Alle Filter schließen sich gegenseitig aus (erneutes Klicken auf den aktiven
+// Filter schaltet zurück auf "Alle"). Ausreichend groß für Touch-Bedienung.
+function StationFilterToggle({
   filter,
   onChange,
 }: {
-  filter: AltitudeFilter;
-  onChange: (filter: AltitudeFilter) => void;
+  filter: StationFilter;
+  onChange: (filter: StationFilter) => void;
 }) {
   function buttonClass(active: boolean) {
     return `rounded border px-1.5 py-1 text-xs font-medium shadow-md transition-colors ${
@@ -139,6 +144,14 @@ function ElevationFilterToggle({
 
   return (
     <div className="absolute top-20 left-3 z-[1000] flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(filter === "windanzeiger" ? "all" : "windanzeiger")}
+        aria-pressed={filter === "windanzeiger"}
+        className={buttonClass(filter === "windanzeiger")}
+      >
+        Windanzeiger
+      </button>
       <button
         type="button"
         onClick={() => onChange(filter === "high" ? "all" : "high")}
@@ -224,20 +237,22 @@ function WindMarkers({
 export default function WindMap() {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [altitudeFilter, setAltitudeFilter] = useState<AltitudeFilter>("all");
+  const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const altitudeThreshold =
-    altitudeFilter === "veryHigh"
+    stationFilter === "veryHigh"
       ? VERY_HIGH_ALTITUDE_THRESHOLD_M
-      : altitudeFilter === "high"
+      : stationFilter === "high"
         ? HIGH_ALTITUDE_THRESHOLD_M
         : null;
   const visibleStations =
-    altitudeThreshold === null
-      ? stations
-      : stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
+    stationFilter === "windanzeiger"
+      ? stations.filter(isWindanzeigerStation)
+      : altitudeThreshold === null
+        ? stations
+        : stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
@@ -328,7 +343,7 @@ export default function WindMap() {
           selectedStationCode={selectedStationCode}
         />
       </MapContainer>
-      <ElevationFilterToggle filter={altitudeFilter} onChange={setAltitudeFilter} />
+      <StationFilterToggle filter={stationFilter} onChange={setStationFilter} />
       <WindLegend />
       {lastUpdated && (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
