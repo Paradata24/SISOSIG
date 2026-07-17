@@ -26,9 +26,10 @@
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
 //   4b. Höhenwind NUR für die kuratierten "Windanzeiger"-Stationen: mehrere
-//      Kandidaten-Druckflächen abfragen und je Station die wählen, deren echte
+//      Kandidaten-Druckflächen (aus DWD ICON-D2 — ICON-CH1 hat bei Open-Meteo
+//      keine Druckflächen) abfragen und je Station die wählen, deren echte
 //      (geopotentielle) Höhe der Stationshöhe am nächsten liegt. Landet als
-//      eigene Zeilen (model = 'icon_ch1_upper') mit Druckfläche + Höhe.
+//      eigene Zeilen (model = 'icon_d2_upper') mit Druckfläche + Höhe.
 //   5. Prognosen älter als 7 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
@@ -55,12 +56,18 @@ const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 // Modellname in der Datenbank (Spalte "model") — kurz und stabil, damit
 // ICON-D2 später einfach als 'icon_d2' dazukommen kann.
 const MODEL_DB = "icon_ch1";
-// Höhenwind desselben Modells landet als eigene Zeilen mit diesem Modellnamen
-// (zusätzlich zu Druckfläche + Höhe in eigenen Spalten), damit /api/forecast
-// Boden- und Höhenwind sauber trennen kann.
-const MODEL_UPPER_DB = "icon_ch1_upper";
-// Modellname, den die Open-Meteo-API erwartet.
+// Höhenwind landet als eigene Zeilen mit diesem Modellnamen (zusätzlich zu
+// Druckfläche + Höhe in eigenen Spalten), damit /api/forecast Boden- und
+// Höhenwind sauber trennen kann.
+const MODEL_UPPER_DB = "icon_d2_upper";
+// Modellname, den die Open-Meteo-API für den BODENWIND erwartet.
 const MODEL_API = "meteoswiss_icon_ch1";
+// Modellname, den die Open-Meteo-API für den HÖHENWIND (Druckflächen) erwartet.
+// Bewusst NICHT ICON-CH1: MeteoSwiss ICON-CH1 liefert bei Open-Meteo keine
+// Druckflächen-Daten (die Abfrage kommt leer zurück, upperSaved bleibt 0).
+// DWD ICON-D2 ist hochauflösend (~2 km), deckt den Alpenraum inkl. Südtirol ab
+// und bietet die Druckflächen-Winde (inkl. 800 hPa) an.
+const MODEL_UPPER_API = "dwd_icon_d2";
 
 // Kandidaten-Druckflächen (hPa) für den Höhenwind. Für JEDE wird eine eigene
 // Open-Meteo-Anfrage gestellt (nicht alle zusammen), damit eine vom Modell
@@ -366,7 +373,9 @@ async function fetchUpperLevel(
   const params = new URLSearchParams({
     latitude: stations.map((s) => s.lat).join(","),
     longitude: stations.map((s) => s.lng).join(","),
-    models: MODEL_API,
+    // Höhenwind kommt aus ICON-D2 (siehe MODEL_UPPER_API) — ICON-CH1 hat keine
+    // Druckflächen-Daten.
+    models: MODEL_UPPER_API,
     hourly: `${speedKey},${dirKey},${heightKey}`,
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),

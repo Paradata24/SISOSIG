@@ -28,9 +28,10 @@ export interface UpperForecast {
   entries: ForecastEntry[];
 }
 
-// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function).
+// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function). Der
+// Höhenwind kommt aus ICON-D2, weil ICON-CH1 keine Druckflächen-Daten liefert.
 const MODEL_SURFACE = "icon_ch1";
-const MODEL_UPPER = "icon_ch1_upper";
+const MODEL_UPPER = "icon_d2_upper";
 
 // Eine Zeile der Höhenwind-Abfrage inkl. der beiden Zusatzspalten.
 interface UpperRow extends ForecastEntry {

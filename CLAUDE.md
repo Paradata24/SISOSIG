@@ -186,12 +186,15 @@ Supabase.
    hours where Open-Meteo returns only nulls (station at/outside the model
    edge) are skipped. **Höhenwind (upper-air wind)** is fetched additionally,
    but **only for the Windanzeiger stations** (`isWindanzeigerName`, duplicated
-   from `src/lib/wind.ts`): for each it requests the candidate pressure levels
+   from `src/lib/wind.ts`) and **from DWD ICON-D2** (`MODEL_UPPER_API`), *not*
+   ICON-CH1 — MeteoSwiss ICON-CH1 returns no pressure-level data on Open-Meteo
+   (comes back empty, `upperSaved` stays 0), while ICON-D2 (~2 km, covers the
+   Alps) does. For each station it requests the candidate pressure levels
    `UPPER_CANDIDATE_LEVELS` (850/800/700 hPa) — one request per level so a
    level the model doesn't offer (HTTP 400) is skipped, not fatal — plus each
    level's `geopotential_height`, and keeps the level whose real height is
    closest to the station altitude. Those rows are stored with
-   `model='icon_ch1_upper'` and the extra columns `pressure_level`/`height_m`
+   `model='icon_d2_upper'` and the extra columns `pressure_level`/`height_m`
    (migration `supabase/add-forecast-altitude-columns.sql` for existing DBs;
    `gust_kmh` stays null). `/api/forecast` returns them as its `upper` field. Triggered hourly at minute 10 by pg_cron + pg_net
    (`supabase/forecast-cron.sql`; project URL + service_role key live in

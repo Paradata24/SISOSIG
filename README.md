@@ -233,6 +233,11 @@ Edge Function). So läuft er:
 - „Höhenwind" ist der Wind auf einer **Druckfläche** (in hPa) statt am Boden.
   Höhere Luft hat weniger Druck; grobe Faustregel: 850 hPa ≈ 1.500 m,
   800 hPa ≈ 1.900 m, 700 hPa ≈ 3.000 m.
+- **Modell: DWD ICON-D2** (`dwd_icon_d2`), **nicht** ICON-CH1. Grund: MeteoSwiss
+  ICON-CH1 liefert bei Open-Meteo keine Druckflächen-Daten (die Abfrage kommt
+  leer zurück). ICON-D2 ist hochauflösend (~2 km), deckt den Alpenraum inkl.
+  Südtirol ab und hat die Druckflächen-Winde. Der **Bodenwind** (rote Linie)
+  bleibt bei ICON-CH1.
 - Statt die Fläche aus einer festen Tabelle zu raten, fragt die Funktion für
   jede Windanzeiger-Station mehrere **Kandidaten-Flächen** (`850, 800, 700 hPa`)
   einzeln bei Open-Meteo ab – inklusive deren echter (geopotentieller) Höhe –
@@ -242,7 +247,7 @@ Edge Function). So läuft er:
   angebotene Fläche (Open-Meteo antwortet mit `400`) die übrigen nicht
   mitreißt – solche Fälle stehen als `upperNotes` in der Antwort.
 - Gespeichert wird der Höhenwind als **eigene Zeilen** in `wind_forecasts`
-  mit `model = 'icon_ch1_upper'` und den beiden Zusatzspalten
+  mit `model = 'icon_d2_upper'` und den beiden Zusatzspalten
   `pressure_level` (hPa) und `height_m` (Höhe in Metern). Auf Druckflächen
   gibt es **keine Böen**, deshalb ist `gust_kmh` dort leer.
 - Angezeigt wird der Höhenwind im **Verlaufsbalken** als **blau gestrichelte
