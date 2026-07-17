@@ -35,15 +35,18 @@ const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
 const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und ICON-D2-Block (blau)
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
-// Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2 Zeilen)
-// + ICON-D2-Block (Pfeile + 2 Zeilen) + unterer Rand. Der ICON-CH1-Prognose-
-// Block liegt als Überlagerung oben im Kurvenbereich und braucht keine eigene
-// Höhe.
-const SVG_H =
+// Grundhöhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
+// Zeilen) + ICON-D2-Block (Pfeile + 2 Zeilen) + unterer Rand. Der ICON-CH1-
+// Prognose-Block liegt als Überlagerung oben im Kurvenbereich und braucht
+// keine eigene Höhe.
+const SVG_H_BASE =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   D2_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   BOTTOM_PAD;
+// Zusatzhöhe NUR bei Windanzeiger-Stationen: eine fette Höhenwind-Zahl unter
+// den beiden ICON-D2-Zahlen plus darunter der Höhenwind-Richtungspfeil.
+const UPPER_BLOCK_H = VALUE_LINE_H + VALUES_GAP + ARROW_ROW_H;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
 // Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
@@ -400,6 +403,14 @@ export default function WindHistoryPanel({
   const d2SpeedValueY = d2ArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const d2GustValueY = d2SpeedValueY + VALUE_LINE_H;
 
+  // Höhenwind (nur Windanzeiger-Stationen): eine fette blaue Zahl direkt UNTER
+  // den beiden ICON-D2-Zahlen, darunter der Richtungspfeil (nur Kontur, blau).
+  const hasUpper = upperPoints.some((p) => p.speed !== null);
+  const upperValueY = d2GustValueY + VALUE_LINE_H;
+  const upperArrowCy = upperValueY + VALUES_GAP + ARROW_ROW_H / 2;
+  // Das SVG wird nur dann höher, wenn es tatsächlich Höhenwind-Werte gibt.
+  const svgH = SVG_H_BASE + (hasUpper ? UPPER_BLOCK_H : 0);
+
   // Prognose-Werte (rot) oben im Diagramm, unter der "jetzt"-Beschriftung:
   // erst die zwei Textzeilen (Mittelwind, Böe), darunter der Windpfeil.
   // Bewusst als reine Überlagerung innerhalb des bestehenden Kurvenbereichs,
@@ -519,6 +530,21 @@ export default function WindHistoryPanel({
     forecastD2ArrowIndices.push(i);
   }
 
+  // Gleiche Ausdünnung für die Höhenwind-Zahlen/-Pfeile unter dem ICON-D2-Block.
+  const upperPxPerPoint =
+    upperPoints.length > 1
+      ? (x(upperPoints[upperPoints.length - 1].t) - x(upperPoints[0].t)) /
+        (upperPoints.length - 1)
+      : historyWidth;
+  const upperArrowStep = Math.max(
+    1,
+    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / upperPxPerPoint),
+  );
+  const upperArrowIndices: number[] = [];
+  for (let i = upperPoints.length - 1; i >= 0; i -= upperArrowStep) {
+    upperArrowIndices.push(i);
+  }
+
   const yTicks: number[] = [];
   for (let v = 0; v <= yMax; v += yTickStep) yTicks.push(v);
 
@@ -619,7 +645,7 @@ export default function WindHistoryPanel({
         <div
           ref={scrollRef}
           className="min-w-0 flex-1 overflow-x-auto"
-          style={{ height: SVG_H }}
+          style={{ height: svgH }}
         >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -636,8 +662,8 @@ export default function WindHistoryPanel({
           ) : (
             <svg
               width={svgWidth}
-              height={SVG_H}
-              viewBox={`0 0 ${svgWidth} ${SVG_H}`}
+              height={svgH}
+              viewBox={`0 0 ${svgWidth} ${svgH}`}
               role="img"
               aria-label="Windverlauf: Mittelwind und Böen der letzten 48 Stunden"
             >
@@ -1052,6 +1078,49 @@ export default function WindHistoryPanel({
                   </g>
                 );
               })}
+
+              {/* Höhenwind (nur Windanzeiger-Stationen): fette blaue Zahl direkt
+                  unter den beiden ICON-D2-Zahlen, darunter der Richtungspfeil
+                  nur als blaue Kontur (ohne Füllung). */}
+              {upperArrowIndices.map((i) => {
+                const p = upperPoints[i];
+                if (p.speed === null) return null;
+                return (
+                  <text
+                    key={`uvalue-${p.t}`}
+                    x={x(p.t).toFixed(1)}
+                    y={upperValueY}
+                    textAnchor="middle"
+                    className="text-[10px] font-bold tabular-nums fill-blue-600 dark:fill-blue-400"
+                  >
+                    {Math.round(p.speed)}
+                  </text>
+                );
+              })}
+              {upperArrowIndices.map((i) => {
+                const p = upperPoints[i];
+                if (p.direction === null) return null;
+                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
+                return (
+                  <g
+                    key={`uarrow-${p.t}`}
+                    transform={`translate(${x(p.t).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                  >
+                    <title>
+                      {`Höhenwind ${formatTime(p.t)} Uhr — ${p.speed ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
+                    </title>
+                    <path
+                      d="M20 2 L34 34 L20 26 L6 34 Z"
+                      transform="translate(-20 -20)"
+                      fill="none"
+                      strokeWidth={3}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                      className="stroke-blue-600 dark:stroke-blue-400"
+                    />
+                  </g>
+                );
+              })}
             </svg>
           )}
         </div>
@@ -1061,7 +1130,7 @@ export default function WindHistoryPanel({
         {!loading && !error && hasData && (
           <div
             className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
-            style={{ height: SVG_H }}
+            style={{ height: svgH }}
           >
             {yTicks.map((v) => (
               <span
