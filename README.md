@@ -174,6 +174,14 @@ klickt. Er zeigt den Windverlauf der letzten 48 Stunden dieser Station:
 - darunter eine Reihe Windrichtungs-Pfeile, einer je Messpunkt, jeweils in
   die Windrichtung gedreht und nach Windstärke eingefärbt.
 
+Alle Windrichtungs-Pfeile – sowohl die Marker auf der Karte als auch die
+Mess- und Prognose-Pfeile im Verlaufsbalken – zeigen die Richtung auf die
+**8 Haupt-Himmelsrichtungen gerundet** an (Nord, Nordost, Ost, Südost, Süd,
+Südwest, West, Nordwest, also in 45°-Schritten). Das macht die Anzeige
+ruhiger und leichter ablesbar. Gerundet wird nur die Darstellung – der
+**exakte Grad-Wert** bleibt erhalten und erscheint als Tooltip, wenn man mit
+der Maus über einen Pfeil im Verlaufsbalken fährt (z. B. „…, Richtung 213°").
+
 Das Diagramm ist breiter als der Bildschirm und lässt sich horizontal
 scrollen (Desktop und Handy); beim Öffnen steht es am rechten Rand
 (aktuelle Zeit), nach links scrollen zeigt die älteren Stunden. Schließen

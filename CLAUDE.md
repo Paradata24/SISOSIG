@@ -104,6 +104,11 @@ Supabase.
    "Zwischenspeicherung (Caching)".
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
+   whose direction is snapped to the 8 main compass points (0/45/…/315°)
+   via `snapDirectionTo8()` in `src/lib/wind.ts` before the usual
+   `(direction + 180) % 360` rotation — only the *display* is rounded, the
+   stored data is untouched, and the same helper is reused by the
+   Verlaufsbalken arrows so map and panel stay consistent. The arrow is
    colored by speed on a 10-step scale modeled after the XC-Therm legend
    (white → light blue → green → yellow → orange → red → violet → indigo —
    see `WIND_COLOR_SCALE`/`getWindColor` in `src/lib/wind.ts`), or a gray
@@ -159,7 +164,10 @@ Supabase.
    field, labelled "Höhenwind … hPa ≈ … m" above the chart; no gust line since
    pressure levels have no gusts). Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
-   convention so the panel and the map markers can never drift apart. The
+   convention — including the same `snapDirectionTo8()` rounding to the 8 main
+   compass points for the arrow rotation (the exact degree stays in each
+   arrow's `<title>` tooltip, e.g. "…, Richtung 213°") — so the panel and the
+   map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
    to "now" on open); two points are only joined into a line when ≤ 3h apart
    (`LINE_GAP_MS`) to stay robust even if the Supabase cron for `/api/collect`
