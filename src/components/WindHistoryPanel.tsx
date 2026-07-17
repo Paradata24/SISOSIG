@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getWindColor, SOURCE_INFO, WIND_COLOR_SCALE, type WindStation } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
-import type { ForecastEntry } from "@/app/api/forecast/route";
+import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 48 Stunden:
@@ -176,6 +176,8 @@ export default function WindHistoryPanel({
     // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
     // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
     forecast?: ForecastEntry[];
+    // Höhenwind (nur für Windanzeiger-Stationen vorhanden), ebenfalls additiv.
+    upper?: UpperForecast | null;
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -187,6 +189,7 @@ export default function WindHistoryPanel({
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
   const forecast = loading ? null : (result?.forecast ?? null);
+  const upper = loading ? null : (result?.upper ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -198,14 +201,17 @@ export default function WindHistoryPanel({
       try {
         // Messwerte und Prognose parallel laden. Die Prognose ist additiv:
         // scheitert sie (Netzfehler, 502, oder Station ohne Prognose), zeigen
-        // wir einfach keine rote Kurve, ohne die Messwerte zu blockieren.
-        const [res, forecastEntries] = await Promise.all([
+        // wir einfach keine Prognose-Kurven, ohne die Messwerte zu blockieren.
+        const [res, forecastJson] = await Promise.all([
           fetch(`/api/history?station=${encodeURIComponent(code)}`),
           fetch(`/api/forecast?station=${encodeURIComponent(code)}`)
             .then((r) => (r.ok ? r.json() : null))
-            .then((d) => (d?.entries as ForecastEntry[] | undefined) ?? [])
-            .catch(() => [] as ForecastEntry[]),
+            .catch(() => null),
         ]);
+        const forecastEntries =
+          (forecastJson?.entries as ForecastEntry[] | undefined) ?? [];
+        const upperForecast =
+          (forecastJson?.upper as UpperForecast | undefined) ?? null;
         const data = await res.json();
         if (cancelled) return;
         setNow(Date.now());
@@ -219,6 +225,7 @@ export default function WindHistoryPanel({
             code,
             entries: data.entries as HistoryEntry[],
             forecast: forecastEntries,
+            upper: upperForecast,
           });
         }
       } catch {
@@ -282,11 +289,23 @@ export default function WindHistoryPanel({
     }))
     .filter((p) => !Number.isNaN(p.t));
 
+  // Höhenwind-Punkte (nur Windanzeiger-Stationen). Nur Mittelwind + Richtung,
+  // keine Böen (die gibt es auf Druckflächen nicht).
+  const upperPoints: Point[] = (upper?.entries ?? [])
+    .map((e) => ({
+      t: Date.parse(e.forecast_time),
+      speed: e.speed_kmh,
+      gust: null,
+      direction: e.direction,
+    }))
+    .filter((p) => !Number.isNaN(p.t));
+
   // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
   // werden — nicht fälschlich "Keine Daten verfügbar".
   const hasData =
     points.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastPoints.some((p) => p.speed !== null || p.gust !== null);
+    forecastPoints.some((p) => p.speed !== null || p.gust !== null) ||
+    upperPoints.some((p) => p.speed !== null);
 
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
@@ -314,9 +333,9 @@ export default function WindHistoryPanel({
   const historyWidth = historyWidth0 * stretch;
   const futureWidth = futureWidth0 * stretch;
 
-  // yMax muss auch die Prognose-Werte einschließen, sonst würde die rote
-  // Kurve oben abgeschnitten.
-  const maxValue = [...points, ...forecastPoints].reduce(
+  // yMax muss auch die Prognose- und Höhenwind-Werte einschließen, sonst würde
+  // eine der Kurven oben abgeschnitten (Höhenwind ist oft deutlich stärker).
+  const maxValue = [...points, ...forecastPoints, ...upperPoints].reduce(
     (m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0),
     0,
   );
@@ -448,6 +467,8 @@ export default function WindHistoryPanel({
   const areaPath = buildAreaPath(points, (p) => p.gust, (p) => p.speed, x, y);
   const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
   const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
+  // Höhenwind: nur eine (Mittelwind-)Linie, gestrichelt.
+  const upperSpeedPath = buildLinePath(upperPoints, (p) => p.speed, x, y);
   const forecastAreaPath = buildAreaPath(
     forecastPoints,
     (p) => p.gust,
@@ -485,6 +506,15 @@ export default function WindHistoryPanel({
             Messung ·{" "}
             <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
             (ICON-CH1)
+            {upper && upper.entries.length > 0 && (
+              <>
+                {" · "}
+                <span className="text-blue-600 dark:text-blue-400">
+                  blau gestrichelt
+                </span>
+                : Höhenwind
+              </>
+            )}
           </span>
         </span>
         <button
@@ -503,6 +533,15 @@ export default function WindHistoryPanel({
           </svg>
         </button>
       </header>
+
+      {/* Immer sichtbare Beschriftung des Höhenwinds (auch auf dem Handy, wo
+          die Legende oben ausgeblendet ist): welche Druckfläche + Höhe. */}
+      {upper && upper.entries.length > 0 && upper.pressure_level !== null && (
+        <p className="px-3 pb-1 text-[11px] text-blue-600 dark:text-blue-400">
+          Höhenwind (blau gestrichelt): {upper.pressure_level} hPa
+          {upper.height_m !== null && ` ≈ ${upper.height_m} m`}
+        </p>
+      )}
 
       <div className="flex px-1 pb-4">
         <div
@@ -648,6 +687,39 @@ export default function WindHistoryPanel({
                   )}
                 </g>
               ))}
+
+              {/* Höhenwind (nur Windanzeiger-Stationen): eine gestrichelte,
+                  blaue Mittelwind-Linie plus Punkte. Keine Böen/Fläche, da es
+                  auf Druckflächen keine Böen gibt. Welche Druckfläche und Höhe
+                  gemeint ist, steht in der Beschriftung über dem Diagramm. */}
+              <path
+                d={upperSpeedPath}
+                fill="none"
+                strokeWidth={LINE_WIDTH}
+                strokeDasharray="5 3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-blue-600 dark:stroke-blue-400"
+              />
+              {upperPoints.map((p) =>
+                p.speed !== null ? (
+                  <circle
+                    key={`udot-${p.t}`}
+                    cx={x(p.t)}
+                    cy={y(p.speed)}
+                    r={1.8}
+                    className="fill-blue-600 dark:fill-blue-400"
+                  >
+                    <title>
+                      {`Höhenwind ${formatTime(p.t)} Uhr — ${Math.round(p.speed)} km/h${
+                        p.direction !== null
+                          ? `, Richtung ${Math.round(p.direction)}°`
+                          : ""
+                      }`}
+                    </title>
+                  </circle>
+                ) : null,
+              )}
 
               {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
                   unten), die Fläche dazwischen in derselben Farbe mit 30%
