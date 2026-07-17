@@ -14,6 +14,25 @@ const API_BASE =
 // (die Stationen messen normalerweise alle 5-10 Minuten).
 const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
+// --- Zwischenspeicherung (Caching) ---
+// Die Stationen messen nur alle 5-10 Minuten, daher muss nicht jeder
+// Seitenaufruf die Upstream-Dienste neu abfragen:
+// - Die Messwerte (/sensors) werden 60 s im Next.js-Daten-Cache gehalten
+//   (fetch-Option `next.revalidate`); dasselbe gilt für den Pioupiou-Abruf
+//   in src/lib/pioupiou.ts.
+// - Die Stationsmetadaten (/stations: Name, Koordinaten, Höhe) ändern sich
+//   praktisch nie und werden 6 h gehalten.
+// - Zusätzlich wird die fertige JSON-Antwort über den Cache-Control-Header
+//   (s-maxage) 60 s vom CDN (Vercel) geteilt: gleichzeitige Besucher
+//   bekommen dieselbe Antwort, ohne dass die Route erneut läuft.
+// Das stale-Flag wird trotzdem bei jedem echten Routen-Lauf frisch gegen
+// die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
+// alte Cache-Daten dafür bedeutungslos.
+const SENSORS_REVALIDATE_S = 60;
+const STATIONS_REVALIDATE_S = 6 * 60 * 60;
+const RESPONSE_CACHE_CONTROL =
+  "public, s-maxage=60, stale-while-revalidate=240";
+
 interface SensorReading {
   SCODE: string;
   TYPE: string;
@@ -84,7 +103,9 @@ export async function GET(request: Request) {
 
   let sensors: SensorReading[];
   try {
-    const res = await fetch(`${API_BASE}/sensors`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/sensors`, {
+      next: { revalidate: SENSORS_REVALIDATE_S },
+    });
     if (!res.ok) {
       return NextResponse.json(
         { error: `Wetterdienst antwortete mit Status ${res.status}` },
@@ -101,7 +122,9 @@ export async function GET(request: Request) {
 
   let stationsByCode = new Map<string, StationMeta>();
   try {
-    const res = await fetch(`${API_BASE}/stations`, { cache: "no-store" });
+    const res = await fetch(`${API_BASE}/stations`, {
+      next: { revalidate: STATIONS_REVALIDATE_S },
+    });
     if (res.ok) {
       const stations = normalizeStations(await res.json());
       stationsByCode = new Map(stations.map((s) => [s.SCODE, s]));
@@ -207,5 +230,10 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json(stations);
+  // Nur die erfolgreiche Antwort darf vom CDN zwischengespeichert werden —
+  // Fehlerantworten (oben) bekommen bewusst keinen Cache-Control-Header,
+  // damit sich ein kurzer Ausfall nicht 60 s lang "festsetzt".
+  return NextResponse.json(stations, {
+    headers: { "Cache-Control": RESPONSE_CACHE_CONTROL },
+  });
 }
