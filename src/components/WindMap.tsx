@@ -19,7 +19,6 @@ import {
   snapDirectionTo8,
   type WindStation,
 } from "@/lib/wind";
-import WindLegend from "@/components/WindLegend";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
 
@@ -318,6 +317,7 @@ export default function WindMap() {
       <MapContainer
         center={SOUTH_TYROL_CENTER}
         zoom={SOUTH_TYROL_ZOOM}
+        zoomControl={false}
         className="h-full w-full"
       >
         <LayersControl position="topright">
@@ -352,7 +352,6 @@ export default function WindMap() {
         />
       </MapContainer>
       <StationFilterToggle filter={stationFilter} onChange={setStationFilter} />
-      <WindLegend />
       {lastUpdated && (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
           Zuletzt aktualisiert:{" "}
