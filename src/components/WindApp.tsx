@@ -73,19 +73,19 @@ export default function WindApp() {
               <div className="flex flex-col gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setBaseLayer("standard")}
-                  aria-pressed={baseLayer === "standard"}
-                  className={optionClass(baseLayer === "standard")}
-                >
-                  Standard
-                </button>
-                <button
-                  type="button"
                   onClick={() => setBaseLayer("relief")}
                   aria-pressed={baseLayer === "relief"}
                   className={optionClass(baseLayer === "relief")}
                 >
                   Relief (Grau)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBaseLayer("standard")}
+                  aria-pressed={baseLayer === "standard"}
+                  className={optionClass(baseLayer === "standard")}
+                >
+                  Standard
                 </button>
               </div>
               <p className="mt-3 mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
@@ -102,14 +102,6 @@ export default function WindApp() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStationFilter("windanzeiger")}
-                  aria-pressed={stationFilter === "windanzeiger"}
-                  className={optionClass(stationFilter === "windanzeiger")}
-                >
-                  Windanzeiger
-                </button>
-                <button
-                  type="button"
                   onClick={() => setStationFilter("high")}
                   aria-pressed={stationFilter === "high"}
                   className={optionClass(stationFilter === "high")}
@@ -123,6 +115,14 @@ export default function WindApp() {
                   className={optionClass(stationFilter === "veryHigh")}
                 >
                   Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStationFilter("windanzeiger")}
+                  aria-pressed={stationFilter === "windanzeiger"}
+                  className={optionClass(stationFilter === "windanzeiger")}
+                >
+                  Windanzeiger
                 </button>
               </div>
             </div>
