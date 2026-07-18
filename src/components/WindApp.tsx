@@ -34,7 +34,7 @@ export default function WindApp() {
   }, [menuOpen]);
 
   function optionClass(active: boolean) {
-    return `w-full rounded border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
+    return `w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
       active
         ? "border-emerald-700 bg-emerald-600 text-white"
         : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
@@ -62,8 +62,11 @@ export default function WindApp() {
               <rect x="2" y="14" width="16" height="2" fill="#000000" />
             </svg>
           </button>
+          {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
+              Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
+              abgerundete Ecken, passend zum eckigen Menü-Button. */}
           {menuOpen && (
-            <div className="absolute top-full right-0 mt-2 w-52 rounded-md border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-900">
+            <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-900">
               <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 Karte
               </p>
