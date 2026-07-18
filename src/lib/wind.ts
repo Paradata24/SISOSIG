@@ -60,6 +60,22 @@ export function isWindanzeigerStation(station: WindStation): boolean {
   );
 }
 
+// Gemeinsame Typen/Konstanten für das Menü im Titel-Balken (WindApp.tsx) und
+// die Karte (WindMap.tsx). Sie liegen hier zentral, damit Menü-Beschriftung
+// und Filterlogik nie auseinanderlaufen können.
+
+/** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
+export type BaseLayer = "standard" | "relief";
+
+// "all"/"high"/"veryHigh": Höhenfilter (alle Stationen bzw. nur oberhalb einer
+// Höhenschwelle). "windanzeiger": der benannte, kuratierte Filter, der nur die
+// vom Projektbesitzer ausgewählten Stationen zeigt (siehe isWindanzeigerStation
+// unten). Alle Filter schließen sich gegenseitig aus.
+export type StationFilter = "all" | "high" | "veryHigh" | "windanzeiger";
+
+export const HIGH_ALTITUDE_THRESHOLD_M = 2000;
+export const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
+
 export interface WindColorStop {
   /** Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe. */
   max: number;

@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import {
   CircleMarker,
   GeoJSON,
-  LayerGroup,
-  LayersControl,
   MapContainer,
   Marker,
   TileLayer,
@@ -15,8 +13,12 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   getWindColor,
+  HIGH_ALTITUDE_THRESHOLD_M,
   isWindanzeigerStation,
   snapDirectionTo8,
+  VERY_HIGH_ALTITUDE_THRESHOLD_M,
+  type BaseLayer,
+  type StationFilter,
   type WindStation,
 } from "@/lib/wind";
 import WindHistoryPanel from "@/components/WindHistoryPanel";
@@ -27,14 +29,6 @@ const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: fa
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
-const HIGH_ALTITUDE_THRESHOLD_M = 2000;
-const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
-
-// "all"/"high"/"veryHigh": Höhenfilter (alle Stationen bzw. nur oberhalb einer
-// Höhenschwelle). "windanzeiger": der benannte, kuratierte Filter, der nur die
-// vom Projektbesitzer ausgewählten Stationen zeigt (siehe isWindanzeigerStation
-// in src/lib/wind.ts). Alle Filter schließen sich gegenseitig aus.
-type StationFilter = "all" | "high" | "veryHigh" | "windanzeiger";
 
 const ARROW_BASE_SIZE = 22;
 const LABEL_BASE_HEIGHT = 10;
@@ -129,56 +123,6 @@ function createStaleIcon(scale: number) {
   });
 }
 
-// Schalter oben links auf der Karte: filtern, welche Stationen angezeigt
-// werden. "Windanzeiger" zeigt nur die kuratierten Wunsch-Stationen, die
-// beiden Höhen-Schalter blenden Stationen unterhalb einer Höhenschwelle aus.
-// Alle Filter schließen sich gegenseitig aus (erneutes Klicken auf den aktiven
-// Filter schaltet zurück auf "Alle"). Ausreichend groß für Touch-Bedienung.
-function StationFilterToggle({
-  filter,
-  onChange,
-}: {
-  filter: StationFilter;
-  onChange: (filter: StationFilter) => void;
-}) {
-  function buttonClass(active: boolean) {
-    return `rounded border px-1.5 py-1 text-xs font-medium shadow-md transition-colors ${
-      active
-        ? "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
-        : "border-black/10 bg-white/90 text-zinc-700 hover:bg-white dark:border-white/10 dark:bg-zinc-900/85 dark:text-zinc-100 dark:hover:bg-zinc-900"
-    }`;
-  }
-
-  return (
-    <div className="absolute top-20 left-3 z-[1000] flex flex-col gap-1.5">
-      <button
-        type="button"
-        onClick={() => onChange(filter === "windanzeiger" ? "all" : "windanzeiger")}
-        aria-pressed={filter === "windanzeiger"}
-        className={buttonClass(filter === "windanzeiger")}
-      >
-        Windanzeiger
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(filter === "high" ? "all" : "high")}
-        aria-pressed={filter === "high"}
-        className={buttonClass(filter === "high")}
-      >
-        Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange(filter === "veryHigh" ? "all" : "veryHigh")}
-        aria-pressed={filter === "veryHigh"}
-        className={buttonClass(filter === "veryHigh")}
-      >
-        Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
-      </button>
-    </div>
-  );
-}
-
 // Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
 // synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
 // da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
@@ -241,10 +185,18 @@ function WindMarkers({
   );
 }
 
-export default function WindMap() {
+// Kartenhintergrund (baseLayer) und Stationsfilter werden nicht mehr hier,
+// sondern im Menü im Titel-Balken umgeschaltet (WindApp.tsx) und kommen als
+// Props herein.
+export default function WindMap({
+  baseLayer,
+  stationFilter,
+}: {
+  baseLayer: BaseLayer;
+  stationFilter: StationFilter;
+}) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -320,26 +272,29 @@ export default function WindMap() {
         zoomControl={false}
         className="h-full w-full"
       >
-        <LayersControl position="topright">
-          <LayersControl.BaseLayer name="Standard">
+        {/* Die key-Attribute sorgen dafür, dass beim Umschalten die alten
+            Kachel-Ebenen komplett entfernt und neue angelegt werden (inkl.
+            korrekter Quellenangabe unten rechts). */}
+        {baseLayer === "standard" ? (
+          <TileLayer
+            key="osm"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        ) : (
+          <>
             <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              key="esri-hillshade"
+              attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
             />
-          </LayersControl.BaseLayer>
-          <LayersControl.BaseLayer checked name="Relief (Grau)">
-            <LayerGroup>
-              <TileLayer
-                attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
-              />
-              <TileLayer
-                attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-                url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-              />
-            </LayerGroup>
-          </LayersControl.BaseLayer>
-        </LayersControl>
+            <TileLayer
+              key="carto-labels"
+              attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+              url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+            />
+          </>
+        )}
         <GeoJSON
           data={staatsgrenzen as GeoJSON.GeoJsonObject}
           style={STAATSGRENZE_STYLE}
@@ -351,7 +306,6 @@ export default function WindMap() {
           selectedStationCode={selectedStationCode}
         />
       </MapContainer>
-      <StationFilterToggle filter={stationFilter} onChange={setStationFilter} />
       {lastUpdated && (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
           Zuletzt aktualisiert:{" "}
