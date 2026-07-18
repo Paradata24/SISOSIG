@@ -33,12 +33,11 @@ const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
 const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
-const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und ICON-D2-Block (blau)
+const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 // Grundhöhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
-// Zeilen) + ICON-D2-Block (Pfeile + 2 Zeilen) + unterer Rand. Der ICON-CH1-
-// Prognose-Block liegt als Überlagerung oben im Kurvenbereich und braucht
-// keine eigene Höhe.
+// Zeilen) + Prognose-Vergleichsblock (Pfeile + 2 Zeilen, ICON-CH1 rot links /
+// ICON-D2 blau rechts nebeneinander) + unterer Rand.
 const SVG_H_BASE =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
@@ -402,6 +401,10 @@ export default function WindHistoryPanel({
   const d2ArrowRowBottom = gustValueY + D2_ROW_GAP + ARROW_ROW_H;
   const d2SpeedValueY = d2ArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const d2GustValueY = d2SpeedValueY + VALUE_LINE_H;
+  // Horizontaler Abstand vom Stundenpunkt für den Vergleichs-Block: rotes
+  // ICON-CH1 links, blaues ICON-D2 rechts nebeneinander unter derselben
+  // Stunde (ersetzt die vormals separate rote Überlagerung im Kurvenbereich).
+  const FORECAST_PAIR_HALF_GAP = 11;
 
   // Höhenwind (nur Windanzeiger-Stationen): eine fette blaue Zahl direkt UNTER
   // den beiden ICON-D2-Zahlen, darunter der Richtungspfeil (nur Kontur, blau).
@@ -410,17 +413,6 @@ export default function WindHistoryPanel({
   const upperArrowCy = upperValueY + VALUES_GAP + ARROW_ROW_H / 2;
   // Das SVG wird nur dann höher, wenn es tatsächlich Höhenwind-Werte gibt.
   const svgH = SVG_H_BASE + (hasUpper ? UPPER_BLOCK_H : 0);
-
-  // Prognose-Werte (rot) oben im Diagramm, unter der "jetzt"-Beschriftung:
-  // erst die zwei Textzeilen (Mittelwind, Böe), darunter der Windpfeil.
-  // Bewusst als reine Überlagerung innerhalb des bestehenden Kurvenbereichs,
-  // damit sich an der übrigen Geometrie (SVG_H, chartTop/-Bottom, …) nichts
-  // verschiebt. Eigene Zeile unterhalb von "jetzt" (chartTop + 11), damit
-  // sich beide nicht überlappen, falls ein Prognosepunkt an derselben Stelle
-  // wie die "jetzt"-Linie liegt.
-  const forecastSpeedValueY = chartTop + 2 * VALUE_LINE_H;
-  const forecastGustValueY = forecastSpeedValueY + VALUE_LINE_H;
-  const forecastArrowCy = forecastGustValueY + VALUES_GAP + ARROW_ROW_H / 2;
 
   // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
   const bands: { from: number; to: number; color: string }[] = [];
@@ -497,37 +489,32 @@ export default function WindHistoryPanel({
     if (!hourlyPointIndices.has(i)) tryAdd(i);
   }
 
-  // Dieselbe Ausdünnung für die roten Prognose-Werte/Pfeile oben im
-  // Diagramm, aber auf Basis der (stündlichen) Prognosepunkte statt der
-  // Messpunkte — deren Abstand in Pixeln unterscheidet sich sonst je nach
-  // Stationsabdeckung von der Messreihe.
-  const forecastPxPerPoint =
-    forecastPoints.length > 1
-      ? (x(forecastPoints[forecastPoints.length - 1].t) - x(forecastPoints[0].t)) /
-        (forecastPoints.length - 1)
+  // Gemeinsame Ausdünnung für den Prognose-Vergleichsblock (CH1 links rot,
+  // D2 rechts blau): Vereinigung aller Zeitpunkte aus beiden Prognosen (ein
+  // Modell kann für einzelne Stunden fehlen), damit an jeder gezeigten
+  // Stunde zumindest ein Wert erscheint. Der Platzbedarf ist größer als bei
+  // einer einzelnen Spalte, da rot+blau nebeneinander stehen.
+  const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
+  const forecastD2ByT = new Map(forecastD2Points.map((p) => [p.t, p]));
+  const combinedForecastTimes = Array.from(
+    new Set([...forecastPoints.map((p) => p.t), ...forecastD2Points.map((p) => p.t)]),
+  ).sort((a, b) => a - b);
+  const combinedPxPerPoint =
+    combinedForecastTimes.length > 1
+      ? (x(combinedForecastTimes[combinedForecastTimes.length - 1]) -
+          x(combinedForecastTimes[0])) /
+        (combinedForecastTimes.length - 1)
       : historyWidth;
-  const forecastArrowStep = Math.max(
+  const combinedForecastStep = Math.max(
     1,
-    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / forecastPxPerPoint),
+    Math.ceil(
+      Math.max(ARROW_SIZE + 2 * FORECAST_PAIR_HALF_GAP, MIN_LABEL_SPACING) /
+        combinedPxPerPoint,
+    ),
   );
-  const forecastArrowIndices: number[] = [];
-  for (let i = forecastPoints.length - 1; i >= 0; i -= forecastArrowStep) {
-    forecastArrowIndices.push(i);
-  }
-
-  // Gleiche Ausdünnung für die blauen ICON-D2-Prognose-Werte/Pfeile.
-  const forecastD2PxPerPoint =
-    forecastD2Points.length > 1
-      ? (x(forecastD2Points[forecastD2Points.length - 1].t) - x(forecastD2Points[0].t)) /
-        (forecastD2Points.length - 1)
-      : historyWidth;
-  const forecastD2ArrowStep = Math.max(
-    1,
-    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / forecastD2PxPerPoint),
-  );
-  const forecastD2ArrowIndices: number[] = [];
-  for (let i = forecastD2Points.length - 1; i >= 0; i -= forecastD2ArrowStep) {
-    forecastD2ArrowIndices.push(i);
+  const combinedForecastTimeSelection: number[] = [];
+  for (let i = combinedForecastTimes.length - 1; i >= 0; i -= combinedForecastStep) {
+    combinedForecastTimeSelection.push(combinedForecastTimes[i]);
   }
 
   // Gleiche Ausdünnung für die Höhenwind-Zahlen/-Pfeile unter dem ICON-D2-Block.
@@ -979,102 +966,95 @@ export default function WindHistoryPanel({
                 );
               })}
 
-              {/* Prognose-Werte oben im Diagramm, in Rot: zuerst Mittelwind,
-                  darunter Böe, darunter der Windpfeil — dieselbe Anordnung wie
-                  unten bei den Messwerten, nur oben und komplett rot (auch der
-                  Pfeil einfarbig statt windstärke-gefärbt wie auf der Karte). */}
-              {forecastArrowIndices.map((i) => {
-                const p = forecastPoints[i];
-                if (p.direction === null) return null;
-                const tx = x(p.t).toFixed(1);
+              {/* Prognose-Vergleichsblock UNTER dem Messwert-Block: für jede
+                  Stunde links das rote ICON-CH1-Ergebnis, rechts direkt
+                  daneben das blaue ICON-D2-Ergebnis — Windpfeil (Mittelwind),
+                  darunter Mittelwind- und Böen-Zahl, jeweils als Paar. Fehlt
+                  eines der beiden Modelle für eine Stunde, erscheint nur die
+                  andere Seite. */}
+              {combinedForecastTimeSelection.map((t) => {
+                const chP = forecastByT.get(t);
+                const d2P = forecastD2ByT.get(t);
+                const tx = x(t);
                 return (
-                  <g key={`fvalues-${p.t}`} className="fill-red-600 dark:fill-red-500">
-                    <text
-                      x={tx}
-                      y={forecastSpeedValueY}
-                      textAnchor="middle"
-                      className="text-[10px] tabular-nums"
-                    >
-                      {p.speed !== null ? Math.round(p.speed) : "–"}
-                    </text>
-                    <text
-                      x={tx}
-                      y={forecastGustValueY}
-                      textAnchor="middle"
-                      className="text-[10px] tabular-nums"
-                    >
-                      {p.gust !== null ? Math.round(p.gust) : "–"}
-                    </text>
+                  <g key={`fcarrow-${t}`}>
+                    {chP && chP.direction !== null && (
+                      <g
+                        transform={`translate(${(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                      >
+                        <title>
+                          {`Prognose ICON-CH1 ${formatTime(t)} Uhr — Wind ${chP.speed ?? "–"} km/h, Böen ${chP.gust ?? "–"} km/h, Richtung ${Math.round(chP.direction)}°`}
+                        </title>
+                        <path
+                          d="M20 2 L34 34 L20 26 L6 34 Z"
+                          transform="translate(-20 -20)"
+                          className="fill-red-600 dark:fill-red-500"
+                        />
+                      </g>
+                    )}
+                    {d2P && d2P.direction !== null && (
+                      <g
+                        transform={`translate(${(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(d2P.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                      >
+                        <title>
+                          {`Prognose ICON-D2 ${formatTime(t)} Uhr — Wind ${d2P.speed ?? "–"} km/h, Böen ${d2P.gust ?? "–"} km/h, Richtung ${Math.round(d2P.direction)}°`}
+                        </title>
+                        <path
+                          d="M20 2 L34 34 L20 26 L6 34 Z"
+                          transform="translate(-20 -20)"
+                          className="fill-blue-600 dark:fill-blue-400"
+                        />
+                      </g>
+                    )}
                   </g>
                 );
               })}
-              {forecastArrowIndices.map((i) => {
-                const p = forecastPoints[i];
-                if (p.direction === null) return null;
-                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
+              {combinedForecastTimeSelection.map((t) => {
+                const chP = forecastByT.get(t);
+                const d2P = forecastD2ByT.get(t);
+                const tx = x(t);
                 return (
-                  <g
-                    key={`farrow-${p.t}`}
-                    transform={`translate(${x(p.t).toFixed(1)} ${forecastArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
-                  >
-                    <title>
-                      {`Prognose ${formatTime(p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
-                    </title>
-                    <path
-                      d="M20 2 L34 34 L20 26 L6 34 Z"
-                      transform="translate(-20 -20)"
-                      className="fill-red-600 dark:fill-red-500"
-                    />
-                  </g>
-                );
-              })}
-
-              {/* ICON-D2-Prognose (blau) als eigener Block UNTER dem
-                  Messwert-Block: Pfeilreihe + zwei Zahlenzeilen (Mittelwind,
-                  Böe) — dieselbe Darstellung wie die rote ICON-CH1-Prognose,
-                  nur blau und weiter unten. */}
-              {forecastD2ArrowIndices.map((i) => {
-                const p = forecastD2Points[i];
-                if (p.direction === null) return null;
-                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
-                return (
-                  <g
-                    key={`d2arrow-${p.t}`}
-                    transform={`translate(${x(p.t).toFixed(1)} ${d2ArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
-                  >
-                    <title>
-                      {`Prognose ICON-D2 ${formatTime(p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
-                    </title>
-                    <path
-                      d="M20 2 L34 34 L20 26 L6 34 Z"
-                      transform="translate(-20 -20)"
-                      className="fill-blue-600 dark:fill-blue-400"
-                    />
-                  </g>
-                );
-              })}
-              {forecastD2ArrowIndices.map((i) => {
-                const p = forecastD2Points[i];
-                if (p.direction === null) return null;
-                const tx = x(p.t).toFixed(1);
-                return (
-                  <g key={`d2values-${p.t}`} className="fill-blue-600 dark:fill-blue-400">
-                    <text
-                      x={tx}
-                      y={d2SpeedValueY}
-                      textAnchor="middle"
-                      className="text-[10px] tabular-nums"
-                    >
-                      {p.speed !== null ? Math.round(p.speed) : "–"}
-                    </text>
-                    <text
-                      x={tx}
-                      y={d2GustValueY}
-                      textAnchor="middle"
-                      className="text-[10px] tabular-nums"
-                    >
-                      {p.gust !== null ? Math.round(p.gust) : "–"}
-                    </text>
+                  <g key={`fcvalues-${t}`}>
+                    {chP && (
+                      <g className="fill-red-600 dark:fill-red-500">
+                        <text
+                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          y={d2SpeedValueY}
+                          textAnchor="middle"
+                          className="text-[10px] tabular-nums"
+                        >
+                          {chP.speed !== null ? Math.round(chP.speed) : "–"}
+                        </text>
+                        <text
+                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          y={d2GustValueY}
+                          textAnchor="middle"
+                          className="text-[10px] tabular-nums"
+                        >
+                          {chP.gust !== null ? Math.round(chP.gust) : "–"}
+                        </text>
+                      </g>
+                    )}
+                    {d2P && (
+                      <g className="fill-blue-600 dark:fill-blue-400">
+                        <text
+                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          y={d2SpeedValueY}
+                          textAnchor="middle"
+                          className="text-[10px] tabular-nums"
+                        >
+                          {d2P.speed !== null ? Math.round(d2P.speed) : "–"}
+                        </text>
+                        <text
+                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          y={d2GustValueY}
+                          textAnchor="middle"
+                          className="text-[10px] tabular-nums"
+                        >
+                          {d2P.gust !== null ? Math.round(d2P.gust) : "–"}
+                        </text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
