@@ -1061,14 +1061,16 @@ export default function WindHistoryPanel({
 
               {/* Höhenwind (nur Windanzeiger-Stationen): fette blaue Zahl direkt
                   unter den beiden ICON-D2-Zahlen, darunter der Richtungspfeil
-                  nur als blaue Kontur (ohne Füllung). */}
+                  nur als blaue Kontur (ohne Füllung). Gleicher Rechts-Versatz
+                  wie die ICON-D2-Werte darüber, damit alle blauen Elemente
+                  einer Stunde exakt untereinanderstehen. */}
               {upperArrowIndices.map((i) => {
                 const p = upperPoints[i];
                 if (p.speed === null) return null;
                 return (
                   <text
                     key={`uvalue-${p.t}`}
-                    x={x(p.t).toFixed(1)}
+                    x={(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)}
                     y={upperValueY}
                     textAnchor="middle"
                     className="text-[10px] font-bold tabular-nums fill-blue-600 dark:fill-blue-400"
@@ -1084,7 +1086,7 @@ export default function WindHistoryPanel({
                 return (
                   <g
                     key={`uarrow-${p.t}`}
-                    transform={`translate(${x(p.t).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                    transform={`translate(${(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                   >
                     <title>
                       {`Höhenwind ${formatTime(p.t)} Uhr — ${p.speed ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
