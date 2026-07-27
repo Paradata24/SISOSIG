@@ -104,14 +104,19 @@ Supabase.
    "Zwischenspeicherung (Caching)".
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
-   colored by speed on a 10-step scale modeled after the XC-Therm legend
-   (white → light blue → green → yellow → orange → red → violet → indigo —
-   see `WIND_COLOR_SCALE`/`getWindColor` in `src/lib/wind.ts`), or a gray
-   dot for stations whose `stale` flag is set (missing reading or
-   measurement older than 2h). `WindLegend.tsx` renders the matching
-   color-scale legend overlay on the map, driven by the same
-   `WIND_COLOR_SCALE` constant so the legend and the markers can never
-   drift out of sync. It's loaded via `WindMapLoader.tsx`
+   colored by speed on a 6-step scale agreed with the project owner via a
+   legend screenshot — "schwach" 0–6 → green "spürbar" 7–14 → yellow
+   "mässig" 15–24 → orange "stark" 25–30 → dark red "sehr stark" 31–36 →
+   black "zu stark" >36 km/h (see `WIND_COLOR_SCALE`/`getWindColor` in
+   `src/lib/wind.ts`; thresholds sit on half values — 6.5, 14.5, … — so the
+   color always matches the rounded number printed next to the arrow). The
+   lowest step deliberately deviates from the screenshot: it is a very light
+   blue instead of white, because a white arrow would be invisible on a light
+   map background — don't change it back to white (the owner explicitly asked
+   for light blue and against adding an arrow outline). Stations
+   whose `stale` flag is set (missing reading or measurement older than 2h)
+   get a gray dot instead. There is no on-map legend overlay any more (the
+   former `WindLegend.tsx` was removed). It's loaded via `WindMapLoader.tsx`
    (`next/dynamic`, `ssr: false`) because Leaflet needs `window` — Next 16
    no longer allows `ssr: false` directly inside a Server Component, so the
    dynamic import must live in its own `"use client"` wrapper. The map
