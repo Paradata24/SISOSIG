@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
+import {
+  FORECAST_MODELS,
+  FUTURE_MARGIN_HOURS,
+  HISTORY_HOURS,
+  UPPER_FORECAST_MODEL,
+} from "@/lib/wind";
 
-// Liefert die ICON-CH1-Windprognose einer Station aus der Supabase-Tabelle
+// Liefert die Windprognosen einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die
 // stündlich per pg_cron angestoßen wird).
 //
@@ -9,8 +14,11 @@ import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 //
 // Exakte Parallele zu /api/history: gleiche Struktur, gleiche
 // Umgebungsvariablen SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY, gleiches
-// Fehlerverhalten. Nur ~84 der ~120 Stationen liegen im ICON-CH1-Modellgebiet;
-// Stationen ohne Prognose liefern einfach eine leere Liste (kein Fehler).
+// Fehlerverhalten. Zurück kommen ALLE Bodenwind-Modelle aus FORECAST_MODELS
+// (src/lib/wind.ts) — nach Modell gruppiert — plus der Höhenwind. Modelle,
+// die diese Station nicht abdecken (z. B. AROME Austria außerhalb seines
+// Gebiets, oder Stationen außerhalb des ICON-CH1-Modellgebiets), liefern
+// einfach eine leere Liste, kein Fehler.
 //
 // Zeitfenster: genau der Bereich, den der Verlaufsbalken zeichnet, also
 // (jetzt − HISTORY_HOURS) bis (jetzt + FUTURE_MARGIN_HOURS) — beide Werte aus
@@ -34,23 +42,37 @@ export interface UpperForecast {
   entries: ForecastEntry[];
 }
 
-// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function). Es gibt
-// zwei Bodenwind-Prognosen zum Vergleich (ICON-CH1 = rot, ICON-D2 = blau) und
-// den Höhenwind (blau gestrichelt, aus ICON-D2, weil ICON-CH1 keine
-// Druckflächen-Daten liefert).
-const MODEL_SURFACE = "icon_ch1";
-const MODEL_SURFACE_D2 = "icon_d2";
-const MODEL_UPPER = "icon_d2_upper";
+/** Prognosen je Modellname (Schlüssel = "key" aus FORECAST_MODELS). */
+export type ForecastsByModel = Record<string, ForecastEntry[]>;
 
-// Eine Zeile der Höhenwind-Abfrage inkl. der beiden Zusatzspalten.
-interface UpperRow extends ForecastEntry {
+export interface ForecastResponse {
+  stationCode: string;
+  hours: number;
+  count: number;
+  models: ForecastsByModel;
+  upper: UpperForecast | null;
+}
+
+// Eine Zeile, wie sie aus Supabase kommt (die beiden letzten Spalten sind nur
+// beim Höhenwind gefüllt).
+interface ForecastRow extends ForecastEntry {
+  model: string;
   pressure_level: number | null;
   height_m: number | null;
 }
 
+function toEntry(row: ForecastRow): ForecastEntry {
+  return {
+    forecast_time: row.forecast_time,
+    direction: row.direction,
+    speed_kmh: row.speed_kmh,
+    gust_kmh: row.gust_kmh,
+  };
+}
+
 // Fasst die Höhenwind-Zeilen zu einer Prognose zusammen: eine feste Druckfläche
 // pro Station, dazu die repräsentative (gemittelte) Höhe für die Beschriftung.
-function summarizeUpper(rows: UpperRow[]): UpperForecast | null {
+function summarizeUpper(rows: ForecastRow[]): UpperForecast | null {
   if (rows.length === 0) return null;
   const level = rows.find((r) => r.pressure_level != null)?.pressure_level ?? null;
   const heights = rows.map((r) => r.height_m).filter((h): h is number => h != null);
@@ -60,12 +82,7 @@ function summarizeUpper(rows: UpperRow[]): UpperForecast | null {
   return {
     pressure_level: level,
     height_m: heightM,
-    entries: rows.map((r) => ({
-      forecast_time: r.forecast_time,
-      direction: r.direction,
-      speed_kmh: r.speed_kmh,
-      gust_kmh: r.gust_kmh,
-    })),
+    entries: rows.map(toEntry),
   };
 }
 
@@ -99,40 +116,29 @@ export async function GET(request: Request) {
     Date.now() + FUTURE_MARGIN_HOURS * 60 * 60 * 1000,
   ).toISOString();
 
-  const baseUrl =
+  // Alle Modelle in EINER Abfrage holen und danach nach Modell gruppieren —
+  // früher war das eine Abfrage pro Modell; bei inzwischen vier Bodenwind-
+  // Modellen plus Höhenwind wären das fünf Rundreisen zu Supabase für
+  // insgesamt nur rund 100 Zeilen.
+  const wantedModels = [
+    ...FORECAST_MODELS.map((m) => m.key),
+    UPPER_FORECAST_MODEL.key,
+  ];
+  const query =
     `${supabaseUrl}/rest/v1/wind_forecasts` +
     `?station_code=eq.${encodeURIComponent(station)}` +
     `&forecast_time=gte.${encodeURIComponent(since)}` +
     `&forecast_time=lte.${encodeURIComponent(until)}` +
+    `&model=in.(${wantedModels.map(encodeURIComponent).join(",")})` +
+    `&select=model,forecast_time,direction,speed_kmh,gust_kmh,pressure_level,height_m` +
     `&order=forecast_time.asc`;
-  const headers = {
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-  };
-
-  // Bodenwind ICON-CH1 (Pflicht) sowie ICON-D2-Bodenwind und Höhenwind
-  // (beide additiv) parallel abfragen.
-  const surfaceQuery =
-    `${baseUrl}&model=eq.${MODEL_SURFACE}` +
-    `&select=forecast_time,direction,speed_kmh,gust_kmh`;
-  const surfaceD2Query =
-    `${baseUrl}&model=eq.${MODEL_SURFACE_D2}` +
-    `&select=forecast_time,direction,speed_kmh,gust_kmh`;
-  const upperQuery =
-    `${baseUrl}&model=eq.${MODEL_UPPER}` +
-    `&select=forecast_time,direction,speed_kmh,gust_kmh,pressure_level,height_m`;
 
   let res: Response;
-  let d2Res: Response | null = null;
-  let upperRes: Response | null = null;
   try {
-    [res, d2Res, upperRes] = await Promise.all([
-      fetch(surfaceQuery, { headers, cache: "no-store" }),
-      // ICON-D2-Bodenwind und Höhenwind sind optional: ein Fehler hier darf den
-      // ICON-CH1-Bodenwind nicht blockieren, deshalb separat aufgefangen.
-      fetch(surfaceD2Query, { headers, cache: "no-store" }).catch(() => null),
-      fetch(upperQuery, { headers, cache: "no-store" }).catch(() => null),
-    ]);
+    res = await fetch(query, {
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+      cache: "no-store",
+    });
   } catch {
     return NextResponse.json(
       { error: "Supabase ist nicht erreichbar" },
@@ -147,32 +153,29 @@ export async function GET(request: Request) {
     );
   }
 
-  const entries: ForecastEntry[] = await res.json();
+  const rows = (await res.json()) as ForecastRow[];
 
-  let entriesD2: ForecastEntry[] = [];
-  if (d2Res?.ok) {
-    try {
-      entriesD2 = (await d2Res.json()) as ForecastEntry[];
-    } catch {
-      entriesD2 = [];
+  // Jedes bekannte Modell taucht im Ergebnis auf — notfalls mit leerer Liste,
+  // damit das Frontend nicht zwischen "kein Eintrag" und "keine Daten"
+  // unterscheiden muss.
+  const models: ForecastsByModel = Object.fromEntries(
+    FORECAST_MODELS.map((m) => [m.key, [] as ForecastEntry[]]),
+  );
+  const upperRows: ForecastRow[] = [];
+  for (const row of rows) {
+    if (row.model === UPPER_FORECAST_MODEL.key) {
+      upperRows.push(row);
+    } else if (models[row.model]) {
+      models[row.model].push(toEntry(row));
     }
   }
 
-  let upper: UpperForecast | null = null;
-  if (upperRes?.ok) {
-    try {
-      upper = summarizeUpper((await upperRes.json()) as UpperRow[]);
-    } catch {
-      upper = null;
-    }
-  }
-
-  return NextResponse.json({
+  const response: ForecastResponse = {
     stationCode: station,
     hours: HISTORY_HOURS,
-    count: entries.length,
-    entries,
-    entriesD2,
-    upper,
-  });
+    count: rows.length - upperRows.length,
+    models,
+    upper: summarizeUpper(upperRows),
+  };
+  return NextResponse.json(response);
 }

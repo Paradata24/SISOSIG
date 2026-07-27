@@ -43,6 +43,90 @@ export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
+ * Ein Prognosemodell, wie es im Verlaufsbalken gezeichnet und in der Legende
+ * aufgeführt wird.
+ */
+export interface ForecastModelInfo {
+  /** Wert der Spalte "model" in der Supabase-Tabelle wind_forecasts. */
+  key: string;
+  /** Kurzname für Legende und Tooltips. */
+  label: string;
+  /** Wetterdienst hinter dem Modell — für den Lizenz-/Quellenhinweis. */
+  provider: string;
+  /**
+   * Modellname für den Quellenhinweis im Footer, falls dort ein anderer Name
+   * passt als in der Legende: dort steht "ECMWF" (der Dienst ist bekannter als
+   * das Modell), im Hinweis aber "ECMWF (IFS)". Ohne Angabe wird "label"
+   * verwendet.
+   */
+  licenseLabel?: string;
+  /**
+   * Linienfarbe als CSS-Variable (definiert in src/app/globals.css, je ein
+   * Wert für hellen und dunklen Hintergrund). Bewusst keine Tailwind-Klasse:
+   * die Kurven werden per Schleife über diese Liste gezeichnet, eine feste
+   * Klasse pro Modell ginge dabei nicht.
+   */
+  color: string;
+}
+
+/**
+ * Alle Bodenwind-Prognosemodelle in Zeichenreihenfolge. Die Reihenfolge
+ * bestimmt zugleich die Reihenfolge der Legende und der Spalten im
+ * Vergleichsblock unter dem Diagramm.
+ *
+ * Diese Liste ist die EINZIGE Stelle im Frontend, an der ein Modell steht:
+ * /api/forecast liest sie für die Datenbankabfrage, WindHistoryPanel für
+ * Kurven, Legende und Vergleichsblock. Ein weiteres Modell braucht also nur
+ * einen zusätzlichen Eintrag hier — plus den passenden Eintrag in
+ * SURFACE_MODELS der Edge Function (supabase/functions/fetch-wind-forecasts),
+ * die die Werte einsammelt (Deno-Code, kann hier nicht importieren).
+ *
+ * Farben: Rot/Blau sind historisch gewachsen. Gelb und Grün sind bewusst
+ * dunkler/satter als die naheliegenden Reintöne — die Farbbänder der
+ * Windskala im Diagramm sind selbst gelb (15–24 km/h) bzw. grün (7–14 km/h),
+ * ein helles Gelb bzw. Grün wäre darauf praktisch unsichtbar.
+ */
+export const FORECAST_MODELS: ForecastModelInfo[] = [
+  {
+    key: "icon_ch1",
+    label: "ICON-CH1",
+    provider: "MeteoSwiss",
+    color: "var(--forecast-icon-ch1)",
+  },
+  {
+    key: "icon_d2",
+    label: "ICON-D2",
+    provider: "DWD",
+    color: "var(--forecast-icon-d2)",
+  },
+  {
+    key: "arome_austria",
+    label: "AROME",
+    provider: "GeoSphere Austria",
+    color: "var(--forecast-arome)",
+  },
+  {
+    key: "ecmwf_ifs",
+    label: "ECMWF",
+    provider: "ECMWF",
+    licenseLabel: "IFS",
+    color: "var(--forecast-ecmwf)",
+  },
+];
+
+/**
+ * Höhenwind (Druckflächen-Wind). Kein eigenes Modell im Sinne der Liste oben:
+ * er stammt aus ICON-D2, wird gestrichelt gezeichnet, hat keine Böen und
+ * existiert nur für die Windanzeiger-Stationen — steht aber in derselben
+ * Tabelle und ist in der Legende genauso ein-/ausblendbar.
+ */
+export const UPPER_FORECAST_MODEL = {
+  key: "icon_d2_upper",
+  label: "Höhenwind",
+  color: "var(--forecast-upper)",
+} as const;
+
+/**
  * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
  * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
  * diese Stationen an. Jeder Eintrag wird (klein geschrieben, ohne

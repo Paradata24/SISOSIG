@@ -2,16 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  FORECAST_MODELS,
   FUTURE_MARGIN_HOURS,
   getWindColor,
   HISTORY_HOURS,
   snapDirectionTo8,
   SOURCE_INFO,
+  UPPER_FORECAST_MODEL,
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
-import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
+import type {
+  ForecastEntry,
+  ForecastsByModel,
+  UpperForecast,
+} from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
@@ -38,8 +44,8 @@ const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten B�
 const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 // Grundhöhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
-// Zeilen) + Prognose-Vergleichsblock (Pfeile + 2 Zeilen, ICON-CH1 rot links /
-// ICON-D2 blau rechts nebeneinander) + unterer Rand.
+// Zeilen) + Prognose-Vergleichsblock (Pfeile + 2 Zeilen; die sichtbaren
+// Modelle stehen dort je Stunde nebeneinander) + unterer Rand.
 const SVG_H_BASE =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
@@ -195,11 +201,9 @@ export default function WindHistoryPanel({
   const [result, setResult] = useState<{
     code: string;
     entries?: HistoryEntry[];
-    // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
-    // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
-    forecast?: ForecastEntry[];
-    // ICON-D2-Bodenwind (zweite Prognose zum Vergleich), ebenfalls additiv.
-    forecastD2?: ForecastEntry[];
+    // Prognosen je Modell — optional/additiv: schlagen sie fehl oder sind sie
+    // leer, bleibt dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
+    models?: ForecastsByModel;
     // Höhenwind (nur für Windanzeiger-Stationen vorhanden), ebenfalls additiv.
     upper?: UpperForecast | null;
     error?: string;
@@ -209,11 +213,21 @@ export default function WindHistoryPanel({
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
   // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
   const [now, setNow] = useState(() => Date.now());
+  // Über die Legende ausgeblendete Prognoselinien (Modellschlüssel). Leer =
+  // alles sichtbar, das ist bewusst der Startzustand. Vier Prognosen auf
+  // einmal machen das Diagramm sonst schnell unübersichtlich.
+  const [hiddenModels, setHiddenModels] = useState<Set<string>>(new Set());
+  const toggleModel = (key: string) =>
+    setHiddenModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
-  const forecast = loading ? null : (result?.forecast ?? null);
-  const forecastD2 = loading ? null : (result?.forecastD2 ?? null);
+  const forecastsByModel = loading ? null : (result?.models ?? null);
   const upper = loading ? null : (result?.upper ?? null);
   const error = loading ? null : (result?.error ?? null);
 
@@ -233,10 +247,8 @@ export default function WindHistoryPanel({
             .then((r) => (r.ok ? r.json() : null))
             .catch(() => null),
         ]);
-        const forecastEntries =
-          (forecastJson?.entries as ForecastEntry[] | undefined) ?? [];
-        const forecastD2Entries =
-          (forecastJson?.entriesD2 as ForecastEntry[] | undefined) ?? [];
+        const forecastModels =
+          (forecastJson?.models as ForecastsByModel | undefined) ?? {};
         const upperForecast =
           (forecastJson?.upper as UpperForecast | undefined) ?? null;
         const data = await res.json();
@@ -251,8 +263,7 @@ export default function WindHistoryPanel({
           setResult({
             code,
             entries: data.entries as HistoryEntry[],
-            forecast: forecastEntries,
-            forecastD2: forecastD2Entries,
+            models: forecastModels,
             upper: upperForecast,
           });
         }
@@ -308,25 +319,32 @@ export default function WindHistoryPanel({
     .filter((p) => !Number.isNaN(p.t));
 
   // Prognose-Punkte genau wie die Messpunkte aufbereiten (nur andere Quelle).
-  const forecastPoints: Point[] = (forecast ?? [])
-    .map((e) => ({
-      t: Date.parse(e.forecast_time),
-      speed: e.speed_kmh,
-      gust: e.gust_kmh,
-      direction: e.direction,
-    }))
-    .filter((p) => !Number.isNaN(p.t));
+  const toForecastPoints = (list: ForecastEntry[] | undefined): Point[] =>
+    (list ?? [])
+      .map((e) => ({
+        t: Date.parse(e.forecast_time),
+        speed: e.speed_kmh,
+        gust: e.gust_kmh,
+        direction: e.direction,
+      }))
+      .filter((p) => !Number.isNaN(p.t));
 
-  // ICON-D2-Bodenwind-Punkte (zweite Prognose, blau) — gleiche Aufbereitung
-  // wie die roten ICON-CH1-Punkte.
-  const forecastD2Points: Point[] = (forecastD2 ?? [])
-    .map((e) => ({
-      t: Date.parse(e.forecast_time),
-      speed: e.speed_kmh,
-      gust: e.gust_kmh,
-      direction: e.direction,
-    }))
-    .filter((p) => !Number.isNaN(p.t));
+  // Eine Zeichenebene je Prognosemodell — Reihenfolge, Name und Farbe kommen
+  // aus FORECAST_MODELS (src/lib/wind.ts). "hasData" unterscheidet dabei
+  // "Modell deckt diese Station nicht ab" (Legendeneintrag grau/deaktiviert)
+  // von "vom Nutzer ausgeblendet" (anklickbar).
+  const forecastLayers = FORECAST_MODELS.map((model) => {
+    const layerPoints = toForecastPoints(forecastsByModel?.[model.key]);
+    return {
+      ...model,
+      points: layerPoints,
+      byT: new Map(layerPoints.map((p) => [p.t, p])),
+      hasData: layerPoints.some((p) => p.speed !== null || p.gust !== null),
+      visible: !hiddenModels.has(model.key),
+    };
+  });
+  // Nur diese Ebenen werden tatsächlich gezeichnet (vorhanden UND eingeblendet).
+  const shownLayers = forecastLayers.filter((l) => l.hasData && l.visible);
 
   // Höhenwind-Punkte (nur Windanzeiger-Stationen). Nur Mittelwind + Richtung,
   // keine Böen (die gibt es auf Druckflächen nicht).
@@ -340,11 +358,12 @@ export default function WindHistoryPanel({
     .filter((p) => !Number.isNaN(p.t));
 
   // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
-  // werden — nicht fälschlich "Keine Daten verfügbar".
+  // werden — nicht fälschlich "Keine Daten verfügbar". Bewusst unabhängig
+  // davon, was gerade eingeblendet ist: wer alle Modelle ausblendet, soll
+  // nicht plötzlich "Keine Daten" lesen.
   const hasData =
     points.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastPoints.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastD2Points.some((p) => p.speed !== null || p.gust !== null) ||
+    forecastLayers.some((l) => l.hasData) ||
     upperPoints.some((p) => p.speed !== null);
 
   // --- Skalen ---
@@ -373,14 +392,20 @@ export default function WindHistoryPanel({
   const historyWidth = historyWidth0 * stretch;
   const futureWidth = futureWidth0 * stretch;
 
-  // yMax muss auch alle Prognosen (ICON-CH1, ICON-D2) und den Höhenwind
-  // einschließen, sonst würde eine der Kurven oben abgeschnitten (der
-  // Höhenwind ist oft deutlich stärker).
+  // Höhenwind: eigene Sichtbarkeit (eigener Legendeneintrag), eigene Zeile
+  // unter dem Vergleichsblock. Wird nur bei Windanzeiger-Stationen geliefert.
+  const hasUpperData = upperPoints.some((p) => p.speed !== null);
+  const upperVisible = !hiddenModels.has(UPPER_FORECAST_MODEL.key);
+  const hasUpper = hasUpperData && upperVisible;
+
+  // yMax muss alle SICHTBAREN Kurven einschließen, sonst würde eine davon oben
+  // abgeschnitten (der Höhenwind ist oft deutlich stärker). Umgekehrt heißt
+  // das: Blendet man ein starkes Modell aus, wird die Achse automatisch
+  // feiner — die übrigen Kurven sind dann besser ablesbar.
   const maxValue = [
     ...points,
-    ...forecastPoints,
-    ...forecastD2Points,
-    ...upperPoints,
+    ...shownLayers.flatMap((l) => l.points),
+    ...(hasUpper ? upperPoints : []),
   ].reduce((m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0), 0);
   // Obergrenze der y-Achse auf volle 10er runden, mindestens 20 km/h.
   const yMax = Math.max(20, Math.ceil(maxValue / 10) * 10);
@@ -398,21 +423,23 @@ export default function WindHistoryPanel({
   const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const gustValueY = speedValueY + VALUE_LINE_H;
 
-  // ICON-D2-Bodenwind-Block (blau), direkt unter dem Messwert-Block: eigene
+  // Prognose-Vergleichsblock, direkt unter dem Messwert-Block: eine gemeinsame
   // Pfeilreihe + zwei Zahlenzeilen (Mittelwind, Böe) — dieselbe Darstellung
-  // wie Messung und ICON-CH1, nur in Blau und weiter unten.
+  // wie beim Messwert-Block, nur stehen hier je Stunde die sichtbaren Modelle
+  // nebeneinander, jedes in seiner Farbe.
   const d2ArrowCy = gustValueY + D2_ROW_GAP + ARROW_ROW_H / 2;
   const d2ArrowRowBottom = gustValueY + D2_ROW_GAP + ARROW_ROW_H;
   const d2SpeedValueY = d2ArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const d2GustValueY = d2SpeedValueY + VALUE_LINE_H;
-  // Horizontaler Abstand vom Stundenpunkt für den Vergleichs-Block: rotes
-  // ICON-CH1 links, blaues ICON-D2 rechts nebeneinander unter derselben
-  // Stunde (ersetzt die vormals separate rote Überlagerung im Kurvenbereich).
-  const FORECAST_PAIR_HALF_GAP = 11;
+  // Spaltenbreite je Modell im Vergleichsblock. Die sichtbaren Modelle werden
+  // symmetrisch um den Stundenpunkt verteilt (bei zwei Modellen also links und
+  // rechts wie bisher, bei vieren entsprechend breiter).
+  const FORECAST_COL_W = 22;
+  const forecastColOffset = (i: number) =>
+    (i - (shownLayers.length - 1) / 2) * FORECAST_COL_W;
 
-  // Höhenwind (nur Windanzeiger-Stationen): eine fette blaue Zahl direkt UNTER
-  // den beiden ICON-D2-Zahlen, darunter der Richtungspfeil (nur Kontur, blau).
-  const hasUpper = upperPoints.some((p) => p.speed !== null);
+  // Höhenwind (nur Windanzeiger-Stationen): eine fette Zahl direkt UNTER den
+  // Prognose-Zahlen, darunter der Richtungspfeil (nur Kontur).
   const upperValueY = d2GustValueY + VALUE_LINE_H;
   const upperArrowCy = upperValueY + VALUES_GAP + ARROW_ROW_H / 2;
   // Das SVG wird nur dann höher, wenn es tatsächlich Höhenwind-Werte gibt.
@@ -501,15 +528,14 @@ export default function WindHistoryPanel({
     if (!hourlyPointIndices.has(i)) tryAdd(i);
   }
 
-  // Gemeinsame Ausdünnung für den Prognose-Vergleichsblock (CH1 links rot,
-  // D2 rechts blau): Vereinigung aller Zeitpunkte aus beiden Prognosen (ein
-  // Modell kann für einzelne Stunden fehlen), damit an jeder gezeigten
-  // Stunde zumindest ein Wert erscheint. Der Platzbedarf ist größer als bei
-  // einer einzelnen Spalte, da rot+blau nebeneinander stehen.
-  const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
-  const forecastD2ByT = new Map(forecastD2Points.map((p) => [p.t, p]));
+  // Gemeinsame Ausdünnung für den Prognose-Vergleichsblock: Vereinigung aller
+  // Zeitpunkte der sichtbaren Modelle (ein Modell kann für einzelne Stunden
+  // fehlen, etwa am Rand seines Vorhersagehorizonts), damit an jeder gezeigten
+  // Stunde zumindest ein Wert erscheint. Der Platzbedarf wächst mit der Zahl
+  // der sichtbaren Modelle — blendet man Modelle aus, rücken die Stunden
+  // automatisch wieder enger zusammen.
   const combinedForecastTimes = Array.from(
-    new Set([...forecastPoints.map((p) => p.t), ...forecastD2Points.map((p) => p.t)]),
+    new Set(shownLayers.flatMap((l) => l.points.map((p) => p.t))),
   ).sort((a, b) => a - b);
   const combinedPxPerPoint =
     combinedForecastTimes.length > 1
@@ -520,8 +546,10 @@ export default function WindHistoryPanel({
   const combinedForecastStep = Math.max(
     1,
     Math.ceil(
-      Math.max(ARROW_SIZE + 2 * FORECAST_PAIR_HALF_GAP, MIN_LABEL_SPACING) /
-        combinedPxPerPoint,
+      Math.max(
+        ARROW_SIZE + Math.max(0, shownLayers.length - 1) * FORECAST_COL_W,
+        MIN_LABEL_SPACING,
+      ) / combinedPxPerPoint,
     ),
   );
   const combinedForecastTimeSelection: number[] = [];
@@ -550,27 +578,24 @@ export default function WindHistoryPanel({
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
   const areaPath = buildAreaPath(points, (p) => p.gust, (p) => p.speed, x, y);
-  const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
-  const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
-  const forecastAreaPath = buildAreaPath(
-    forecastPoints,
-    (p) => p.gust,
-    (p) => p.speed,
-    x,
-    y,
-  );
-  // ICON-D2-Bodenwind (blau, durchgezogen) — gleiche Kurven wie ICON-CH1.
-  const forecastD2SpeedPath = buildLinePath(forecastD2Points, (p) => p.speed, x, y);
-  const forecastD2GustPath = buildLinePath(forecastD2Points, (p) => p.gust, x, y);
-  const forecastD2AreaPath = buildAreaPath(
-    forecastD2Points,
-    (p) => p.gust,
-    (p) => p.speed,
-    x,
-    y,
-  );
-  // Höhenwind: nur eine (Mittelwind-)Linie, blau gestrichelt.
+  // Je sichtbarem Modell dieselben drei Pfade wie bei den Messwerten:
+  // Böen-Linie, Mittelwind-Linie und die Fläche dazwischen.
+  const forecastPaths = shownLayers.map((layer) => ({
+    key: layer.key,
+    color: layer.color,
+    speedPath: buildLinePath(layer.points, (p) => p.speed, x, y),
+    gustPath: buildLinePath(layer.points, (p) => p.gust, x, y),
+    areaPath: buildAreaPath(layer.points, (p) => p.gust, (p) => p.speed, x, y),
+    points: layer.points,
+  }));
+  // Höhenwind: nur eine (Mittelwind-)Linie, gestrichelt.
   const upperSpeedPath = buildLinePath(upperPoints, (p) => p.speed, x, y);
+
+  // Deckkraft der Fläche zwischen Mittelwind und Böe. Bei bis zu zwei
+  // sichtbaren Prognosen bleibt es bei den gewohnten 30%; ab drei würden sich
+  // die Flächen zu einem undurchsichtigen Brei überlagern, deshalb dann nur
+  // noch halb so kräftig. Die Linien selbst bleiben unverändert.
+  const forecastAreaOpacity = shownLayers.length <= 2 ? 0.3 : 0.15;
 
   // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
   const LINE_WIDTH = 1.8;
@@ -594,25 +619,8 @@ export default function WindHistoryPanel({
             · Stand: {formatTimestamp(station.timestamp)}
           </span>
         </h2>
-        <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
-          letzte 12 Stunden{" "}
-          <span className="text-zinc-400 dark:text-zinc-500">
-            — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
-            Messung ·{" "}
-            <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
-            (ICON-CH1) ·{" "}
-            <span className="text-blue-600 dark:text-blue-400">blau</span>:
-            Prognose (ICON-D2)
-            {upper && upper.entries.length > 0 && (
-              <>
-                {" · "}
-                <span className="text-blue-600 dark:text-blue-400">
-                  blau gestrichelt
-                </span>
-                : Höhenwind
-              </>
-            )}
-          </span>
+        <span className="hidden shrink-0 text-xs text-zinc-500 sm:inline dark:text-zinc-400">
+          letzte 12 Stunden
         </span>
         <button
           type="button"
@@ -631,14 +639,74 @@ export default function WindHistoryPanel({
         </button>
       </header>
 
-      {/* Immer sichtbare Beschriftung des Höhenwinds (auch auf dem Handy, wo
-          die Legende oben ausgeblendet ist): welche Druckfläche + Höhe. */}
-      {upper && upper.entries.length > 0 && upper.pressure_level !== null && (
-        <p className="px-3 pb-1 text-[11px] text-blue-600 dark:text-blue-400">
-          Höhenwind (blau gestrichelt): {upper.pressure_level} hPa
-          {upper.height_m !== null && ` ≈ ${upper.height_m} m`}
-        </p>
-      )}
+      {/* Legende: Messung (fest) + ein Eintrag je Prognosemodell. Ein Klick auf
+          einen Modell-Eintrag blendet dessen Linien, Pfeile und Zahlen aus bzw.
+          wieder ein — bei vier Prognosen sonst schnell unübersichtlich. Modelle
+          ohne Daten für diese Station stehen ausgegraut da (nicht anklickbar):
+          so sieht man sofort, dass z. B. AROME diese Station nicht abdeckt. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3 pb-1 text-[11px]">
+        <span className="flex items-center gap-1.5 text-zinc-700 dark:text-zinc-200">
+          <span className="inline-block h-[3px] w-4 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+          Messung
+        </span>
+        {forecastLayers.map((layer) => (
+          <button
+            key={layer.key}
+            type="button"
+            disabled={!layer.hasData}
+            aria-pressed={layer.hasData && layer.visible}
+            onClick={() => toggleModel(layer.key)}
+            title={
+              layer.hasData
+                ? `${layer.label} (${layer.provider}) ein-/ausblenden`
+                : `Für diese Station liegt keine ${layer.label}-Prognose vor`
+            }
+            className={`flex items-center gap-1.5 rounded px-1 py-0.5 ${
+              layer.hasData
+                ? "cursor-pointer text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                : "cursor-not-allowed text-zinc-400 line-through dark:text-zinc-600"
+            } ${layer.hasData && !layer.visible ? "opacity-40 line-through" : ""}`}
+          >
+            <span
+              className="inline-block h-[3px] w-4 rounded-full"
+              style={{
+                backgroundColor: layer.hasData ? layer.color : "currentColor",
+              }}
+            />
+            {layer.label}
+          </button>
+        ))}
+        {hasUpperData && (
+          <button
+            type="button"
+            aria-pressed={upperVisible}
+            onClick={() => toggleModel(UPPER_FORECAST_MODEL.key)}
+            title="Höhenwind ein-/ausblenden"
+            className={`flex items-center gap-1.5 rounded px-1 py-0.5 text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800 ${
+              upperVisible ? "" : "opacity-40 line-through"
+            }`}
+          >
+            <svg width="16" height="3" aria-hidden="true">
+              <line
+                x1="0"
+                y1="1.5"
+                x2="16"
+                y2="1.5"
+                stroke={UPPER_FORECAST_MODEL.color}
+                strokeWidth="3"
+                strokeDasharray="5 3"
+              />
+            </svg>
+            {UPPER_FORECAST_MODEL.label}
+            {upper?.pressure_level !== null && upper?.pressure_level !== undefined && (
+              <span className="text-zinc-400 dark:text-zinc-500">
+                {upper.pressure_level} hPa
+                {upper.height_m !== null && ` ≈ ${upper.height_m} m`}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
 
       <div className="flex px-1 pb-4">
         <div
@@ -734,133 +802,86 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
-              {/* Prognose (ICON-CH1) in Rot, VOR den schwarzen Messwert-Kurven
-                  gezeichnet: im Überlappungsbereich liegt so die echte Messung
-                  optisch oben; rechts der "jetzt"-Linie steht Rot ohnehin
-                  allein. Beide Linien gleich dick, die Fläche dazwischen in
-                  derselben Farbe mit 30% Deckkraft. */}
-              <path
-                d={forecastAreaPath}
-                stroke="none"
-                fillOpacity={0.3}
-                className="fill-red-600 dark:fill-red-500"
-              />
-              <path
-                d={forecastGustPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-red-600 dark:stroke-red-500"
-              />
-              <path
-                d={forecastSpeedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-red-600 dark:stroke-red-500"
-              />
-
-              {/* Prognose-Punkte je Zeitpunkt (analog zu den schwarzen
-                  Messpunkten) */}
-              {forecastPoints.map((p) => (
-                <g key={`fdot-${p.t}`}>
-                  {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-red-600 dark:fill-red-500"
-                    />
-                  )}
-                  {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-red-600 dark:fill-red-500"
-                    />
-                  )}
+              {/* Prognosen, VOR den schwarzen Messwert-Kurven gezeichnet: im
+                  Überlappungsbereich liegt so die echte Messung optisch oben;
+                  rechts der "jetzt"-Linie stehen die Prognosen ohnehin allein.
+                  Je Modell dieselbe Darstellung: Böen- und Mittelwind-Linie
+                  gleich dick, die Fläche dazwischen in derselben Farbe mit 30%
+                  Deckkraft, dazu ein Punkt je Prognosestunde. Welche Modelle
+                  hier auftauchen, steuert die Legende. Endet ein Modell früher
+                  (kürzerer Vorhersagehorizont), endet einfach seine Linie. */}
+              {forecastPaths.map((layer) => (
+                <g key={`fc-${layer.key}`}>
+                  <path
+                    d={layer.areaPath}
+                    stroke="none"
+                    fill={layer.color}
+                    fillOpacity={forecastAreaOpacity}
+                  />
+                  <path
+                    d={layer.gustPath}
+                    fill="none"
+                    stroke={layer.color}
+                    strokeWidth={LINE_WIDTH}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={layer.speedPath}
+                    fill="none"
+                    stroke={layer.color}
+                    strokeWidth={LINE_WIDTH}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                  {layer.points.map((p) => (
+                    <g key={`fdot-${layer.key}-${p.t}`}>
+                      {p.gust !== null && (
+                        <circle cx={x(p.t)} cy={y(p.gust)} r={2} fill={layer.color} />
+                      )}
+                      {p.speed !== null && (
+                        <circle cx={x(p.t)} cy={y(p.speed)} r={1.7} fill={layer.color} />
+                      )}
+                    </g>
+                  ))}
                 </g>
               ))}
 
-              {/* Prognose (ICON-D2) in Blau, durchgezogen — gleiche Darstellung
-                  wie die rote ICON-CH1-Prognose (Böen + Mittelwind + Fläche). */}
-              <path
-                d={forecastD2AreaPath}
-                stroke="none"
-                fillOpacity={0.3}
-                className="fill-blue-600 dark:fill-blue-400"
-              />
-              <path
-                d={forecastD2GustPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
-              />
-              <path
-                d={forecastD2SpeedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
-              />
-              {forecastD2Points.map((p) => (
-                <g key={`d2dot-${p.t}`}>
-                  {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-blue-600 dark:fill-blue-400"
-                    />
-                  )}
-                  {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-blue-600 dark:fill-blue-400"
-                    />
+              {/* Höhenwind (nur Windanzeiger-Stationen): eine gestrichelte
+                  Mittelwind-Linie plus Punkte. Keine Böen/Fläche, da es auf
+                  Druckflächen keine Böen gibt. Welche Druckfläche und Höhe
+                  gemeint ist, steht im Legendeneintrag über dem Diagramm. */}
+              {hasUpper && (
+                <g>
+                  <path
+                    d={upperSpeedPath}
+                    fill="none"
+                    stroke={UPPER_FORECAST_MODEL.color}
+                    strokeWidth={LINE_WIDTH}
+                    strokeDasharray="5 3"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                  {upperPoints.map((p) =>
+                    p.speed !== null ? (
+                      <circle
+                        key={`udot-${p.t}`}
+                        cx={x(p.t)}
+                        cy={y(p.speed)}
+                        r={1.8}
+                        fill={UPPER_FORECAST_MODEL.color}
+                      >
+                        <title>
+                          {`Höhenwind ${formatTime(p.t)} Uhr — ${Math.round(p.speed)} km/h${
+                            p.direction !== null
+                              ? `, Richtung ${Math.round(p.direction)}°`
+                              : ""
+                          }`}
+                        </title>
+                      </circle>
+                    ) : null,
                   )}
                 </g>
-              ))}
-
-              {/* Höhenwind (nur Windanzeiger-Stationen): eine gestrichelte,
-                  blaue Mittelwind-Linie plus Punkte. Keine Böen/Fläche, da es
-                  auf Druckflächen keine Böen gibt. Welche Druckfläche und Höhe
-                  gemeint ist, steht in der Beschriftung über dem Diagramm. */}
-              <path
-                d={upperSpeedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeDasharray="5 3"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
-              />
-              {upperPoints.map((p) =>
-                p.speed !== null ? (
-                  <circle
-                    key={`udot-${p.t}`}
-                    cx={x(p.t)}
-                    cy={y(p.speed)}
-                    r={1.8}
-                    className="fill-blue-600 dark:fill-blue-400"
-                  >
-                    <title>
-                      {`Höhenwind ${formatTime(p.t)} Uhr — ${Math.round(p.speed)} km/h${
-                        p.direction !== null
-                          ? `, Richtung ${Math.round(p.direction)}°`
-                          : ""
-                      }`}
-                    </title>
-                  </circle>
-                ) : null,
               )}
 
               {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
@@ -979,142 +1000,113 @@ export default function WindHistoryPanel({
               })}
 
               {/* Prognose-Vergleichsblock UNTER dem Messwert-Block: für jede
-                  Stunde links das rote ICON-CH1-Ergebnis, rechts direkt
-                  daneben das blaue ICON-D2-Ergebnis — Windpfeil (Mittelwind),
-                  darunter Mittelwind- und Böen-Zahl, jeweils als Paar. Fehlt
-                  eines der beiden Modelle für eine Stunde, erscheint nur die
-                  andere Seite. */}
-              {combinedForecastTimeSelection.map((t) => {
-                const chP = forecastByT.get(t);
-                const d2P = forecastD2ByT.get(t);
-                const tx = x(t);
-                return (
-                  <g key={`fcarrow-${t}`}>
-                    {chP && chP.direction !== null && (
+                  gezeigte Stunde stehen die sichtbaren Modelle nebeneinander
+                  (Reihenfolge wie in der Legende), jedes mit Windpfeil
+                  (Mittelwind) und darunter Mittelwind- und Böen-Zahl in seiner
+                  Farbe. Fehlt ein Modell für eine Stunde, bleibt seine Spalte
+                  dort einfach leer — die übrigen bleiben an ihrem Platz. */}
+              {combinedForecastTimeSelection.map((t) => (
+                <g key={`fcarrow-${t}`}>
+                  {shownLayers.map((layer, i) => {
+                    const p = layer.byT.get(t);
+                    if (!p || p.direction === null) return null;
+                    const cx = x(t) + forecastColOffset(i);
+                    const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
+                    return (
                       <g
-                        transform={`translate(${(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                        key={layer.key}
+                        transform={`translate(${cx.toFixed(1)} ${d2ArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                       >
                         <title>
-                          {`Prognose ICON-CH1 ${formatTime(t)} Uhr — Wind ${chP.speed ?? "–"} km/h, Böen ${chP.gust ?? "–"} km/h, Richtung ${Math.round(chP.direction)}°`}
+                          {`Prognose ${layer.label} ${formatTime(t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
                         </title>
                         <path
                           d="M20 2 L34 34 L20 26 L6 34 Z"
                           transform="translate(-20 -20)"
-                          className="fill-red-600 dark:fill-red-500"
+                          fill={layer.color}
                         />
                       </g>
-                    )}
-                    {d2P && d2P.direction !== null && (
-                      <g
-                        transform={`translate(${(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(d2P.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
-                      >
-                        <title>
-                          {`Prognose ICON-D2 ${formatTime(t)} Uhr — Wind ${d2P.speed ?? "–"} km/h, Böen ${d2P.gust ?? "–"} km/h, Richtung ${Math.round(d2P.direction)}°`}
-                        </title>
-                        <path
-                          d="M20 2 L34 34 L20 26 L6 34 Z"
-                          transform="translate(-20 -20)"
-                          className="fill-blue-600 dark:fill-blue-400"
-                        />
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
-              {combinedForecastTimeSelection.map((t) => {
-                const chP = forecastByT.get(t);
-                const d2P = forecastD2ByT.get(t);
-                const tx = x(t);
-                return (
-                  <g key={`fcvalues-${t}`}>
-                    {chP && (
-                      <g className="fill-red-600 dark:fill-red-500">
+                    );
+                  })}
+                </g>
+              ))}
+              {combinedForecastTimeSelection.map((t) => (
+                <g key={`fcvalues-${t}`}>
+                  {shownLayers.map((layer, i) => {
+                    const p = layer.byT.get(t);
+                    if (!p) return null;
+                    const cx = (x(t) + forecastColOffset(i)).toFixed(1);
+                    return (
+                      <g key={layer.key} fill={layer.color}>
                         <text
-                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          x={cx}
                           y={d2SpeedValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
-                          {chP.speed !== null ? Math.round(chP.speed) : "–"}
+                          {p.speed !== null ? Math.round(p.speed) : "–"}
                         </text>
                         <text
-                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
+                          x={cx}
                           y={d2GustValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
-                          {chP.gust !== null ? Math.round(chP.gust) : "–"}
+                          {p.gust !== null ? Math.round(p.gust) : "–"}
                         </text>
                       </g>
-                    )}
-                    {d2P && (
-                      <g className="fill-blue-600 dark:fill-blue-400">
-                        <text
-                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2SpeedValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {d2P.speed !== null ? Math.round(d2P.speed) : "–"}
-                        </text>
-                        <text
-                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2GustValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {d2P.gust !== null ? Math.round(d2P.gust) : "–"}
-                        </text>
-                      </g>
-                    )}
-                  </g>
-                );
-              })}
+                    );
+                  })}
+                </g>
+              ))}
 
-              {/* Höhenwind (nur Windanzeiger-Stationen): fette blaue Zahl direkt
-                  unter den beiden ICON-D2-Zahlen, darunter der Richtungspfeil
-                  nur als blaue Kontur (ohne Füllung). Gleicher Rechts-Versatz
-                  wie die ICON-D2-Werte darüber, damit alle blauen Elemente
-                  einer Stunde exakt untereinanderstehen. */}
-              {upperArrowIndices.map((i) => {
-                const p = upperPoints[i];
-                if (p.speed === null) return null;
-                return (
-                  <text
-                    key={`uvalue-${p.t}`}
-                    x={(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                    y={upperValueY}
-                    textAnchor="middle"
-                    className="text-[10px] font-bold tabular-nums fill-blue-600 dark:fill-blue-400"
-                  >
-                    {Math.round(p.speed)}
-                  </text>
-                );
-              })}
-              {upperArrowIndices.map((i) => {
-                const p = upperPoints[i];
-                if (p.direction === null) return null;
-                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
-                return (
-                  <g
-                    key={`uarrow-${p.t}`}
-                    transform={`translate(${(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
-                  >
-                    <title>
-                      {`Höhenwind ${formatTime(p.t)} Uhr — ${p.speed ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
-                    </title>
-                    <path
-                      d="M20 2 L34 34 L20 26 L6 34 Z"
-                      transform="translate(-20 -20)"
-                      fill="none"
-                      strokeWidth={3}
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      className="stroke-blue-600 dark:stroke-blue-400"
-                    />
-                  </g>
-                );
-              })}
+              {/* Höhenwind (nur Windanzeiger-Stationen): fette Zahl direkt
+                  unter den Prognose-Zahlen, darunter der Richtungspfeil nur als
+                  Kontur (ohne Füllung). Mittig unter der jeweiligen Stunde,
+                  weil im Block darüber inzwischen bis zu vier Modelle
+                  nebeneinander stehen. */}
+              {hasUpper &&
+                upperArrowIndices.map((i) => {
+                  const p = upperPoints[i];
+                  if (p.speed === null) return null;
+                  return (
+                    <text
+                      key={`uvalue-${p.t}`}
+                      x={x(p.t).toFixed(1)}
+                      y={upperValueY}
+                      textAnchor="middle"
+                      fill={UPPER_FORECAST_MODEL.color}
+                      className="text-[10px] font-bold tabular-nums"
+                    >
+                      {Math.round(p.speed)}
+                    </text>
+                  );
+                })}
+              {hasUpper &&
+                upperArrowIndices.map((i) => {
+                  const p = upperPoints[i];
+                  if (p.direction === null) return null;
+                  const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
+                  return (
+                    <g
+                      key={`uarrow-${p.t}`}
+                      transform={`translate(${x(p.t).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                    >
+                      <title>
+                        {`Höhenwind ${formatTime(p.t)} Uhr — ${p.speed ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
+                      </title>
+                      <path
+                        d="M20 2 L34 34 L20 26 L6 34 Z"
+                        transform="translate(-20 -20)"
+                        fill="none"
+                        stroke={UPPER_FORECAST_MODEL.color}
+                        strokeWidth={3}
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  );
+                })}
             </svg>
           )}
         </div>

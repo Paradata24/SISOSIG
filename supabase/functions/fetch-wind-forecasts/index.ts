@@ -1,4 +1,5 @@
-// Supabase Edge Function "fetch-wind-forecasts": holt ICON-CH1-Windprognosen
+// Supabase Edge Function "fetch-wind-forecasts": holt Windprognosen von
+// VIER Modellen (ICON-CH1, ICON-D2, AROME Austria, ECMWF IFS)
 // von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
 // (Bozner Wetterdienst UND Südtiroler OpenWindMap/Pioupiou-Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
@@ -18,14 +19,17 @@
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
-//      abfragen — für ZWEI Modelle: meteoswiss_icon_ch1 (model 'icon_ch1')
-//      und dwd_icon_d2 (model 'icon_d2'), damit sich beide Prognosen
-//      vergleichen lassen. Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
-//      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
-//      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
-//      per Index den Stationen zugeordnet.
+//      abfragen — für VIER Modelle (siehe SURFACE_MODELS), damit sich die
+//      Prognosen vergleichen lassen. Letzte 12 h + kommende ~7 h, Einheit
+//      km/h (wie in wind_measurements), Zeiten als Unix-Sekunden (eindeutig
+//      UTC). Die Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten
+//      und wird per Index den Stationen zugeordnet. Jedes Modell bekommt
+//      seine EIGENEN Anfragen (siehe SURFACE_MODELS), damit ein Modell, das
+//      eine Station oder gerade den ganzen Lauf nicht abdeckt, die übrigen
+//      Modelle nicht mitreißt.
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
-//      null) werden übersprungen; der Rest wird per Upsert gespeichert
+//      null — z. B. AROME Austria außerhalb seines Gebiets) werden
+//      übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
 //   4b. Höhenwind NUR für die kuratierten "Windanzeiger"-Stationen: mehrere
 //      Kandidaten-Druckflächen (aus DWD ICON-D2 — ICON-CH1 hat bei Open-Meteo
@@ -55,23 +59,48 @@ const PIOUPIOU_API_BASE =
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
-// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil. Es werden
-// drei Zeilen-Sorten gespeichert:
-//   'icon_ch1'      — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
-//   'icon_d2'       — Bodenwind aus DWD ICON-D2 (blaue Kurve im Panel)
-//   'icon_d2_upper' — Höhenwind (Druckfläche) aus ICON-D2 (blau gestrichelt),
-//                     nur für die Windanzeiger-Stationen, mit pressure_level/height_m
-const MODEL_DB = "icon_ch1";
-const MODEL_D2_DB = "icon_d2";
+// Ein Bodenwind-Prognosemodell: Name in der Datenbank (Spalte "model") und
+// die Schreibweise(n), unter denen Open-Meteo es im Parameter "models" kennt.
+interface SurfaceModel {
+  /** Wert der Spalte "model" in wind_forecasts. */
+  db: string;
+  /**
+   * Kandidaten für den Open-Meteo-Modellnamen, in Reihenfolge der Bevorzugung.
+   * Antwortet Open-Meteo auf den ersten Namen mit HTTP 400 (Modellname
+   * unbekannt — Open-Meteo benennt Modelle gelegentlich um), wird automatisch
+   * der nächste Kandidat probiert; der erste funktionierende Name gilt dann
+   * für alle weiteren Batches desselben Laufs.
+   */
+  api: string[];
+}
+
+// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil. Gespeichert
+// werden fünf Zeilen-Sorten: die vier Bodenwind-Modelle hier plus der
+// Höhenwind ('icon_d2_upper', s. u.). Die Farben im Verlaufsbalken stehen im
+// Frontend (FORECAST_MODELS in src/lib/wind.ts) — beim Ergänzen eines Modells
+// müssen beide Listen angefasst werden (Deno kann aus src/lib nicht importieren):
+//   'icon_ch1'      — MeteoSwiss ICON-CH1      (rot)
+//   'icon_d2'       — DWD ICON-D2              (blau)
+//   'arome_austria' — GeoSphere Austria AROME  (goldgelb)
+//   'ecmwf_ifs'     — ECMWF IFS HRES 9 km      (smaragdgrün)
+const SURFACE_MODELS: SurfaceModel[] = [
+  { db: "icon_ch1", api: ["meteoswiss_icon_ch1"] },
+  { db: "icon_d2", api: ["dwd_icon_d2"] },
+  { db: "arome_austria", api: ["geosphere_arome_austria"] },
+  // ECMWF: "ecmwf_ifs" ist der aktuelle Name des 9-km-HRES-Laufs; "ecmwf_ifs025"
+  // (0,25°-Open-Data-Variante) dient als Rückfallebene, falls Open-Meteo den
+  // ersten Namen nicht (mehr) kennt.
+  { db: "ecmwf_ifs", api: ["ecmwf_ifs", "ecmwf_ifs025"] },
+];
+
+// Höhenwind (Druckflächen-Wind), nur für die Windanzeiger-Stationen.
 const MODEL_UPPER_DB = "icon_d2_upper";
-// Modellname, den die Open-Meteo-API für ICON-CH1 erwartet (nur Bodenwind).
-const MODEL_API = "meteoswiss_icon_ch1";
 // Modellname, den die Open-Meteo-API für ICON-D2 erwartet — genutzt für den
-// D2-Bodenwind UND den Höhenwind. Bewusst NICHT ICON-CH1 für den Höhenwind:
-// MeteoSwiss ICON-CH1 liefert bei Open-Meteo keine Druckflächen-Daten (die
-// Abfrage kommt leer zurück, upperSaved bleibt 0). DWD ICON-D2 ist
-// hochauflösend (~2 km), deckt den Alpenraum inkl. Südtirol ab und bietet die
-// Druckflächen-Winde (inkl. 800 hPa) an.
+// Höhenwind. Bewusst NICHT ICON-CH1: MeteoSwiss ICON-CH1 liefert bei
+// Open-Meteo keine Druckflächen-Daten (die Abfrage kommt leer zurück,
+// upperSaved bleibt 0). DWD ICON-D2 ist hochauflösend (~2 km), deckt den
+// Alpenraum inkl. Südtirol ab und bietet die Druckflächen-Winde (inkl.
+// 800 hPa) an.
 const MODEL_D2_API = "dwd_icon_d2";
 
 // Kandidaten-Druckflächen (hPa) für den Höhenwind. Für JEDE wird eine eigene
@@ -109,6 +138,14 @@ const PAST_HOURS = 12;
 // alt; mit 7 Stunden ist der angezeigte Bereich bis "jetzt + 4h" auch im
 // ungünstigsten Fall lückenlos gefüllt. /api/forecast schneidet den Überhang
 // beim Ausliefern wieder ab.
+//
+// Zu den unterschiedlichen Vorhersagehorizonten der Modelle (ICON-CH1 ~33 h,
+// ICON-D2 ~48 h, AROME Austria ~60 h, ECMWF deutlich länger): 7 Stunden liegen
+// weit innerhalb JEDES dieser Horizonte, hier gibt es also nichts zu kappen.
+// Reicht ein Modell (etwa wegen eines verspäteten Laufs) doch einmal nicht so
+// weit, liefert Open-Meteo für die betroffenen Stunden null — diese Stunden
+// werden übersprungen (siehe fetchForecastBatch), und die zugehörige Linie im
+// Diagramm endet einfach dort, wo das Modell aufhört.
 const FORECAST_HOURS = 7;
 // Aufbewahrung wie bei den Messwerten (/api/collect): 2 Tage reichen für die
 // 12h-Anzeige mit großem Puffer.
@@ -560,31 +597,62 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
 
-  // 3) Bodenwind batchweise abfragen — für BEIDE Modelle (ICON-CH1 und
-  //    ICON-D2), damit sich die zwei Prognosen im Panel vergleichen lassen.
-  //    Ein fehlgeschlagener Batch bricht nicht den ganzen Lauf ab — die
-  //    übrigen Stationen werden trotzdem gespeichert, der Fehler wird
+  // 3) Bodenwind batchweise abfragen — für ALLE Modelle aus SURFACE_MODELS,
+  //    damit sich die Prognosen im Panel vergleichen lassen. Jedes Modell
+  //    bekommt eigene Anfragen: so kann ein Modell, das eine Region nicht
+  //    abdeckt oder dessen Lauf gerade fehlt, die anderen nicht mitreißen.
+  //    Ein fehlgeschlagener Batch bricht ebenfalls nicht den ganzen Lauf ab —
+  //    die übrigen Stationen werden trotzdem gespeichert, der Fehler wird
   //    geloggt und in der Antwort gemeldet.
   const fetchedAt = new Date().toISOString();
   const rows: ForecastRow[] = [];
   let skippedNullHours = 0;
   const batchErrors: string[] = [];
+  // Je Modell: wie viele Stationen tatsächlich Werte geliefert haben. Damit
+  // lässt sich in der Antwort sofort sehen, ob z. B. AROME Austria die
+  // Südtiroler Stationen abdeckt.
+  const stationsWithData = new Map<string, Set<string>>(
+    SURFACE_MODELS.map((m) => [m.db, new Set<string>()]),
+  );
 
-  const surfaceModels = [
-    { api: MODEL_API, db: MODEL_DB },
-    { api: MODEL_D2_API, db: MODEL_D2_DB },
-  ];
-  for (const model of surfaceModels) {
+  for (const model of SURFACE_MODELS) {
+    // Kandidatenliste des Modellnamens; ein von Open-Meteo abgelehnter Name
+    // (HTTP 400) wird verworfen und der nächste Kandidat probiert.
+    const candidates = [...model.api];
+
     for (let i = 0; i < stations.length; i += BATCH_SIZE) {
       const batch = stations.slice(i, i + BATCH_SIZE);
-      try {
-        const result = await fetchForecastBatch(batch, fetchedAt, model.api, model.db);
-        rows.push(...result.rows);
-        skippedNullHours += result.skippedNullHours;
-      } catch (err) {
-        const message = `Batch ${model.db} ab Station ${batch[0].code}: ${(err as Error).message}`;
-        console.error(message);
-        batchErrors.push(message);
+
+      while (candidates.length > 0) {
+        try {
+          const result = await fetchForecastBatch(
+            batch,
+            fetchedAt,
+            candidates[0],
+            model.db,
+          );
+          rows.push(...result.rows);
+          skippedNullHours += result.skippedNullHours;
+          for (const row of result.rows) {
+            stationsWithData.get(model.db)?.add(row.station_code);
+          }
+          break;
+        } catch (err) {
+          const message = (err as Error).message;
+          // Unbekannter Modellname? Dann den nächsten Kandidaten versuchen,
+          // ohne den Batch als Fehler zu werten.
+          if (candidates.length > 1 && message.includes("Status 400")) {
+            batchErrors.push(
+              `Modellname "${candidates[0]}" von Open-Meteo abgelehnt, versuche "${candidates[1]}"`,
+            );
+            candidates.shift();
+            continue;
+          }
+          const note = `Batch ${model.db} ab Station ${batch[0].code}: ${message}`;
+          console.error(note);
+          batchErrors.push(note);
+          break;
+        }
       }
     }
   }
@@ -657,13 +725,23 @@ export async function handleRequest(request: Request): Promise<Response> {
     cleanupOk = false;
   }
 
+  // Je Modell: gespeicherte Zeilen und Anzahl Stationen mit Werten. Genau hier
+  // sieht man nach einem Lauf, ob ein Modell (z. B. AROME Austria) das Gebiet
+  // abdeckt — 0 Stationen heißt: liefert für Südtirol nichts.
+  const perModel: Record<string, { rows: number; stations: number }> = {};
+  for (const model of SURFACE_MODELS) {
+    perModel[model.db] = {
+      rows: rows.filter((r) => r.model === model.db).length,
+      stations: stationsWithData.get(model.db)?.size ?? 0,
+    };
+  }
+
   return json({
     ok: true,
-    models: [MODEL_DB, MODEL_D2_DB, MODEL_UPPER_DB],
+    models: [...SURFACE_MODELS.map((m) => m.db), MODEL_UPPER_DB],
     stations: stations.length,
     saved: rows.length,
-    ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
-    d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
+    perModel,
     skippedNullHours,
     batchErrors,
     windanzeigerStations: windanzeigerStations.length,

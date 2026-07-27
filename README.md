@@ -197,7 +197,7 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
 
-## Windprognosen ICON-CH1 & ICON-D2 (Supabase Edge Function)
+## Windprognosen: vier Modelle (Supabase Edge Function)
 
 Die Supabase Edge Function `fetch-wind-forecasts`
 (Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
@@ -210,10 +210,32 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
 — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
-- **Zwei Modelle zum Vergleich:** Der Bodenwind wird sowohl aus
-  **ICON-CH1** (`model = 'icon_ch1'`, im Panel rot) als auch aus **ICON-D2**
-  (`model = 'icon_d2'`, im Panel blau) geholt. Dazu kommt der Höhenwind
-  (`icon_d2_upper`, blau gestrichelt, siehe unten).
+- **Vier Modelle zum Vergleich** (Liste `SURFACE_MODELS` in der Edge
+  Function, Farben in `FORECAST_MODELS`, `src/lib/wind.ts`):
+
+  | Modell | Open-Meteo-Name | Spalte `model` | Farbe im Panel |
+  | --- | --- | --- | --- |
+  | MeteoSwiss ICON-CH1 | `meteoswiss_icon_ch1` | `icon_ch1` | rot |
+  | DWD ICON-D2 | `dwd_icon_d2` | `icon_d2` | blau |
+  | GeoSphere Austria AROME | `geosphere_arome_austria` | `arome_austria` | goldgelb |
+  | ECMWF IFS HRES 9 km | `ecmwf_ifs` (Rückfall: `ecmwf_ifs025`) | `ecmwf_ifs` | smaragdgrün |
+
+  Dazu kommt der Höhenwind (`icon_d2_upper`, gestrichelt, siehe unten).
+  **Ein Modell pro Anfrage** (nicht alle vier in einem Aufruf): so kann ein
+  Modell, das eine Region nicht abdeckt oder dessen Lauf gerade fehlt, die
+  anderen drei nicht mitreißen. Lehnt Open-Meteo einen Modellnamen mit
+  HTTP 400 ab (Umbenennung), wird automatisch der nächste Kandidat aus der
+  Liste versucht und das in `batchErrors` vermerkt.
+- **Ein neues Modell ergänzen:** Eintrag in `SURFACE_MODELS` (Edge Function,
+  sammelt die Daten) **und** in `FORECAST_MODELS` (`src/lib/wind.ts`, Farbe +
+  Legende + Zeichnen) — plus die Farbvariable in `src/app/globals.css`. Eine
+  Schemaänderung ist **nicht** nötig, es sind nur Zeilen mit einem neuen Wert
+  in der Spalte `model`.
+- **Unterschiedliche Vorhersagehorizonte** (ICON-CH1 ~33 h, ICON-D2 ~48 h,
+  AROME ~60 h, ECMWF deutlich länger) sind unkritisch, weil nur ~7 Stunden
+  Zukunft geholt werden — das liegt weit innerhalb jedes Horizonts. Reicht ein
+  Modell doch einmal nicht so weit, kommen `null`-Werte zurück, die Stunden
+  werden übersprungen und die Linie im Diagramm endet dort einfach.
 - Zeitfenster: letzte 12 Stunden + kommende ~7 Stunden (gleitendes
   Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
   paar Stunden neu rechnen). Angezeigt werden davon nur 4 Stunden Zukunft —
@@ -225,15 +247,38 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
   Prognosen älter als 2 Tage werden bei jedem Lauf gelöscht.
 - Stationen am/außerhalb des Modellrands liefern `null` und werden
-  übersprungen (in der Antwort als `skippedNullHours` gezählt).
+  übersprungen (in der Antwort als `skippedNullHours` gezählt). Das ist der
+  Normalfall bei **AROME Austria**, das nicht ganz Südtirol abdeckt: Für
+  solche Stationen entstehen einfach keine Zeilen, alle anderen Modelle
+  kommen trotzdem an.
 - Zugriffsschutz wie bei `/api/collect`: nur **POST** mit
   `Authorization: Bearer <service_role Key>`, sonst `401`.
 
-**Antwort der Funktion (Erfolg):** Status `200` mit z. B.
-`{ "ok": true, "models": ["icon_ch1","icon_d2","icon_d2_upper"],
-"stations": 89, "saved": 5000, "ch1Saved": 2500, "d2Saved": 2500,
-"skippedNullHours": 0, "batchErrors": [], "windanzeigerStations": 6,
-"upperSaved": 168, "upperNotes": [], … }`.
+**Antwort der Funktion (Erfolg):** Status `200`, z. B.
+
+```json
+{
+  "ok": true,
+  "models": ["icon_ch1", "icon_d2", "arome_austria", "ecmwf_ifs", "icon_d2_upper"],
+  "stations": 89,
+  "saved": 10000,
+  "perModel": {
+    "icon_ch1":      { "rows": 2500, "stations": 84 },
+    "icon_d2":       { "rows": 2600, "stations": 89 },
+    "arome_austria": { "rows": 1800, "stations": 61 },
+    "ecmwf_ifs":     { "rows": 2600, "stations": 89 }
+  },
+  "skippedNullHours": 720,
+  "batchErrors": [],
+  "windanzeigerStations": 7,
+  "upperSaved": 168,
+  "upperNotes": []
+}
+```
+
+`perModel` ist die schnellste Kontrolle: `stations: 0` bei einem Modell heißt,
+dass es für Südtirol gar nichts liefert (z. B. weil Open-Meteo den Modellnamen
+umbenannt hat — dann steht der Grund in `batchErrors`).
 
 ### Höhenwind für die Windanzeiger-Stationen
 
@@ -314,6 +359,54 @@ prüft danach den `Authorization`-Bearer. Ohne/mit falschem Token muss `401`
 zurückkommen, mit korrektem Token `200` samt `{"ok":true,"saved":…}`. Die Logs
 der Funktion stehen im Dashboard unter
 **Edge Functions → fetch-wind-forecasts → Logs**.
+
+### Prüfen, welche Modelle wirklich ankommen (SQL Editor)
+
+Im Supabase-Dashboard unter **SQL Editor** einfügen und **Run** klicken.
+
+**1) Überblick – kommt von jedem Modell etwas an?**
+
+```sql
+select model,
+       count(*)                     as zeilen,
+       count(distinct station_code) as stationen,
+       min(forecast_time)           as von,
+       max(forecast_time)           as bis,
+       max(fetched_at)              as zuletzt_geholt
+from wind_forecasts
+group by model
+order by model;
+```
+
+Erwartet werden fünf Zeilen: `arome_austria`, `ecmwf_ifs`, `icon_ch1`,
+`icon_d2` und `icon_d2_upper`. Fehlt eine ganz oder liegt `zuletzt_geholt`
+mehr als ein bis zwei Stunden zurück, hat das Einsammeln für dieses Modell
+nicht geklappt (Logs: **Edge Functions → fetch-wind-forecasts → Logs**).
+
+**2) Für welche Stationen hat AROME Austria funktioniert?**
+
+```sql
+select station_code, count(*) as zeilen
+from wind_forecasts
+where model = 'arome_austria'
+group by station_code
+order by station_code;
+```
+
+**3) Und für welche Stationen fehlt AROME (liegen also außerhalb des
+Modellgebiets)?** — alle Stationen, die ICON-D2 hat, AROME aber nicht:
+
+```sql
+select distinct d2.station_code
+from wind_forecasts d2
+where d2.model = 'icon_d2'
+  and not exists (
+    select 1 from wind_forecasts a
+    where a.model = 'arome_austria'
+      and a.station_code = d2.station_code
+  )
+order by 1;
+```
 
 ### Fehlersuche
 

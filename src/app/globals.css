@@ -3,6 +3,19 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Farben der Prognosemodelle im Verlaufsbalken (WindHistoryPanel).
+     Sie stehen hier als CSS-Variablen, weil die Linien im SVG dynamisch
+     (per Schleife über FORECAST_MODELS in src/lib/wind.ts) gezeichnet
+     werden und daher keine festen Tailwind-Klassen bekommen können.
+     Heller Hintergrund → kräftigere, dunklere Töne, damit die Linien auf
+     den hellen Farbbändern der Windskala (u. a. Gelb und Grün!) lesbar
+     bleiben. */
+  --forecast-icon-ch1: #dc2626; /* rot */
+  --forecast-icon-d2: #2563eb; /* blau */
+  --forecast-arome: #ca8a04; /* goldgelb */
+  --forecast-ecmwf: #059669; /* smaragdgrün */
+  --forecast-upper: #2563eb; /* Höhenwind: blau gestrichelt */
 }
 
 @theme inline {
@@ -16,6 +29,14 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    /* Auf dunklem Grund werden die Farbbänder dunkler — die Prognoselinien
+       dürfen (und müssen) hier heller sein als im hellen Modus. */
+    --forecast-icon-ch1: #ef4444;
+    --forecast-icon-d2: #60a5fa;
+    --forecast-arome: #facc15;
+    --forecast-ecmwf: #34d399;
+    --forecast-upper: #60a5fa;
   }
 }
 

@@ -154,7 +154,13 @@ Supabase.
    edge function's deliberate extra forecast hours don't land outside the chart
    axis. **Both window constants live in one place**, `HISTORY_HOURS` /
    `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` — the two API routes and the panel
-   import them from there; don't reintroduce local copies.
+   import them from there; don't reintroduce local copies. `/api/forecast`
+   fetches **all** models in a single Supabase request (`model=in.(…)`, the list
+   built from `FORECAST_MODELS` + `UPPER_FORECAST_MODEL`) and returns them
+   grouped: `{ models: { icon_ch1: [...], icon_d2: [...], arome_austria: [...],
+   ecmwf_ifs: [...] }, upper }`. Every known model key is always present, with
+   an empty array when the station isn't covered — the panel doesn't have to
+   distinguish "missing" from "empty".
 5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
    project owner's reference name for this feature; use it when they ask to
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
@@ -181,17 +187,53 @@ Supabase.
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled.
 
+   **Forecast models are data-driven, not hard-coded.** `FORECAST_MODELS` in
+   `src/lib/wind.ts` is the single frontend list (key = the `model` column
+   value, label, provider, and a `color` pointing at a CSS variable defined in
+   `src/app/globals.css` with a light and a dark value). The panel loops over it
+   for the curves, the legend and the comparison block below the chart; the
+   footer credit in `src/app/page.tsx` is generated from it too. Adding a model
+   = one entry there + one entry in `SURFACE_MODELS` of the edge function + one
+   CSS variable pair. Currently: ICON-CH1 red, ICON-D2 blue, AROME Austria
+   golden yellow (`#ca8a04` / `#facc15`), ECMWF green (`#059669` / `#34d399`).
+   The yellow and green are deliberately darker/deeper than plain yellow/green
+   — the chart's own wind-scale bands are yellow (15–24) and green (7–14), on
+   which a bright line would be invisible. Each legend entry is a **button that
+   toggles its model's lines, arrows and numbers** (all visible by default;
+   four forecasts at once are otherwise unreadable); models with no data for
+   the station are shown grayed out and disabled, which doubles as the quick
+   answer to "does AROME cover this station?". Hiding a model also rescales the
+   y-axis and re-packs the comparison columns. With three or more forecast
+   models visible, the gust/mean area fill drops from 0.3 to 0.15 opacity,
+   otherwise the overlapping areas turn to mush.
+
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
    Function** (Deno, not Next.js!) for phase 3: fetches ground-wind
-   forecasts from Open-Meteo for **two models** to compare — ICON-CH1
-   (`models=meteoswiss_icon_ch1`, DB `model='icon_ch1'`, red) and ICON-D2
-   (`models=dwd_icon_d2`, DB `model='icon_d2'`, blue) — via a parameterized
-   `fetchForecastBatch(batch, fetchedAt, modelApi, modelDb)` run once per model
-   (rolling window `past_hours=12` + `forecast_hours=7` — the latter is
+   forecasts from Open-Meteo for **four models** to compare, listed in
+   `SURFACE_MODELS`: ICON-CH1 (`meteoswiss_icon_ch1` → `model='icon_ch1'`, red),
+   ICON-D2 (`dwd_icon_d2` → `'icon_d2'`, blue), AROME Austria
+   (`geosphere_arome_austria` → `'arome_austria'`, yellow) and ECMWF IFS HRES
+   (`ecmwf_ifs` → `'ecmwf_ifs'`, green) — via a parameterized
+   `fetchForecastBatch(batch, fetchedAt, modelApi, modelDb)` run once per model.
+   **One request per model, deliberately not all four in a single
+   `models=a,b,c,d` call**: with a combined call one unknown model name (HTTP
+   400) or one failing model kills the whole run's data, and Open-Meteo then
+   also suffixes the response's hourly keys with the model name. Per-model
+   requests keep each model independent and the response keys plain. Each
+   entry's `api` field is a *list* of candidate Open-Meteo names — a name
+   rejected with HTTP 400 falls through to the next one (that's what
+   `ecmwf_ifs025` is for) and the fallback is reported in `batchErrors`. The
+   response's `perModel` field reports rows + distinct stations per model, which
+   is how you see whether AROME actually covers South Tyrol.
+   Rolling window `past_hours=12` + `forecast_hours=7` — the latter is
    deliberately larger than the panel's 4h look-ahead because Open-Meteo counts
    from the current full hour and this function only runs hourly, so the newest
    stored data can be nearly an hour old; `wind_speed_unit=kmh`,
-   `timeformat=unixtime` so times are unambiguous UTC) for every station
+   `timeformat=unixtime` so times are unambiguous UTC. The models' differing
+   horizons (ICON-CH1 ~33h, ICON-D2 ~48h, AROME ~60h, ECMWF much longer) need
+   no special handling: 7h is well inside all of them, and a model that falls
+   short returns nulls, whose hours are skipped — its chart line simply ends
+   there. Fetched for every station
    that has wind sensors and coordinates — derived from the same two Bozen
    webservice calls as `/api/wind`, **plus** South Tyrol's OpenWindMap
    stations (`loadOpenWindMapStations()`, same bounding-box filter as
@@ -203,8 +245,9 @@ Supabase.
    `PAST_HOURS`/`FORECAST_HOURS`/`RETENTION_DAYS` mirror `HISTORY_HOURS` /
    `FUTURE_MARGIN_HOURS` (`src/lib/wind.ts`) and `/api/collect`'s
    `RETENTION_DAYS` — Deno can't import from `src/`, so change both sides. The
-   `model` column exists so ICON-D2 can later be added as extra rows, no
-   schema change. Stations are queried in batches of 50 (comma-separated
+   `model` column is what makes extra models cheap: they are just rows with a
+   new `model` value, **no schema change** (that's how AROME and ECMWF were
+   added). Stations are queried in batches of 50 (comma-separated
    coordinates; the response list has the same order as the request) and
    hours where Open-Meteo returns only nulls (station at/outside the model
    edge) are skipped. **Höhenwind (upper-air wind)** is fetched additionally,
@@ -287,4 +330,7 @@ server to test the route logic without live network access.
 visible credit with a link wherever its data is shown. That lives in the
 site footer, `src/app/page.tsx` — "Winddaten © contributors of the
 OpenWindMap wind network, openwindmap.org" — don't remove it while
-OpenWindMap stations are displayed.
+OpenWindMap stations are displayed. The same footer carries the forecast
+credit ("Prognosedaten: MeteoSwiss (ICON-CH1), DWD (ICON-D2), GeoSphere
+Austria (AROME), ECMWF (IFS) – via Open-Meteo"), generated from
+`FORECAST_MODELS` so a new model shows up there automatically.
