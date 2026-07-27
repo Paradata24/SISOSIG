@@ -121,9 +121,10 @@ Supabase.
    Top-left `StationFilterToggle` offers three mutually-exclusive station
    filters: **"Windanzeiger"** (shows only the curated list of stations the
    owner picked — `WINDANZEIGER_STATION_NAMES`/`isWindanzeigerStation` in
-   `src/lib/wind.ts`, matched by name — currently Rittner Horn, Schöntaufspitze,
-   Wilder Freiger, Lengspitze, Piz Pisciadu, Plose; add a station there) and the
-   two altitude thresholds (>2000 m / >3000 m).
+   `src/lib/wind.ts`, matched by name — accent/umlaut- and whitespace-insensitive
+   via `normalizeStationName`; currently Rittner Horn, Schöntaufspitze, Wilder
+   Freiger, Lengspitze, Piz Pisciadù, Plose, Pfelders Raujoch; add a station
+   there) and the two altitude thresholds (>2000 m / >3000 m).
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
    configured for **every 10 minutes** and covering both sources (Bozen +
