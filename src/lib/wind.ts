@@ -125,24 +125,19 @@ export interface WindColorStop {
 /**
  * Farbskala der Windstärke (Windwerte für Gleitschirmflieger).
  * Grenzwerte und Farben sind mit dem Projektbesitzer per Screenshot-Vorlage
- * abgestimmt (weiß → grün → gelb → orange → dunkelrot → schwarz);
- * bei Änderungswunsch bitte hier zentral anpassen.
+ * abgestimmt (hellblau → grün → gelb → orange → dunkelrot → schwarz);
+ * bei Änderungswunsch bitte hier zentral anpassen. Die unterste Stufe ist
+ * bewusst ein ganz helles Blau statt des Weiß der Vorlage, damit schwache
+ * Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur sichtbar sind.
  */
 export const WIND_COLOR_SCALE: WindColorStop[] = [
-  { max: 6.5, color: "#FFFFFF", label: "0", name: "schwach" }, // Weiß
+  { max: 6.5, color: "#CFE8F7", label: "0", name: "schwach" }, // ganz helles Blau
   { max: 14.5, color: "#6EE45C", label: "7", name: "spürbar" }, // Hellgrün
   { max: 24.5, color: "#FAF264", label: "15", name: "mässig" }, // Gelb
   { max: 30.5, color: "#F0913C", label: "25", name: "stark" }, // Orange
   { max: 36.5, color: "#C0281B", label: "31", name: "sehr stark" }, // Dunkelrot
   { max: Infinity, color: "#000000", label: "37", name: "zu stark", bandOpacity: 0.3 }, // Schwarz
 ];
-
-/**
- * Randfarbe, mit der jeder Windpfeil zusätzlich dünn umrandet wird. Ohne sie
- * wäre ein weißer Pfeil (Stufe "schwach") auf hellem Kartenhintergrund bzw.
- * hellem Panel unsichtbar.
- */
-export const WIND_ARROW_OUTLINE_COLOR = "#3F3F46";
 
 /** Liefert für einen Windwert (km/h) die passende Farbe der Windskala. */
 export function getWindColor(speedKmh: number | null): string {

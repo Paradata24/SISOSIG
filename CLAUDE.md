@@ -105,14 +105,15 @@ Supabase.
 2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
    5 minutes and renders one marker per station: a rotating SVG arrow
    colored by speed on a 6-step scale agreed with the project owner via a
-   legend screenshot — white "schwach" 0–6 → green "spürbar" 7–14 → yellow
+   legend screenshot — "schwach" 0–6 → green "spürbar" 7–14 → yellow
    "mässig" 15–24 → orange "stark" 25–30 → dark red "sehr stark" 31–36 →
    black "zu stark" >36 km/h (see `WIND_COLOR_SCALE`/`getWindColor` in
    `src/lib/wind.ts`; thresholds sit on half values — 6.5, 14.5, … — so the
-   color always matches the rounded number printed next to the arrow). Every
-   arrow additionally gets a thin dark outline
-   (`WIND_ARROW_OUTLINE_COLOR`) underneath the fill/gust stroke, otherwise a
-   white "schwach" arrow would be invisible on a light background. Stations
+   color always matches the rounded number printed next to the arrow). The
+   lowest step deliberately deviates from the screenshot: it is a very light
+   blue instead of white, because a white arrow would be invisible on a light
+   map background — don't change it back to white (the owner explicitly asked
+   for light blue and against adding an arrow outline). Stations
    whose `stale` flag is set (missing reading or measurement older than 2h)
    get a gray dot instead. There is no on-map legend overlay any more (the
    former `WindLegend.tsx` was removed). It's loaded via `WindMapLoader.tsx`
