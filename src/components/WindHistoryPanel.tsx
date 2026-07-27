@@ -7,6 +7,7 @@ import {
   HISTORY_HOURS,
   snapDirectionTo8,
   SOURCE_INFO,
+  WIND_ARROW_OUTLINE_COLOR,
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
@@ -419,11 +420,19 @@ export default function WindHistoryPanel({
   const svgH = SVG_H_BASE + (hasUpper ? UPPER_BLOCK_H : 0);
 
   // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
-  const bands: { from: number; to: number; color: string }[] = [];
+  const bands: { from: number; to: number; color: string; opacity: number }[] = [];
   let bandFrom = 0;
   for (const stop of WIND_COLOR_SCALE) {
     if (bandFrom >= yMax) break;
-    bands.push({ from: bandFrom, to: Math.min(stop.max, yMax), color: stop.color });
+    bands.push({
+      from: bandFrom,
+      to: Math.min(stop.max, yMax),
+      color: stop.color,
+      // Standard-Deckkraft 0.55; die schwarze Stufe "zu stark" bekommt über
+      // bandOpacity einen kleineren Wert, sonst verschwindet die schwarze
+      // Messkurve auf dem schwarzen Band.
+      opacity: stop.bandOpacity ?? 0.55,
+    });
     bandFrom = stop.max;
   }
 
@@ -669,7 +678,7 @@ export default function WindHistoryPanel({
                   width={innerW}
                   height={y(band.from) - y(band.to)}
                   fill={band.color}
-                  fillOpacity={0.55}
+                  fillOpacity={band.opacity}
                 />
               ))}
 
@@ -921,6 +930,17 @@ export default function WindHistoryPanel({
                     <title>
                       {`${formatTime(p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
                     </title>
+                    {/* Untere Kontur: dünner dunkler Rand, damit auch ein
+                        weißer Pfeil (schwacher Wind) sichtbar bleibt. */}
+                    <path
+                      d="M20 2 L34 34 L20 26 L6 34 Z"
+                      transform="translate(-20 -20)"
+                      fill={getWindColor(p.speed)}
+                      stroke={WIND_ARROW_OUTLINE_COLOR}
+                      strokeWidth={5}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
                     <path
                       d="M20 2 L34 34 L20 26 L6 34 Z"
                       transform="translate(-20 -20)"

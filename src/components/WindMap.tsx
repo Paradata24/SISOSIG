@@ -17,6 +17,7 @@ import {
   isWindanzeigerStation,
   snapDirectionTo8,
   VERY_HIGH_ALTITUDE_THRESHOLD_M,
+  WIND_ARROW_OUTLINE_COLOR,
   type BaseLayer,
   type StationFilter,
   type WindStation,
@@ -50,7 +51,9 @@ function getIconScale(zoom: number): number {
 // die Richtung meldet, AUS der der Wind kommt). Die angezeigte Richtung wird
 // dabei auf die 8 Haupt-Himmelsrichtungen (0/45/…/315°) eingerastet, damit der
 // Pfeil nicht "krumme" Zwischenwinkel zeigt. Die Füllfarbe zeigt den
-// Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala).
+// Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala); ganz
+// außen liegt zusätzlich eine dünne dunkle Kontur, damit auch weiße Pfeile
+// (schwacher Wind) auf hellem Untergrund sichtbar bleiben.
 function createWindIcon(
   direction: number | null,
   speedKmh: number | null,
@@ -68,6 +71,10 @@ function createWindIcon(
   const labelHeight = Math.round(LABEL_BASE_HEIGHT * scale);
   const fontSize = Math.max(5, Math.round(6.5 * scale));
   const strokeWidth = Math.max(0.75, 1.5 * scale);
+  // Zusätzliche dünne dunkle Kontur unter dem eigentlichen Pfeil, damit auch
+  // ein weißer Pfeil (Stufe "schwach") auf hellem Kartenhintergrund sichtbar
+  // bleibt.
+  const outlineWidth = strokeWidth + 1.2;
 
   const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
 
@@ -75,6 +82,14 @@ function createWindIcon(
     <div style="display: flex; flex-direction: column; align-items: center; width: ${arrowSize}px;">
       <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px;">
         <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M20 2 L34 34 L20 26 L6 34 Z"
+            fill="${fillColor}"
+            stroke="${WIND_ARROW_OUTLINE_COLOR}"
+            stroke-width="${outlineWidth}"
+            stroke-linejoin="round"
+            stroke-linecap="round"
+          />
           <path
             d="M20 2 L34 34 L20 26 L6 34 Z"
             fill="${fillColor}"

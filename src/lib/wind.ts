@@ -101,33 +101,50 @@ export const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 export const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
 
 export interface WindColorStop {
-  /** Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe. */
+  /**
+   * Obere Grenze dieser Stufe in km/h (exklusiv), Infinity für die letzte Stufe.
+   * Bewusst auf halben Werten (6.5, 14.5, …), damit die Farbe immer zu der
+   * gerundeten Zahl passt, die neben dem Pfeil steht: 6.6 km/h wird als "7"
+   * angezeigt und gehört damit schon zur Stufe "spürbar" (7–14).
+   */
   max: number;
   /** Hex-Farbcode dieser Stufe. */
   color: string;
-  /** Untere Grenze dieser Stufe als Beschriftung, z. B. "18" für die Stufe 18–23. */
+  /** Untere Grenze dieser Stufe als Beschriftung, z. B. "15" für die Stufe 15–24. */
   label: string;
+  /** Wortbezeichnung der Stufe laut Legende, z. B. "mässig". */
+  name: string;
+  /**
+   * Abweichende Deckkraft für die Farbbänder im Verlaufsbalken. Nur für die
+   * schwarze Stufe gesetzt: sonst würde die schwarze Messkurve auf einem
+   * schwarzen Band verschwinden.
+   */
+  bandOpacity?: number;
 }
 
 /**
- * Farbskala angelehnt an die XC-Therm-Skala (Windwerte für Gleitschirmflieger).
+ * Farbskala der Windstärke (Windwerte für Gleitschirmflieger).
  * Grenzwerte und Farben sind mit dem Projektbesitzer per Screenshot-Vorlage
- * abgestimmt; bei Änderungswunsch bitte hier zentral anpassen.
+ * abgestimmt (weiß → grün → gelb → orange → dunkelrot → schwarz);
+ * bei Änderungswunsch bitte hier zentral anpassen.
  */
 export const WIND_COLOR_SCALE: WindColorStop[] = [
-  { max: 4, color: "#F4F4EC", label: "0" }, // sehr helles Weiß/Off-White
-  { max: 7, color: "#B8DCEA", label: "4" }, // helles Blau
-  { max: 11, color: "#8DC873", label: "7" }, // helles Grün
-  { max: 14, color: "#C6D94A", label: "11" }, // Gelbgrün
-  { max: 18, color: "#F6D746", label: "14" }, // Gelb
-  { max: 23, color: "#F2A63C", label: "18" }, // Orange
-  { max: 27, color: "#DB5A34", label: "23" }, // Rot-Orange
-  { max: 36, color: "#9C3350", label: "27" }, // dunkles Rot/Bordeaux
-  { max: 45, color: "#7B3796", label: "36" }, // Violett/Lila
-  { max: Infinity, color: "#2C2A6E", label: "45" }, // dunkles Blau/Indigo
+  { max: 6.5, color: "#FFFFFF", label: "0", name: "schwach" }, // Weiß
+  { max: 14.5, color: "#6EE45C", label: "7", name: "spürbar" }, // Hellgrün
+  { max: 24.5, color: "#FAF264", label: "15", name: "mässig" }, // Gelb
+  { max: 30.5, color: "#F0913C", label: "25", name: "stark" }, // Orange
+  { max: 36.5, color: "#C0281B", label: "31", name: "sehr stark" }, // Dunkelrot
+  { max: Infinity, color: "#000000", label: "37", name: "zu stark", bandOpacity: 0.3 }, // Schwarz
 ];
 
-/** Liefert für einen Windwert (km/h) die passende Farbe der XC-Therm-Skala. */
+/**
+ * Randfarbe, mit der jeder Windpfeil zusätzlich dünn umrandet wird. Ohne sie
+ * wäre ein weißer Pfeil (Stufe "schwach") auf hellem Kartenhintergrund bzw.
+ * hellem Panel unsichtbar.
+ */
+export const WIND_ARROW_OUTLINE_COLOR = "#3F3F46";
+
+/** Liefert für einen Windwert (km/h) die passende Farbe der Windskala. */
 export function getWindColor(speedKmh: number | null): string {
   const speed = speedKmh ?? 0;
   const stop = WIND_COLOR_SCALE.find((s) => speed < s.max);
