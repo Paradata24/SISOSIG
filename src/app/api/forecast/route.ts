@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 
 // Liefert die ICON-CH1-Windprognose einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die
@@ -10,8 +11,13 @@ import { NextResponse } from "next/server";
 // Umgebungsvariablen SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY, gleiches
 // Fehlerverhalten. Nur ~84 der ~120 Stationen liegen im ICON-CH1-Modellgebiet;
 // Stationen ohne Prognose liefern einfach eine leere Liste (kein Fehler).
-
-const HISTORY_HOURS = 48;
+//
+// Zeitfenster: genau der Bereich, den der Verlaufsbalken zeichnet, also
+// (jetzt − HISTORY_HOURS) bis (jetzt + FUTURE_MARGIN_HOURS) — beide Werte aus
+// src/lib/wind.ts. Die Edge Function speichert bewusst etwas mehr Zukunft, als
+// angezeigt wird (Puffer für ihren stündlichen Takt); die Obergrenze hier
+// schneidet diesen Überhang ab, damit keine Punkte rechts außerhalb der Achse
+// landen.
 
 export interface ForecastEntry {
   forecast_time: string;
@@ -89,11 +95,15 @@ export async function GET(request: Request) {
   const since = new Date(
     Date.now() - HISTORY_HOURS * 60 * 60 * 1000,
   ).toISOString();
+  const until = new Date(
+    Date.now() + FUTURE_MARGIN_HOURS * 60 * 60 * 1000,
+  ).toISOString();
 
   const baseUrl =
     `${supabaseUrl}/rest/v1/wind_forecasts` +
     `?station_code=eq.${encodeURIComponent(station)}` +
     `&forecast_time=gte.${encodeURIComponent(since)}` +
+    `&forecast_time=lte.${encodeURIComponent(until)}` +
     `&order=forecast_time.asc`;
   const headers = {
     apikey: serviceKey,

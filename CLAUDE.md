@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Aktuell nur ich + wenige Nutzer, aber die Architektur soll
   skalierbar bleiben
 - Phasenplan:
-  1. Südtirol: Live-Wind + 48h-Historie auf Karte (aktuell in Arbeit)
+  1. Südtirol: Live-Wind + 12h-Historie auf Karte (aktuell in Arbeit)
   2. Erweiterung auf weitere Länder/Regionen (Schweiz, Österreich)
   3. Prognosevergleich ICON-D2 vs. ICON-CH1 via Open-Meteo API
 
@@ -74,7 +74,7 @@ how to point them at a local mock instead of the real services).
 ## Architecture
 
 This is a Next.js (App Router) site that shows live wind data from South
-Tyrol weather stations on a Leaflet map, plus a 48h history backed by
+Tyrol weather stations on a Leaflet map, plus a 12h history backed by
 Supabase.
 
 **Data flow:**
@@ -133,7 +133,7 @@ Supabase.
    a failed Pioupiou fetch doesn't block the Bozen rows), upserts rows into
    the Supabase table `wind_measurements` (schema in `supabase/schema.sql`,
    including a `source` column so each row's origin is known), and deletes
-   rows older than 7 days, then answers with a small JSON summary
+   rows older than 2 days (`RETENTION_DAYS`), then answers with a small JSON summary
    (`{ ok, saved, ... }`). It is guarded by a bearer token: callers must
    send `Authorization: Bearer <CRON_SECRET>` or the route returns 401
    (`CRON_SECRET` is a Vercel env var). This deliberately reuses the same
@@ -142,9 +142,14 @@ Supabase.
    created before the `source` column existed need
    `supabase/add-source-column.sql` run once (non-destructive `alter table
    ... add column if not exists`).
-4. `src/app/api/history/route.ts` — reads the last 48h for one station
-   (`?station=<SCODE>`) straight from Supabase via the REST API (no
-   `@supabase/supabase-js` dependency, just `fetch`).
+4. `src/app/api/history/route.ts` — reads the last `HISTORY_HOURS` (12h) for one
+   station (`?station=<SCODE>`) straight from Supabase via the REST API (no
+   `@supabase/supabase-js` dependency, just `fetch`). `/api/forecast` mirrors it
+   and additionally caps the upper end at `now + FUTURE_MARGIN_HOURS` so the
+   edge function's deliberate extra forecast hours don't land outside the chart
+   axis. **Both window constants live in one place**, `HISTORY_HOURS` /
+   `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` — the two API routes and the panel
+   import them from there; don't reintroduce local copies.
 5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
    project owner's reference name for this feature; use it when they ask to
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
@@ -152,7 +157,7 @@ Supabase.
    marker's `click` handler calls `onSelect`, which sets `selectedStation`).
    It fetches `/api/history?station=<SCODE>` **and** `/api/forecast` (additive:
    a failed forecast never blocks the measurements) and draws an SVG chart of
-   the last 48h: a **fixed** time axis from `now − 48h` to `now + 3h` (dashed
+   the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
    arrows below. Four layers can appear: **black** = measurement, **red** =
@@ -165,9 +170,9 @@ Supabase.
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
    convention so the panel and the map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
-   to "now" on open); two points are only joined into a line when ≤ 3h apart
-   (`LINE_GAP_MS`) to stay robust even if the Supabase cron for `/api/collect`
-   runs less often than configured, and every
+   to "now" on open); two points are only joined into a line when ≤ 1h apart
+   (`LINE_GAP_MS` — 6× the 10-minute collection interval, so a missed cron run
+   still connects, but a real gap stays visible on the short 12h axis), and every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled.
 
@@ -177,7 +182,10 @@ Supabase.
    (`models=meteoswiss_icon_ch1`, DB `model='icon_ch1'`, red) and ICON-D2
    (`models=dwd_icon_d2`, DB `model='icon_d2'`, blue) — via a parameterized
    `fetchForecastBatch(batch, fetchedAt, modelApi, modelDb)` run once per model
-   (rolling window `past_hours=24` + `forecast_hours=4`, `wind_speed_unit=kmh`,
+   (rolling window `past_hours=12` + `forecast_hours=7` — the latter is
+   deliberately larger than the panel's 4h look-ahead because Open-Meteo counts
+   from the current full hour and this function only runs hourly, so the newest
+   stored data can be nearly an hour old; `wind_speed_unit=kmh`,
    `timeformat=unixtime` so times are unambiguous UTC) for every station
    that has wind sensors and coordinates — derived from the same two Bozen
    webservice calls as `/api/wind`, **plus** South Tyrol's OpenWindMap
@@ -186,7 +194,10 @@ Supabase.
    `src/lib`; additive — a failed Pioupiou fetch just means no forecasts
    for those stations, the Bozen ones still run) — and upserts into the
    table `wind_forecasts` (schema in `supabase/forecast-schema.sql`;
-   `on_conflict=station_code,model,forecast_time`, 7-day retention). The
+   `on_conflict=station_code,model,forecast_time`, 2-day retention). Its
+   `PAST_HOURS`/`FORECAST_HOURS`/`RETENTION_DAYS` mirror `HISTORY_HOURS` /
+   `FUTURE_MARGIN_HOURS` (`src/lib/wind.ts`) and `/api/collect`'s
+   `RETENTION_DAYS` — Deno can't import from `src/`, so change both sides. The
    `model` column exists so ICON-D2 can later be added as extra rows, no
    schema change. Stations are queried in batches of 50 (comma-separated
    coordinates; the response list has the same order as the request) and

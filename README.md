@@ -88,8 +88,8 @@ einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
 `source` die Herkunft (`bolzano` oder `openwindmap`), damit sich das später
 auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
 Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
-`measured_at`), und Einträge älter als 7 Tage werden bei jedem Lauf
-gelöscht.
+`measured_at`), und Einträge älter als 2 Tage werden bei jedem Lauf
+gelöscht (die Anzeige braucht nur 12 Stunden, der Rest ist Puffer).
 
 **Wenn `wind_measurements` schon vor dieser Änderung angelegt wurde:**
 einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
@@ -112,7 +112,7 @@ mitschicken.
 - **Wetterdienst nicht erreichbar / keine Werte:** Status `502`.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
-letzten 48 Stunden einer Station (für den Verlaufsbalken).
+letzten 12 Stunden einer Station (für den Verlaufsbalken).
 
 ### Benötigte Zugangsdaten
 
@@ -161,14 +161,14 @@ curl -X POST https://<deine-vercel-domain>/api/collect \
 Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
 `200` samt `{"ok":true,"saved":…}`.
 
-## Verlaufsbalken (48h-Windverlauf beim Klick auf eine Station)
+## Verlaufsbalken (12h-Windverlauf beim Klick auf eine Station)
 
 Der **Verlaufsbalken** ist das Panel, das unten über die volle
 Bildschirmbreite erscheint, sobald man auf der Karte auf eine Station
-klickt. Er zeigt den Windverlauf der letzten 48 Stunden dieser Station:
+klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
 
-- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 48 h" bis
-  „jetzt + 3 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
+- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
+  „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
 - zwei Kurven — Mittelwind (dünn) und Böen (dick) — vor den Farbbändern
   der Windstärke-Skala (dieselbe Skala wie die Windpfeile auf der Karte),
 - darunter eine Reihe Windrichtungs-Pfeile, einer je Messpunkt, jeweils in
@@ -182,6 +182,13 @@ per X-Button oder Escape-Taste.
 Code: `src/components/WindHistoryPanel.tsx`. Geöffnet wird der Balken per
 Klick auf einen Marker in `src/components/WindMap.tsx`; die Daten kommen
 von `/api/history?station=<SCODE>`.
+
+**Zeitfenster ändern:** Die beiden Werte stehen zentral in
+`src/lib/wind.ts` (`HISTORY_HOURS = 12`, `FUTURE_MARGIN_HOURS = 4`) und
+gelten für das Panel und die beiden APIs gemeinsam. Wird dort etwas
+geändert, müssen `PAST_HOURS`/`FORECAST_HOURS` in der Edge Function
+`supabase/functions/fetch-wind-forecasts/index.ts` mitgezogen werden (Deno
+kann nicht aus `src/lib` importieren).
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
@@ -207,14 +214,16 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   **ICON-CH1** (`model = 'icon_ch1'`, im Panel rot) als auch aus **ICON-D2**
   (`model = 'icon_d2'`, im Panel blau) geholt. Dazu kommt der Höhenwind
   (`icon_d2_upper`, blau gestrichelt, siehe unten).
-- Zeitfenster: letzte 24 Stunden + kommende ~3 Stunden (gleitendes
+- Zeitfenster: letzte 12 Stunden + kommende ~7 Stunden (gleitendes
   Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
-  paar Stunden neu rechnen).
+  paar Stunden neu rechnen). Angezeigt werden davon nur 4 Stunden Zukunft —
+  der Rest ist Puffer, weil die Funktion nur einmal pro Stunde läuft;
+  `/api/forecast` schneidet den Überhang beim Ausliefern ab.
 - Einheiten wie in `wind_measurements`: Wind/Böen in **km/h**, Richtung in
   Grad, Prognosezeiten als UTC (`timestamptz`).
 - Upsert über `station_code` + `model` + `forecast_time` — wiederholte
   Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
-  Prognosen älter als 7 Tage werden bei jedem Lauf gelöscht.
+  Prognosen älter als 2 Tage werden bei jedem Lauf gelöscht.
 - Stationen am/außerhalb des Modellrands liefern `null` und werden
   übersprungen (in der Antwort als `skippedNullHours` gezählt).
 - Zugriffsschutz wie bei `/api/collect`: nur **POST** mit

@@ -1,4 +1,4 @@
--- Tabelle für die Wind-Historie (48h-Anzeige, 7 Tage Aufbewahrung).
+-- Tabelle für die Wind-Historie (12h-Anzeige, 2 Tage Aufbewahrung).
 -- Einmalig im Supabase SQL-Editor ausführen.
 
 create table if not exists public.wind_measurements (
@@ -20,7 +20,7 @@ create table if not exists public.wind_measurements (
   unique (station_code, measured_at)
 );
 
--- Beschleunigt die 48h-Abfrage einer einzelnen Station.
+-- Beschleunigt die 12h-Abfrage einer einzelnen Station.
 create index if not exists wind_measurements_station_time_idx
   on public.wind_measurements (station_code, measured_at desc);
 
