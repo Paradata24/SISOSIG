@@ -20,7 +20,7 @@
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
 //      abfragen — für ZWEI Modelle: meteoswiss_icon_ch1 (model 'icon_ch1')
 //      und dwd_icon_d2 (model 'icon_d2'), damit sich beide Prognosen
-//      vergleichen lassen. Letzte 24 h + kommende ~3 h, Einheit km/h (wie in
+//      vergleichen lassen. Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
 //      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
 //      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
 //      per Index den Stationen zugeordnet.
@@ -32,7 +32,7 @@
 //      keine Druckflächen) abfragen und je Station die wählen, deren echte
 //      (geopotentielle) Höhe der Stationshöhe am nächsten liegt. Landet als
 //      eigene Zeilen (model = 'icon_d2_upper') mit Druckfläche + Höhe.
-//   5. Prognosen älter als 7 Tage löschen (wie bei wind_measurements).
+//   5. Prognosen älter als 2 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
 // Supabase automatisch in jede Edge Function injiziert — es müssen keine
@@ -97,9 +97,20 @@ const WINDANZEIGER_STATION_NAMES = [
   "plose", // Plose
 ];
 
-const PAST_HOURS = 24;
-const FORECAST_HOURS = 4;
-const RETENTION_DAYS = 7;
+// Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
+// FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
+// importieren, deshalb bei einer Änderung beide Stellen anfassen.
+const PAST_HOURS = 12;
+// Bewusst MEHR als FUTURE_MARGIN_HOURS (4): Open-Meteo zählt ab der aktuellen
+// vollen Stunde, und diese Funktion läuft nur stündlich (pg_cron, Minute 10).
+// Kurz vor dem nächsten Lauf ist der jüngste Datensatz also fast eine Stunde
+// alt; mit 7 Stunden ist der angezeigte Bereich bis "jetzt + 4h" auch im
+// ungünstigsten Fall lückenlos gefüllt. /api/forecast schneidet den Überhang
+// beim Ausliefern wieder ab.
+const FORECAST_HOURS = 7;
+// Aufbewahrung wie bei den Messwerten (/api/collect): 2 Tage reichen für die
+// 12h-Anzeige mit großem Puffer.
+const RETENTION_DAYS = 2;
 
 // Stationen pro Open-Meteo-Request. Überschreibbar für Tests, damit sich
 // das Batching auch mit wenigen Mock-Stationen prüfen lässt.

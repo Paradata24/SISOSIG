@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  FUTURE_MARGIN_HOURS,
   getWindColor,
+  HISTORY_HOURS,
   snapDirectionTo8,
   SOURCE_INFO,
   WIND_COLOR_SCALE,
@@ -12,7 +14,7 @@ import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
-// Zeigt für die angeklickte Station die letzten 48 Stunden:
+// Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
 //  - Zeitachse (Lokalzeit) oben
 //  - Liniendiagramm: Mittelwind (unten) und Böen (oben), beide gleich dick,
 //    mit halbtransparent gefüllter Fläche dazwischen, vor horizontalen
@@ -55,28 +57,30 @@ const MIN_LABEL_SPACING = 31;
 // Gewünschte Anzeige-Dichte: zu jeder vollen Stunde eine Messung, dazwischen
 // alle 10 Minuten eine — also 6 Werte pro Stunde.
 const LABEL_INTERVAL_MIN = 10;
-// Breite pro Stunde für den Geschichts-Teil (jetzt − 48h bis jetzt). FEST (nicht
+// Breite pro Stunde für den Geschichts-Teil (jetzt − 12h bis jetzt). FEST (nicht
 // datenabhängig) so gewählt, dass die 6 Messungen pro Stunde (alle 10 min) mit
 // dem Mindestabstand nebeneinander Platz haben — mit kleinem Puffer, damit genau
 // 10 min auseinanderliegende Werte sicher über dem Mindestabstand liegen.
 // Dadurch ist die Achse zugleich breiter als der Bildschirm → das Diagramm
 // bleibt horizontal scrollbar.
 const HISTORY_PX_PER_HOUR = Math.ceil((60 / LABEL_INTERVAL_MIN) * (MIN_LABEL_SPACING + 2));
-// Die 3h-Reserve rechts von der "jetzt"-Linie enthält keine echten Messwerte
-// mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
+// Die Prognose-Reserve rechts von der "jetzt"-Linie enthält keine echten
+// Messwerte mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
 const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
 const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
-// Wie weit die Historie zurückreicht bzw. wie viel Platz rechts nach "jetzt"
-// bleibt. Die Zeitachse läuft fest von (jetzt − 48h) bis (jetzt + 3h), sodass
-// die aktuelle Uhrzeit immer nahe dem rechten Rand steht.
-const HISTORY_HOURS = 48;
-const FUTURE_MARGIN_HOURS = 3;
+// Wie weit die Historie zurückreicht (HISTORY_HOURS) bzw. wie viel Platz rechts
+// nach "jetzt" bleibt (FUTURE_MARGIN_HOURS) — beides zentral in src/lib/wind.ts,
+// weil /api/history und /api/forecast dieselben Werte brauchen. Die Zeitachse
+// läuft fest von (jetzt − 12h) bis (jetzt + 4h), sodass die aktuelle Uhrzeit
+// immer nahe dem rechten Rand steht.
 // Zwei aufeinanderfolgende Messpunkte werden nur dann zu einer Linie
-// verbunden, wenn sie höchstens so weit auseinanderliegen. Die Sammlung
-// (/api/collect, per Supabase Cron) kann je nach Taktung mal seltener laufen,
-// daher großzügig auf 3 Stunden gesetzt — größere echte Lücken bleiben als
-// Unterbrechung sichtbar.
-const LINE_GAP_MS = 3 * 60 * 60 * 1000;
+// verbunden, wenn sie höchstens so weit auseinanderliegen. Gesammelt wird alle
+// 10 Minuten (/api/collect, per Supabase Cron); 1 Stunde ist also das Sechsfache
+// des Normalabstands und übersteht einzelne verpasste Läufe, verdeckt aber auf
+// der 12h-Achse keine echten Datenlücken mehr. Größere Lücken bleiben als
+// Unterbrechung sichtbar (die Messpunkte selbst werden ohnehin als Punkte
+// gezeichnet).
+const LINE_GAP_MS = 60 * 60 * 1000;
 
 interface Point {
   t: number; // Zeitstempel (ms)
@@ -87,7 +91,7 @@ interface Point {
 
 function formatHourLabel(date: Date): string {
   // Um Mitternacht das Datum statt "00:00" zeigen, damit der Tageswechsel
-  // in der 48h-Achse erkennbar ist.
+  // in der Zeitachse erkennbar ist.
   if (date.getHours() === 0) {
     return date.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
   }
@@ -344,15 +348,15 @@ export default function WindHistoryPanel({
     upperPoints.some((p) => p.speed !== null);
 
   // --- Skalen ---
-  // Feste Zeitachse von (jetzt − 48h) bis (jetzt + 3h), unabhängig davon,
+  // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
   // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
   // richtigen Stelle der Achse, fehlende Zeiträume bleiben als Lücke sichtbar
   // (statt die wenigen Punkte über die ganze Breite zu strecken), und die
-  // aktuelle Uhrzeit steht dank der 3h-Reserve stets nahe dem rechten Rand.
+  // aktuelle Uhrzeit steht dank der Prognose-Reserve stets nahe dem rechten Rand.
   const minT = now - HISTORY_HOURS * 3_600_000;
   const maxT = now + FUTURE_MARGIN_HOURS * 3_600_000;
 
-  // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / 3h-Reserve).
+  // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / Prognose-Reserve).
   // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
   const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
   const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
@@ -434,7 +438,7 @@ export default function WindHistoryPanel({
     }
   }
   // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
-  // 3h-Reserve keine überlappenden Beschriftungen bekommt.
+  // Prognose-Reserve keine überlappenden Beschriftungen bekommt.
   const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
   // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
   const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
@@ -583,7 +587,7 @@ export default function WindHistoryPanel({
           </span>
         </h2>
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
-          letzte 48 Stunden{" "}
+          letzte 12 Stunden{" "}
           <span className="text-zinc-400 dark:text-zinc-500">
             — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
             Messung ·{" "}
@@ -652,7 +656,7 @@ export default function WindHistoryPanel({
               height={svgH}
               viewBox={`0 0 ${svgWidth} ${svgH}`}
               role="img"
-              aria-label="Windverlauf: Mittelwind und Böen der letzten 48 Stunden"
+              aria-label="Windverlauf: Mittelwind und Böen der letzten 12 Stunden"
             >
               {/* Farbbänder der Windstärke-Bereiche (gleiche Skala wie die
                   Kartenpfeile), leicht transparent, damit die Kurven gut
@@ -703,7 +707,7 @@ export default function WindHistoryPanel({
               })}
 
               {/* "Jetzt"-Markierung: senkrechte Linie an der aktuellen Uhrzeit,
-                  rechts davon die 3h-Reserve */}
+                  rechts davon die 4h-Prognose-Reserve */}
               <line
                 x1={x(now)}
                 y1={chartTop}

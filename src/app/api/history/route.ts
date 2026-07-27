@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { HISTORY_HOURS } from "@/lib/wind";
 
-// Liefert die Wind-Historie der letzten 48 Stunden einer Station aus der
-// Supabase-Tabelle wind_measurements (befüllt von der Sammel-Route
-// /api/collect, die von Supabase Cron angestoßen wird).
+// Liefert die Wind-Historie der letzten HISTORY_HOURS Stunden (siehe
+// src/lib/wind.ts, aktuell 12) einer Station aus der Supabase-Tabelle
+// wind_measurements (befüllt von der Sammel-Route /api/collect, die von
+// Supabase Cron angestoßen wird).
 //
 // Aufruf: /api/history?station=<SCODE>
 //
@@ -10,8 +12,6 @@ import { NextResponse } from "next/server";
 // SUPABASE_SERVICE_ROLE_KEY (bei Vercel unter Settings → Environment
 // Variables hinterlegen). Der Key bleibt auf dem Server — die Route gibt
 // nur die Messwerte weiter.
-
-const HISTORY_HOURS = 48;
 
 export interface HistoryEntry {
   measured_at: string;

@@ -29,6 +29,20 @@ export const SOURCE_INFO: Record<
 };
 
 /**
+ * Zeitfenster des Verlaufsbalkens: Die Zeitachse läuft fest von
+ * (jetzt − HISTORY_HOURS) bis (jetzt + FUTURE_MARGIN_HOURS). Beide Werte
+ * stehen bewusst hier zentral, damit das Panel (WindHistoryPanel) und die
+ * beiden APIs (/api/history, /api/forecast) nicht auseinanderlaufen können.
+ *
+ * Achtung: Die Supabase-Edge-Function
+ * (supabase/functions/fetch-wind-forecasts) ist Deno-Code und kann hier NICHT
+ * importieren – dort stehen eigene, abgeleitete Konstanten (PAST_HOURS /
+ * FORECAST_HOURS), die bei einer Änderung mitgezogen werden müssen.
+ */
+export const HISTORY_HOURS = 12;
+export const FUTURE_MARGIN_HOURS = 4;
+
+/**
  * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
  * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
  * diese Stationen an. Jeder Eintrag wird (klein geschrieben und ohne

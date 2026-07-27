@@ -19,7 +19,10 @@ const API_BASE =
   process.env.WIND_API_BASE_URL ??
   "http://daten.buergernetz.bz.it/services/meteo/v1";
 
-const RETENTION_DAYS = 7;
+// Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt nur HISTORY_HOURS
+// (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
+// ausgefallene Sammel-Läufe und halten die Tabelle klein.
+const RETENTION_DAYS = 2;
 
 // Nicht cachen und immer serverseitig zur Laufzeit ausführen — sonst würde
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
