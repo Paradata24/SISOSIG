@@ -30,6 +30,13 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 // damit das Panel nicht mehr gedrängt wirkt.
 const TIME_LABEL_H = 20; // Zeile mit den Uhrzeiten oben
 const CHART_H = 154; // Höhe des Kurvenbereichs
+// FESTE Obergrenze der y-Achse (km/h). Bewusst nicht mehr datenabhängig:
+// eine mitwachsende Achse lässt einen ruhigen und einen stürmischen Tag
+// gleich hoch aussehen. Mit fester Skala hat dieselbe Kurvenhöhe immer
+// dieselbe Bedeutung und man kann Stationen/Tage direkt vergleichen.
+// Werte über dieser Grenze werden gekappt (siehe y()), die echten Zahlen
+// stehen weiterhin in den Werte-Zeilen unter den Pfeilen.
+const Y_MAX_KMH = 45;
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
@@ -352,16 +359,8 @@ export default function WindHistoryPanel({
   const historyWidth = historyWidth0 * stretch;
   const futureWidth = futureWidth0 * stretch;
 
-  // yMax muss auch beide Prognosen (ICON-CH1, ICON-D2) einschließen, sonst
-  // würde eine der Kurven oben abgeschnitten.
-  const maxValue = [
-    ...points,
-    ...forecastPoints,
-    ...forecastD2Points,
-  ].reduce((m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0), 0);
-  // Obergrenze der y-Achse auf volle 10er runden, mindestens 20 km/h.
-  const yMax = Math.max(20, Math.ceil(maxValue / 10) * 10);
-  const yTickStep = yMax > 50 ? 20 : 10;
+  // Die y-Achse ist fest (Y_MAX_KMH) und hängt nicht mehr von den Daten ab.
+  const yMax = Y_MAX_KMH;
 
   const x = (t: number) =>
     t <= now
@@ -369,7 +368,11 @@ export default function WindHistoryPanel({
       : PAD_X + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
   const chartTop = TIME_LABEL_H;
   const chartBottom = TIME_LABEL_H + CHART_H;
-  const y = (v: number) => chartBottom - (v / yMax) * CHART_H;
+  // Werte über der festen Obergrenze werden gekappt: die Kurve läuft dann
+  // am oberen Rand entlang, statt aus dem Diagramm heraus in die Uhrzeiten-
+  // Zeile zu ragen. So bleibt sichtbar, DASS es dort sehr windig war; der
+  // genaue Wert steht in den Zahlen-Zeilen unter den Pfeilen.
+  const y = (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
   const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
   const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
   const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
@@ -498,8 +501,11 @@ export default function WindHistoryPanel({
     combinedForecastTimeSelection.push(combinedForecastTimes[i]);
   }
 
+  // Beschriftung der km/h-Achse: runde 10er-Schritte, dazu immer die feste
+  // Obergrenze selbst (bei 45 km/h also 0/10/20/30/40/45).
   const yTicks: number[] = [];
-  for (let v = 0; v <= yMax; v += yTickStep) yTicks.push(v);
+  for (let v = 0; v < yMax; v += 10) yTicks.push(v);
+  yTicks.push(yMax);
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
