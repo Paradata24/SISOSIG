@@ -190,6 +190,14 @@ geändert, müssen `PAST_HOURS`/`FORECAST_HOURS` in der Edge Function
 `supabase/functions/fetch-wind-forecasts/index.ts` mitgezogen werden (Deno
 kann nicht aus `src/lib` importieren).
 
+**Feste km/h-Skala:** Die senkrechte Achse geht immer von 0 bis 45 km/h
+(`Y_MAX_KMH` in `src/components/WindHistoryPanel.tsx`) — früher wuchs sie
+mit den Daten mit, wodurch ein ruhiger und ein stürmischer Tag gleich hoch
+aussahen. Werte über 45 km/h werden oben gekappt: die Kurve läuft dann am
+oberen Rand entlang. Die echten Zahlen stehen unverändert in den
+Werte-Zeilen unter den Pfeilen, und die Pfeilfarben nutzen weiterhin die
+volle Windskala.
+
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 `/api/collect` getaktet ist (empfohlen alle 10 Minuten, siehe oben).

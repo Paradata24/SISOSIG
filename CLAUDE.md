@@ -173,6 +173,12 @@ Supabase.
    again — don't reintroduce it without asking. Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
    convention so the panel and the map markers can never drift apart. The
+   The y-axis is **fixed** at 0–45 km/h (`Y_MAX_KMH` in the panel, owner's
+   decision) — it used to grow with the data, which made calm and stormy days
+   look identical. `y()` clamps to that ceiling, so higher values ride along
+   the top edge instead of overflowing into the time-label row; the numbers
+   under the arrows and the arrow colors still use the true (uncapped) values.
+   The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
    to "now" on open); two points are only joined into a line when ≤ 1h apart
    (`LINE_GAP_MS` — 6× the 10-minute collection interval, so a missed cron run
