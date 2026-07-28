@@ -212,8 +212,7 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
 
 - **Zwei Modelle zum Vergleich:** Der Bodenwind wird sowohl aus
   **ICON-CH1** (`model = 'icon_ch1'`, im Panel rot) als auch aus **ICON-D2**
-  (`model = 'icon_d2'`, im Panel blau) geholt. Dazu kommt der Höhenwind
-  (`icon_d2_upper`, blau gestrichelt, siehe unten).
+  (`model = 'icon_d2'`, im Panel blau) geholt.
 - Zeitfenster: letzte 12 Stunden + kommende ~7 Stunden (gleitendes
   Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
   paar Stunden neu rechnen). Angezeigt werden davon nur 4 Stunden Zukunft —
@@ -230,49 +229,17 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   `Authorization: Bearer <service_role Key>`, sonst `401`.
 
 **Antwort der Funktion (Erfolg):** Status `200` mit z. B.
-`{ "ok": true, "models": ["icon_ch1","icon_d2","icon_d2_upper"],
+`{ "ok": true, "models": ["icon_ch1","icon_d2"],
 "stations": 89, "saved": 5000, "ch1Saved": 2500, "d2Saved": 2500,
-"skippedNullHours": 0, "batchErrors": [], "windanzeigerStations": 6,
-"upperSaved": 168, "upperNotes": [], … }`.
+"skippedNullHours": 0, "batchErrors": [], … }`.
 
-### Höhenwind für die Windanzeiger-Stationen
-
-Zusätzlich zum Bodenwind holt dieselbe Edge Function den **Höhenwind** – aber
-**nur für die kuratierten „Windanzeiger"-Stationen** (aktuell nur das Rittner
-Horn; die Liste steht in `src/lib/wind.ts` und – für Deno dupliziert – in der
-Edge Function). So läuft er:
-
-- „Höhenwind" ist der Wind auf einer **Druckfläche** (in hPa) statt am Boden.
-  Höhere Luft hat weniger Druck; grobe Faustregel: 850 hPa ≈ 1.500 m,
-  800 hPa ≈ 1.900 m, 700 hPa ≈ 3.000 m.
-- **Modell: DWD ICON-D2** (`dwd_icon_d2`), **nicht** ICON-CH1. Grund: MeteoSwiss
-  ICON-CH1 liefert bei Open-Meteo keine Druckflächen-Daten (die Abfrage kommt
-  leer zurück). ICON-D2 ist hochauflösend (~2 km), deckt den Alpenraum inkl.
-  Südtirol ab und hat die Druckflächen-Winde. Der **Bodenwind** (rote Linie)
-  bleibt bei ICON-CH1.
-- Statt die Fläche aus einer festen Tabelle zu raten, fragt die Funktion für
-  jede Windanzeiger-Station mehrere **Kandidaten-Flächen** (`850, 800, 700 hPa`)
-  einzeln bei Open-Meteo ab – inklusive deren echter (geopotentieller) Höhe –
-  und nimmt die Fläche, deren Höhe der Stationshöhe am nächsten liegt. Für das
-  Rittner Horn (≈ 2.260 m) ist das i. d. R. **800 hPa (≈ 1.900 m)**. Jede
-  Fläche kommt in einer eigenen Anfrage, damit eine vom Modell nicht
-  angebotene Fläche (Open-Meteo antwortet mit `400`) die übrigen nicht
-  mitreißt – solche Fälle stehen als `upperNotes` in der Antwort.
-- Gespeichert wird der Höhenwind als **eigene Zeilen** in `wind_forecasts`
-  mit `model = 'icon_d2_upper'` und den beiden Zusatzspalten
-  `pressure_level` (hPa) und `height_m` (Höhe in Metern). Auf Druckflächen
-  gibt es **keine Böen**, deshalb ist `gust_kmh` dort leer.
-- Angezeigt wird der Höhenwind im **Verlaufsbalken** als **blau gestrichelte
-  Linie** (zusätzlich zum schwarzen Messwert und der roten Bodenwind-Prognose),
-  mit einer Beschriftung „Höhenwind … hPa ≈ … m" – nur bei den
-  Windanzeiger-Stationen, sonst bleibt sie aus.
-
-> **Bestehende Datenbank:** Wurde `wind_forecasts` schon **vor** dieser
-> Änderung angelegt, fehlen die zwei neuen Spalten. Dann einmalig im
-> **SQL Editor** den Inhalt von `supabase/add-forecast-altitude-columns.sql`
-> ausführen (nicht-destruktiv, es wird nichts gelöscht). Bei einer neuen
-> Installation ist das nicht nötig – die Spalten stehen bereits in
-> `supabase/forecast-schema.sql`.
+> **Früher gab es hier zusätzlich einen „Höhenwind"** (Wind auf einer
+> Druckfläche, `model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt).
+> Der ist wieder entfernt worden. Bestehende Datenbanken haben eventuell noch
+> alte Höhenwind-Zeilen und die zwei ungenutzten Spalten `pressure_level` /
+> `height_m`. Beides stört nicht (die Zeilen laufen nach 2 Tagen von selbst
+> ab). Wer sofort aufräumen möchte, führt einmalig den Inhalt von
+> `supabase/remove-upper-wind.sql` im **SQL Editor** aus.
 
 ### Einmalige Einrichtung
 

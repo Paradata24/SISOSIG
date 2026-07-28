@@ -165,13 +165,12 @@ Supabase.
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
-   arrows below. Four layers can appear: **black** = measurement, **red** =
-   ICON-CH1 ground-wind forecast, **blue solid** = ICON-D2 ground-wind forecast
+   arrows below. Three layers can appear: **black** = measurement, **red** =
+   ICON-CH1 ground-wind forecast, and **blue** = ICON-D2 ground-wind forecast
    (`/api/forecast`'s `entriesD2`, same representation as the red CH1 layer — its
-   own arrows+values row sits below the measurement row), and **blue dashed** =
-   the Höhenwind (upper-air wind, only present for Windanzeiger stations — from
-   `/api/forecast`'s `upper` field, labelled "Höhenwind … hPa ≈ … m" above the
-   chart; no gust line since pressure levels have no gusts). Colors and arrow rotation deliberately reuse
+   own arrows+values row sits below the measurement row). A former fourth layer
+   (blue dashed "Höhenwind", upper-air wind on a pressure level) was removed
+   again — don't reintroduce it without asking. Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
    convention so the panel and the map markers can never drift apart. The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
@@ -207,19 +206,11 @@ Supabase.
    schema change. Stations are queried in batches of 50 (comma-separated
    coordinates; the response list has the same order as the request) and
    hours where Open-Meteo returns only nulls (station at/outside the model
-   edge) are skipped. **Höhenwind (upper-air wind)** is fetched additionally,
-   but **only for the Windanzeiger stations** (`isWindanzeigerName`, duplicated
-   from `src/lib/wind.ts`) and **from DWD ICON-D2** (`MODEL_UPPER_API`), *not*
-   ICON-CH1 — MeteoSwiss ICON-CH1 returns no pressure-level data on Open-Meteo
-   (comes back empty, `upperSaved` stays 0), while ICON-D2 (~2 km, covers the
-   Alps) does. For each station it requests the candidate pressure levels
-   `UPPER_CANDIDATE_LEVELS` (850/800/700 hPa) — one request per level so a
-   level the model doesn't offer (HTTP 400) is skipped, not fatal — plus each
-   level's `geopotential_height`, and keeps the level whose real height is
-   closest to the station altitude. Those rows are stored with
-   `model='icon_d2_upper'` and the extra columns `pressure_level`/`height_m`
-   (migration `supabase/add-forecast-altitude-columns.sql` for existing DBs;
-   `gust_kmh` stays null). `/api/forecast` returns them as its `upper` field. Triggered hourly at minute 10 by pg_cron + pg_net
+   edge) are skipped. An **upper-air wind (Höhenwind)** branch used to live here
+   (pressure levels from ICON-D2 for the Windanzeiger stations, stored as
+   `model='icon_d2_upper'`); it was removed again together with the panel layer
+   — `supabase/remove-upper-wind.sql` is the optional one-off cleanup for
+   databases that still hold those rows/columns. Triggered hourly at minute 10 by pg_cron + pg_net
    (`supabase/forecast-cron.sql`; project URL + service_role key live in
    Supabase Vault, never in the repo). Auth mirrors `/api/collect`: POST
    with `Authorization: Bearer <service_role key>` or 401 — deploy the
