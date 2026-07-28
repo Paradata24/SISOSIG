@@ -27,11 +27,6 @@
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
-//   4b. Höhenwind NUR für die kuratierten "Windanzeiger"-Stationen: mehrere
-//      Kandidaten-Druckflächen (aus DWD ICON-D2 — ICON-CH1 hat bei Open-Meteo
-//      keine Druckflächen) abfragen und je Station die wählen, deren echte
-//      (geopotentielle) Höhe der Stationshöhe am nächsten liegt. Landet als
-//      eigene Zeilen (model = 'icon_d2_upper') mit Druckfläche + Höhe.
 //   5. Prognosen älter als 2 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
@@ -56,48 +51,16 @@ const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
 // Modellnamen in der Datenbank (Spalte "model") — kurz und stabil. Es werden
-// drei Zeilen-Sorten gespeichert:
-//   'icon_ch1'      — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
-//   'icon_d2'       — Bodenwind aus DWD ICON-D2 (blaue Kurve im Panel)
-//   'icon_d2_upper' — Höhenwind (Druckfläche) aus ICON-D2 (blau gestrichelt),
-//                     nur für die Windanzeiger-Stationen, mit pressure_level/height_m
+// zwei Zeilen-Sorten gespeichert:
+//   'icon_ch1' — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
+//   'icon_d2'  — Bodenwind aus DWD ICON-D2 (blaue Kurve im Panel)
 const MODEL_DB = "icon_ch1";
 const MODEL_D2_DB = "icon_d2";
-const MODEL_UPPER_DB = "icon_d2_upper";
-// Modellname, den die Open-Meteo-API für ICON-CH1 erwartet (nur Bodenwind).
+// Modellname, den die Open-Meteo-API für ICON-CH1 erwartet.
 const MODEL_API = "meteoswiss_icon_ch1";
-// Modellname, den die Open-Meteo-API für ICON-D2 erwartet — genutzt für den
-// D2-Bodenwind UND den Höhenwind. Bewusst NICHT ICON-CH1 für den Höhenwind:
-// MeteoSwiss ICON-CH1 liefert bei Open-Meteo keine Druckflächen-Daten (die
-// Abfrage kommt leer zurück, upperSaved bleibt 0). DWD ICON-D2 ist
-// hochauflösend (~2 km), deckt den Alpenraum inkl. Südtirol ab und bietet die
-// Druckflächen-Winde (inkl. 800 hPa) an.
+// Modellname, den die Open-Meteo-API für ICON-D2 erwartet. ICON-D2 ist
+// hochauflösend (~2 km) und deckt den Alpenraum inkl. Südtirol ab.
 const MODEL_D2_API = "dwd_icon_d2";
-
-// Kandidaten-Druckflächen (hPa) für den Höhenwind. Für JEDE wird eine eigene
-// Open-Meteo-Anfrage gestellt (nicht alle zusammen), damit eine vom Modell
-// nicht angebotene Fläche (Open-Meteo antwortet dann mit HTTP 400) nicht die
-// übrigen mitreißt. Aus den tatsächlich gelieferten Flächen wird pro Station
-// diejenige gewählt, deren echte (geopotentielle) Höhe der Stationshöhe am
-// nächsten liegt. Das Set deckt grob 1.500–3.000 m ab (Rittner Horn ≈ 2.260 m
-// liegt genau dazwischen); für deutlich tiefere/höhere Windanzeiger-Stationen
-// hier bei Bedarf 925/600 hPa ergänzen.
-const UPPER_CANDIDATE_LEVELS = [850, 800, 700];
-
-// Kuratierte "Windanzeiger"-Stationen (Namensabgleich, klein geschrieben,
-// ohne Leerzeichen/Binde-/Schrägstriche und ohne Akzente/Umlaut-Punkte).
-// Bewusst identisch zur Liste in src/lib/wind.ts gehalten — diese Deno-Funktion
-// kann aus src/lib nichts importieren, daher hier dupliziert. Beim Ändern
-// beide Stellen anpassen.
-const WINDANZEIGER_STATION_NAMES = [
-  "rittner horn", // Ritten Rittner Horn
-  "schöntaufspitze", // Sulden Schöntaufspitze
-  "wilder freiger", // Signalgipfel Wilder Freiger
-  "lengspitze", // Prettau Lengspitze
-  "pisciadu", // Abtei Piz Pisciadù (Akzent wird beim Vergleich ignoriert)
-  "plose", // Plose
-  "raujoch", // Pfelders Raujoch
-];
 
 // Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
@@ -125,22 +88,14 @@ interface SensorReading {
 
 interface StationMeta {
   SCODE: string;
-  NAME_D?: string;
-  NAME_I?: string;
   LAT?: number;
   LONG?: number;
-  ALT?: number;
 }
 
 interface Station {
   code: string;
   lat: number;
   lng: number;
-  // Name und Höhe werden nur für den Höhenwind der Windanzeiger-Stationen
-  // gebraucht (Namensabgleich bzw. Wahl der nächstgelegenen Druckfläche);
-  // für die normale Bodenwind-Prognose sind sie belanglos.
-  name?: string;
-  altitude?: number | null;
 }
 
 interface ForecastRow {
@@ -150,28 +105,7 @@ interface ForecastRow {
   direction: number | null;
   speed_kmh: number | null;
   gust_kmh: number | null;
-  // Nur beim Höhenwind gesetzt (sonst null): verwendete Druckfläche in hPa
-  // und deren geopotentielle Höhe in Metern.
-  pressure_level: number | null;
-  height_m: number | null;
   fetched_at: string;
-}
-
-function normalizeStationName(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/\p{Mn}/gu, "") // diakritische Zeichen (Akzente, Umlaut-Punkte) entfernen
-    .replace(/[\s/-]+/g, "");
-}
-
-// true, wenn der Stationsname zur kuratierten Windanzeiger-Liste passt.
-function isWindanzeigerName(name: string | undefined): boolean {
-  if (!name) return false;
-  const normalized = normalizeStationName(name);
-  return WINDANZEIGER_STATION_NAMES.some((needle) =>
-    normalized.includes(normalizeStationName(needle)),
-  );
 }
 
 // Antwortform eines Standorts bei Open-Meteo (timeformat=unixtime).
@@ -202,9 +136,6 @@ function normalizeStations(raw: unknown): StationMeta[] {
         ?.coordinates;
       return {
         SCODE: String(props.SCODE ?? ""),
-        NAME_D: props.NAME_D as string | undefined,
-        NAME_I: props.NAME_I as string | undefined,
-        ALT: props.ALT as number | undefined,
         LAT: (props.LAT as number | undefined) ?? coords?.[1],
         LONG: (props.LONG as number | undefined) ?? coords?.[0],
       };
@@ -246,13 +177,7 @@ async function loadStations(): Promise<Station[]> {
     // Ohne Koordinaten keine Prognose-Abfrage möglich — Station überspringen
     // (gleiche Regel wie auf der Karte).
     if (typeof meta?.LAT !== "number" || typeof meta?.LONG !== "number") continue;
-    stations.push({
-      code,
-      lat: meta.LAT,
-      lng: meta.LONG,
-      name: meta.NAME_D ?? meta.NAME_I,
-      altitude: typeof meta.ALT === "number" ? meta.ALT : null,
-    });
+    stations.push({ code, lat: meta.LAT, lng: meta.LONG });
   }
 
   // Deterministische Reihenfolge, damit Batches über Läufe hinweg stabil sind.
@@ -366,157 +291,12 @@ async function fetchForecastBatch(
         direction,
         speed_kmh: speed !== null ? round1(speed) : null,
         gust_kmh: gust !== null ? round1(gust) : null,
-        // Bodenwind: keine Druckfläche/Höhe.
-        pressure_level: null,
-        height_m: null,
         fetched_at: fetchedAt,
       });
     });
   });
 
   return { rows, skippedNullHours };
-}
-
-// Antwortform eines Standorts bei einer Druckflächen-Abfrage. Die Variablen
-// heißen dynamisch nach Fläche (z. B. wind_speed_800hPa), daher generisch.
-interface UpperLocation {
-  hourly?: Record<string, Array<number | null> | undefined>;
-}
-
-// Eine Zeitreihe (Wind + geopotentielle Höhe) einer Station auf einer Fläche.
-interface UpperSeries {
-  times: number[];
-  speeds: Array<number | null>;
-  dirs: Array<number | null>;
-  heights: Array<number | null>;
-}
-
-// EINE Druckfläche für alle übergebenen Stationen abfragen. Rückgabe je
-// Station (nach Code) die Zeitreihe; Stationen ohne "hourly" fehlen in der Map.
-async function fetchUpperLevel(
-  stations: Station[],
-  level: number,
-): Promise<Map<string, UpperSeries>> {
-  const speedKey = `wind_speed_${level}hPa`;
-  const dirKey = `wind_direction_${level}hPa`;
-  const heightKey = `geopotential_height_${level}hPa`;
-
-  const params = new URLSearchParams({
-    latitude: stations.map((s) => s.lat).join(","),
-    longitude: stations.map((s) => s.lng).join(","),
-    // Höhenwind kommt aus ICON-D2 (siehe MODEL_D2_API) — ICON-CH1 hat keine
-    // Druckflächen-Daten.
-    models: MODEL_D2_API,
-    hourly: `${speedKey},${dirKey},${heightKey}`,
-    wind_speed_unit: "kmh",
-    past_hours: String(PAST_HOURS),
-    forecast_hours: String(FORECAST_HOURS),
-    timeformat: "unixtime",
-  });
-
-  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`);
-  if (!res.ok) {
-    throw new Error(`Open-Meteo (${level} hPa) Status ${res.status}: ${await res.text()}`);
-  }
-  const data: unknown = await res.json();
-  if (data && typeof data === "object" && (data as { error?: boolean }).error) {
-    throw new Error(`Open-Meteo (${level} hPa) meldet Fehler: ${(data as { reason?: string }).reason}`);
-  }
-  const locations = (Array.isArray(data) ? data : [data]) as UpperLocation[];
-  if (locations.length !== stations.length) {
-    throw new Error(
-      `Open-Meteo (${level} hPa) lieferte ${locations.length} Standorte, erwartet ${stations.length}`,
-    );
-  }
-
-  const result = new Map<string, UpperSeries>();
-  locations.forEach((loc, i) => {
-    const hourly = loc.hourly;
-    const time = hourly?.time;
-    if (!hourly || !time) return;
-    result.set(stations[i].code, {
-      times: time as number[],
-      speeds: hourly[speedKey] ?? [],
-      dirs: hourly[dirKey] ?? [],
-      heights: hourly[heightKey] ?? [],
-    });
-  });
-  return result;
-}
-
-// Höhenwind für die (wenigen) Windanzeiger-Stationen holen: alle Kandidaten-
-// Flächen abfragen, dann pro Station die Fläche wählen, deren echte Höhe der
-// Stationshöhe am nächsten liegt, und daraus die Prognosezeilen bauen.
-async function fetchUpperWind(
-  stations: Station[],
-  fetchedAt: string,
-): Promise<{ rows: ForecastRow[]; notes: string[] }> {
-  const notes: string[] = [];
-
-  // Fläche -> (Stationscode -> Zeitreihe). Eine fehlgeschlagene Fläche (z. B.
-  // vom Modell nicht angeboten) wird nur notiert, die übrigen laufen weiter.
-  const byLevel = new Map<number, Map<string, UpperSeries>>();
-  for (const level of UPPER_CANDIDATE_LEVELS) {
-    try {
-      byLevel.set(level, await fetchUpperLevel(stations, level));
-    } catch (err) {
-      notes.push((err as Error).message);
-    }
-  }
-
-  const rows: ForecastRow[] = [];
-  for (const station of stations) {
-    if (typeof station.altitude !== "number") {
-      notes.push(`Station ${station.code}: keine Höhe bekannt, Höhenwind übersprungen`);
-      continue;
-    }
-
-    // Fläche mit Daten wählen, deren mittlere geopotentielle Höhe der
-    // Stationshöhe am nächsten liegt.
-    let best: { level: number; series: UpperSeries; avgHeight: number } | null = null;
-    for (const level of UPPER_CANDIDATE_LEVELS) {
-      const series = byLevel.get(level)?.get(station.code);
-      if (!series) continue;
-      const validHeights = series.heights.filter((h): h is number => h !== null);
-      const hasWind =
-        series.speeds.some((s) => s !== null) || series.dirs.some((d) => d !== null);
-      if (validHeights.length === 0 || !hasWind) continue;
-      const avgHeight = validHeights.reduce((a, b) => a + b, 0) / validHeights.length;
-      if (
-        !best ||
-        Math.abs(avgHeight - station.altitude) < Math.abs(best.avgHeight - station.altitude)
-      ) {
-        best = { level, series, avgHeight };
-      }
-    }
-
-    if (!best) {
-      notes.push(`Station ${station.code}: keine Höhenwind-Fläche mit Daten`);
-      continue;
-    }
-
-    const chosen = best;
-    chosen.series.times.forEach((t, k) => {
-      const speed = chosen.series.speeds[k] ?? null;
-      const dir = chosen.series.dirs[k] ?? null;
-      const height = chosen.series.heights[k] ?? null;
-      // Stunden ganz ohne Wind überspringen (Modellrand).
-      if (speed === null && dir === null) return;
-      rows.push({
-        station_code: station.code,
-        model: MODEL_UPPER_DB,
-        forecast_time: new Date(t * 1000).toISOString(),
-        direction: dir,
-        speed_kmh: speed !== null ? round1(speed) : null,
-        gust_kmh: null, // Böen gibt es auf Druckflächen nicht.
-        pressure_level: chosen.level,
-        height_m: round1(height !== null ? height : chosen.avgHeight),
-        fetched_at: fetchedAt,
-      });
-    });
-  }
-
-  return { rows, notes };
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
@@ -589,24 +369,6 @@ export async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
-  // 3b) Höhenwind NUR für die Windanzeiger-Stationen (kuratierte Liste).
-  //     Additiv: schlägt das fehl, bleibt der Bodenwind trotzdem erhalten.
-  const windanzeigerStations = stations.filter((s) => isWindanzeigerName(s.name));
-  let upperSaved = 0;
-  const upperNotes: string[] = [];
-  if (windanzeigerStations.length > 0) {
-    try {
-      const upper = await fetchUpperWind(windanzeigerStations, fetchedAt);
-      rows.push(...upper.rows);
-      upperSaved = upper.rows.length;
-      upperNotes.push(...upper.notes);
-    } catch (err) {
-      const message = `Höhenwind: ${(err as Error).message}`;
-      console.error(message);
-      upperNotes.push(message);
-    }
-  }
-
   if (rows.length === 0) {
     return json(
       { error: "Keine Prognosewerte erhalten", batchErrors },
@@ -659,16 +421,13 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   return json({
     ok: true,
-    models: [MODEL_DB, MODEL_D2_DB, MODEL_UPPER_DB],
+    models: [MODEL_DB, MODEL_D2_DB],
     stations: stations.length,
     saved: rows.length,
     ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
     d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
     skippedNullHours,
     batchErrors,
-    windanzeigerStations: windanzeigerStations.length,
-    upperSaved,
-    upperNotes,
     cleanupBefore: cutoff,
     cleanupOk,
   });

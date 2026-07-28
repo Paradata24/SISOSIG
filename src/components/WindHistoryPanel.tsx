@@ -11,7 +11,7 @@ import {
   type WindStation,
 } from "@/lib/wind";
 import type { HistoryEntry } from "@/app/api/history/route";
-import type { ForecastEntry, UpperForecast } from "@/app/api/forecast/route";
+import type { ForecastEntry } from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
@@ -37,17 +37,14 @@ const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
 const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
-// Grundhöhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
+// Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
 // Zeilen) + Prognose-Vergleichsblock (Pfeile + 2 Zeilen, ICON-CH1 rot links /
 // ICON-D2 blau rechts nebeneinander) + unterer Rand.
-const SVG_H_BASE =
+const SVG_H =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   D2_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   BOTTOM_PAD;
-// Zusatzhöhe NUR bei Windanzeiger-Stationen: eine fette Höhenwind-Zahl unter
-// den beiden ICON-D2-Zahlen plus darunter der Höhenwind-Richtungspfeil.
-const UPPER_BLOCK_H = VALUE_LINE_H + VALUES_GAP + ARROW_ROW_H;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
 // Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
@@ -200,8 +197,6 @@ export default function WindHistoryPanel({
     forecast?: ForecastEntry[];
     // ICON-D2-Bodenwind (zweite Prognose zum Vergleich), ebenfalls additiv.
     forecastD2?: ForecastEntry[];
-    // Höhenwind (nur für Windanzeiger-Stationen vorhanden), ebenfalls additiv.
-    upper?: UpperForecast | null;
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -214,7 +209,6 @@ export default function WindHistoryPanel({
   const entries = loading ? null : (result?.entries ?? null);
   const forecast = loading ? null : (result?.forecast ?? null);
   const forecastD2 = loading ? null : (result?.forecastD2 ?? null);
-  const upper = loading ? null : (result?.upper ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -237,8 +231,6 @@ export default function WindHistoryPanel({
           (forecastJson?.entries as ForecastEntry[] | undefined) ?? [];
         const forecastD2Entries =
           (forecastJson?.entriesD2 as ForecastEntry[] | undefined) ?? [];
-        const upperForecast =
-          (forecastJson?.upper as UpperForecast | undefined) ?? null;
         const data = await res.json();
         if (cancelled) return;
         setNow(Date.now());
@@ -253,7 +245,6 @@ export default function WindHistoryPanel({
             entries: data.entries as HistoryEntry[],
             forecast: forecastEntries,
             forecastD2: forecastD2Entries,
-            upper: upperForecast,
           });
         }
       } catch {
@@ -328,24 +319,12 @@ export default function WindHistoryPanel({
     }))
     .filter((p) => !Number.isNaN(p.t));
 
-  // Höhenwind-Punkte (nur Windanzeiger-Stationen). Nur Mittelwind + Richtung,
-  // keine Böen (die gibt es auf Druckflächen nicht).
-  const upperPoints: Point[] = (upper?.entries ?? [])
-    .map((e) => ({
-      t: Date.parse(e.forecast_time),
-      speed: e.speed_kmh,
-      gust: null,
-      direction: e.direction,
-    }))
-    .filter((p) => !Number.isNaN(p.t));
-
   // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
   // werden — nicht fälschlich "Keine Daten verfügbar".
   const hasData =
     points.some((p) => p.speed !== null || p.gust !== null) ||
     forecastPoints.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastD2Points.some((p) => p.speed !== null || p.gust !== null) ||
-    upperPoints.some((p) => p.speed !== null);
+    forecastD2Points.some((p) => p.speed !== null || p.gust !== null);
 
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
@@ -373,14 +352,12 @@ export default function WindHistoryPanel({
   const historyWidth = historyWidth0 * stretch;
   const futureWidth = futureWidth0 * stretch;
 
-  // yMax muss auch alle Prognosen (ICON-CH1, ICON-D2) und den Höhenwind
-  // einschließen, sonst würde eine der Kurven oben abgeschnitten (der
-  // Höhenwind ist oft deutlich stärker).
+  // yMax muss auch beide Prognosen (ICON-CH1, ICON-D2) einschließen, sonst
+  // würde eine der Kurven oben abgeschnitten.
   const maxValue = [
     ...points,
     ...forecastPoints,
     ...forecastD2Points,
-    ...upperPoints,
   ].reduce((m, p) => Math.max(m, p.speed ?? 0, p.gust ?? 0), 0);
   // Obergrenze der y-Achse auf volle 10er runden, mindestens 20 km/h.
   const yMax = Math.max(20, Math.ceil(maxValue / 10) * 10);
@@ -409,14 +386,6 @@ export default function WindHistoryPanel({
   // ICON-CH1 links, blaues ICON-D2 rechts nebeneinander unter derselben
   // Stunde (ersetzt die vormals separate rote Überlagerung im Kurvenbereich).
   const FORECAST_PAIR_HALF_GAP = 11;
-
-  // Höhenwind (nur Windanzeiger-Stationen): eine fette blaue Zahl direkt UNTER
-  // den beiden ICON-D2-Zahlen, darunter der Richtungspfeil (nur Kontur, blau).
-  const hasUpper = upperPoints.some((p) => p.speed !== null);
-  const upperValueY = d2GustValueY + VALUE_LINE_H;
-  const upperArrowCy = upperValueY + VALUES_GAP + ARROW_ROW_H / 2;
-  // Das SVG wird nur dann höher, wenn es tatsächlich Höhenwind-Werte gibt.
-  const svgH = SVG_H_BASE + (hasUpper ? UPPER_BLOCK_H : 0);
 
   // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
   const bands: { from: number; to: number; color: string; opacity: number }[] = [];
@@ -529,21 +498,6 @@ export default function WindHistoryPanel({
     combinedForecastTimeSelection.push(combinedForecastTimes[i]);
   }
 
-  // Gleiche Ausdünnung für die Höhenwind-Zahlen/-Pfeile unter dem ICON-D2-Block.
-  const upperPxPerPoint =
-    upperPoints.length > 1
-      ? (x(upperPoints[upperPoints.length - 1].t) - x(upperPoints[0].t)) /
-        (upperPoints.length - 1)
-      : historyWidth;
-  const upperArrowStep = Math.max(
-    1,
-    Math.ceil(Math.max(ARROW_SIZE + 2, MIN_LABEL_SPACING) / upperPxPerPoint),
-  );
-  const upperArrowIndices: number[] = [];
-  for (let i = upperPoints.length - 1; i >= 0; i -= upperArrowStep) {
-    upperArrowIndices.push(i);
-  }
-
   const yTicks: number[] = [];
   for (let v = 0; v <= yMax; v += yTickStep) yTicks.push(v);
 
@@ -569,9 +523,6 @@ export default function WindHistoryPanel({
     x,
     y,
   );
-  // Höhenwind: nur eine (Mittelwind-)Linie, blau gestrichelt.
-  const upperSpeedPath = buildLinePath(upperPoints, (p) => p.speed, x, y);
-
   // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
   const LINE_WIDTH = 1.8;
 
@@ -603,15 +554,6 @@ export default function WindHistoryPanel({
             (ICON-CH1) ·{" "}
             <span className="text-blue-600 dark:text-blue-400">blau</span>:
             Prognose (ICON-D2)
-            {upper && upper.entries.length > 0 && (
-              <>
-                {" · "}
-                <span className="text-blue-600 dark:text-blue-400">
-                  blau gestrichelt
-                </span>
-                : Höhenwind
-              </>
-            )}
           </span>
         </span>
         <button
@@ -631,20 +573,11 @@ export default function WindHistoryPanel({
         </button>
       </header>
 
-      {/* Immer sichtbare Beschriftung des Höhenwinds (auch auf dem Handy, wo
-          die Legende oben ausgeblendet ist): welche Druckfläche + Höhe. */}
-      {upper && upper.entries.length > 0 && upper.pressure_level !== null && (
-        <p className="px-3 pb-1 text-[11px] text-blue-600 dark:text-blue-400">
-          Höhenwind (blau gestrichelt): {upper.pressure_level} hPa
-          {upper.height_m !== null && ` ≈ ${upper.height_m} m`}
-        </p>
-      )}
-
       <div className="flex px-1 pb-4">
         <div
           ref={scrollRef}
           className="min-w-0 flex-1 overflow-x-auto"
-          style={{ height: svgH }}
+          style={{ height: SVG_H }}
         >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -661,8 +594,8 @@ export default function WindHistoryPanel({
           ) : (
             <svg
               width={svgWidth}
-              height={svgH}
-              viewBox={`0 0 ${svgWidth} ${svgH}`}
+              height={SVG_H}
+              viewBox={`0 0 ${svgWidth} ${SVG_H}`}
               role="img"
               aria-label="Windverlauf: Mittelwind und Böen der letzten 12 Stunden"
             >
@@ -829,39 +762,6 @@ export default function WindHistoryPanel({
                   )}
                 </g>
               ))}
-
-              {/* Höhenwind (nur Windanzeiger-Stationen): eine gestrichelte,
-                  blaue Mittelwind-Linie plus Punkte. Keine Böen/Fläche, da es
-                  auf Druckflächen keine Böen gibt. Welche Druckfläche und Höhe
-                  gemeint ist, steht in der Beschriftung über dem Diagramm. */}
-              <path
-                d={upperSpeedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeDasharray="5 3"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
-              />
-              {upperPoints.map((p) =>
-                p.speed !== null ? (
-                  <circle
-                    key={`udot-${p.t}`}
-                    cx={x(p.t)}
-                    cy={y(p.speed)}
-                    r={1.8}
-                    className="fill-blue-600 dark:fill-blue-400"
-                  >
-                    <title>
-                      {`Höhenwind ${formatTime(p.t)} Uhr — ${Math.round(p.speed)} km/h${
-                        p.direction !== null
-                          ? `, Richtung ${Math.round(p.direction)}°`
-                          : ""
-                      }`}
-                    </title>
-                  </circle>
-                ) : null,
-              )}
 
               {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
                   unten), die Fläche dazwischen in derselben Farbe mit 30%
@@ -1071,50 +971,6 @@ export default function WindHistoryPanel({
                 );
               })}
 
-              {/* Höhenwind (nur Windanzeiger-Stationen): fette blaue Zahl direkt
-                  unter den beiden ICON-D2-Zahlen, darunter der Richtungspfeil
-                  nur als blaue Kontur (ohne Füllung). Gleicher Rechts-Versatz
-                  wie die ICON-D2-Werte darüber, damit alle blauen Elemente
-                  einer Stunde exakt untereinanderstehen. */}
-              {upperArrowIndices.map((i) => {
-                const p = upperPoints[i];
-                if (p.speed === null) return null;
-                return (
-                  <text
-                    key={`uvalue-${p.t}`}
-                    x={(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                    y={upperValueY}
-                    textAnchor="middle"
-                    className="text-[10px] font-bold tabular-nums fill-blue-600 dark:fill-blue-400"
-                  >
-                    {Math.round(p.speed)}
-                  </text>
-                );
-              })}
-              {upperArrowIndices.map((i) => {
-                const p = upperPoints[i];
-                if (p.direction === null) return null;
-                const rotation = (snapDirectionTo8(p.direction) + 180) % 360;
-                return (
-                  <g
-                    key={`uarrow-${p.t}`}
-                    transform={`translate(${(x(p.t) + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${upperArrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
-                  >
-                    <title>
-                      {`Höhenwind ${formatTime(p.t)} Uhr — ${p.speed ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
-                    </title>
-                    <path
-                      d="M20 2 L34 34 L20 26 L6 34 Z"
-                      transform="translate(-20 -20)"
-                      fill="none"
-                      strokeWidth={3}
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                      className="stroke-blue-600 dark:stroke-blue-400"
-                    />
-                  </g>
-                );
-              })}
             </svg>
           )}
         </div>
@@ -1124,7 +980,7 @@ export default function WindHistoryPanel({
         {!loading && !error && hasData && (
           <div
             className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
-            style={{ height: svgH }}
+            style={{ height: SVG_H }}
           >
             {yTicks.map((v) => (
               <span
