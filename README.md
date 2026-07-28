@@ -200,7 +200,7 @@ volle Windskala.
 
 Die Zahlen an der Achse stehen bewusst nicht in runden 10er-Schritten,
 sondern genau dort, wo im Diagramm die Farbe wechselt — es sind dieselben
-Werte wie in der Legende (0 / 7 / 15 / 25 / 31 / 37, plus die Obergrenze 45
+Werte wie in der Legende (0 / 7 / 15 / 25 / 30 / 35, plus die Obergrenze 45
 ganz oben). Sie kommen direkt aus `WIND_COLOR_SCALE` in `src/lib/wind.ts`:
 Wird die Skala dort geändert, ändert sich die Achsenbeschriftung
 automatisch mit.

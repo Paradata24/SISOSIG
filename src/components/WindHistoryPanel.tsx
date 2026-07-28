@@ -504,7 +504,7 @@ export default function WindHistoryPanel({
   // Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
   // exakt an den Grenzen der Windskala — also dort, wo im Diagramm die Farbe
   // wechselt. Die Zahlen sind dieselben wie in der Legende (0 / 7 / 15 / 25 /
-  // 31 / 37, aus WIND_COLOR_SCALE.label), damit man Farbband und Zahl direkt
+  // 30 / 35, aus WIND_COLOR_SCALE.label), damit man Farbband und Zahl direkt
   // zusammenlesen kann. Ganz oben steht zusätzlich die feste Obergrenze der
   // Achse, bei der die Kurve gekappt wird.
   const yTicks: { at: number; label: string }[] = [
