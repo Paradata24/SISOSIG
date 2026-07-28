@@ -166,7 +166,14 @@ Supabase.
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
-   arrows below. Three layers can appear: **black** = measurement, **red** =
+   arrows below. There is deliberately **no filled area between the mean-wind
+   and gust curves** (removed at the owner's request, for measurements *and*
+   forecasts — `buildAreaPath` is gone; don't reintroduce it). Below the
+   measurement arrows, each measured number (mean wind on top, gust below) sits
+   in a **rectangle filled with its own `getWindColor(value)`**
+   (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
+   on the dark red/black steps), and below those two rows the hour labels are
+   repeated. Three layers can appear: **black** = measurement, **red** =
    ICON-CH1 ground-wind forecast, and **blue** = ICON-D2 ground-wind forecast
    (`/api/forecast`'s `entriesD2`, same representation as the red CH1 layer — its
    own arrows+values row sits below the measurement row). A former fourth layer

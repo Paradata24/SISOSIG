@@ -17,9 +17,10 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 // Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
 //  - Zeitachse (Lokalzeit) oben
 //  - Liniendiagramm: Mittelwind (unten) und Böen (oben), beide gleich dick,
-//    mit halbtransparent gefüllter Fläche dazwischen, vor horizontalen
-//    Farbbändern der Windstärke-Skala
-//  - darunter eine Reihe Windrichtungs-Pfeile
+//    ohne Füllfläche dazwischen, vor horizontalen Farbbändern der
+//    Windstärke-Skala
+//  - darunter eine Reihe Windrichtungs-Pfeile, die Messwerte in eingefärbten
+//    Rechtecken (Farbe = Windskala) und noch einmal die Uhrzeiten
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
 // Pfeile (getWindColor bzw. auf 8 Himmelsrichtungen eingerastete Richtung
 // + 180°), damit nichts auseinanderläuft. Der exakte Grad-Wert bleibt in
@@ -42,14 +43,24 @@ const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
 const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
+// Messwerte stehen in eingefärbten Rechtecken (Farbe = Windskala des jeweiligen
+// Werts), damit man die Windstärke schon an der Zahlenreihe ablesen kann.
+const MEAS_BOX_W = 27; // Breite eines Wert-Rechtecks
+const MEAS_BOX_H = 15; // Höhe eines Wert-Rechtecks
+const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Rechteck → Böen-Rechteck
+const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
+const MEAS_TIME_GAP = 5; // Abstand Böen-Rechteck → wiederholte Uhrzeit-Zeile
+const MEAS_TIME_ROW_H = 15; // Höhe der wiederholten Uhrzeit-Zeile
 const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
-// Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2
-// Zeilen) + Prognose-Vergleichsblock (Pfeile + 2 Zeilen, ICON-CH1 rot links /
-// ICON-D2 blau rechts nebeneinander) + unterer Rand.
+// Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2 Zeilen
+// eingefärbte Werte + wiederholte Uhrzeiten) + Prognose-Vergleichsblock
+// (Pfeile + 2 Zeilen, ICON-CH1 rot links / ICON-D2 blau rechts nebeneinander)
+// + unterer Rand.
 const SVG_H =
   TIME_LABEL_H + CHART_H +
-  ARROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
+  ARROW_GAP + ARROW_ROW_H + VALUES_GAP + MEAS_VALUES_ROW_H +
+  MEAS_TIME_GAP + MEAS_TIME_ROW_H +
   D2_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   BOTTOM_PAD;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
@@ -140,50 +151,17 @@ function buildLinePath(
   return d.trim();
 }
 
-// Baut den SVG-Pfad der Fläche zwischen zwei Kurven (oben = Böen,
-// unten = Mittelwind). Für jeden zusammenhängenden Abschnitt (beide Werte
-// vorhanden, benachbarte Punkte ≤ LINE_GAP_MS auseinander) entsteht ein
-// geschlossenes Polygon: erst oben (Böen) von links nach rechts, dann unten
-// (Mittelwind) von rechts nach links zurück. Bei Lücken/fehlenden Werten
-// bleibt die Fläche — wie die Linien — unterbrochen.
-function buildAreaPath(
-  points: Point[],
-  getUpper: (p: Point) => number | null,
-  getLower: (p: Point) => number | null,
-  x: (t: number) => number,
-  y: (v: number) => number,
-): string {
-  let d = "";
-  let run: Point[] = [];
-  const flush = () => {
-    if (run.length >= 2) {
-      let top = "";
-      for (const p of run) {
-        const cmd = top === "" ? "M" : "L";
-        top += `${cmd}${x(p.t).toFixed(1)} ${y(getUpper(p)!).toFixed(1)} `;
-      }
-      let bottom = "";
-      for (let i = run.length - 1; i >= 0; i--) {
-        const p = run[i];
-        bottom += `L${x(p.t).toFixed(1)} ${y(getLower(p)!).toFixed(1)} `;
-      }
-      d += `${top}${bottom}Z `;
-    }
-    run = [];
-  };
-  let prevT: number | null = null;
-  for (const p of points) {
-    if (getUpper(p) === null || getLower(p) === null) {
-      flush();
-      prevT = null;
-      continue;
-    }
-    if (prevT !== null && p.t - prevT > LINE_GAP_MS) flush();
-    run.push(p);
-    prevT = p.t;
-  }
-  flush();
-  return d.trim();
+// Passende Textfarbe für ein eingefärbtes Wert-Rechteck: auf den dunklen
+// Stufen der Windskala (dunkelrot, schwarz) weiß, sonst dunkelgrau — sonst
+// wäre die Zahl im Rechteck nicht mehr lesbar.
+function contrastTextColor(hexColor: string): string {
+  const hex = hexColor.replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  // wahrgenommene Helligkeit (0–255)
+  const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+  return brightness > 140 ? "#18181b" : "#ffffff";
 }
 
 export default function WindHistoryPanel({
@@ -375,14 +353,21 @@ export default function WindHistoryPanel({
   const y = (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
   const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
   const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
-  const speedValueY = arrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
-  const gustValueY = speedValueY + VALUE_LINE_H;
+  // Obere Kante der beiden Messwert-Reihen (Rechtecke): oben Mittelwind,
+  // darunter Böe. Die Zahl sitzt jeweils mittig im Rechteck.
+  const speedBoxY = arrowRowBottom + VALUES_GAP;
+  const gustBoxY = speedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
+  const measValuesBottom = gustBoxY + MEAS_BOX_H;
+  // Uhrzeiten unter dem Messwert-Block noch einmal wiederholen, damit man die
+  // Zahlenreihen ohne Blick nach ganz oben zeitlich einordnen kann.
+  const measTimeLabelY = measValuesBottom + MEAS_TIME_GAP + 11;
+  const measBlockBottom = measValuesBottom + MEAS_TIME_GAP + MEAS_TIME_ROW_H;
 
   // ICON-D2-Bodenwind-Block (blau), direkt unter dem Messwert-Block: eigene
   // Pfeilreihe + zwei Zahlenzeilen (Mittelwind, Böe) — dieselbe Darstellung
   // wie Messung und ICON-CH1, nur in Blau und weiter unten.
-  const d2ArrowCy = gustValueY + D2_ROW_GAP + ARROW_ROW_H / 2;
-  const d2ArrowRowBottom = gustValueY + D2_ROW_GAP + ARROW_ROW_H;
+  const d2ArrowCy = measBlockBottom + D2_ROW_GAP + ARROW_ROW_H / 2;
+  const d2ArrowRowBottom = measBlockBottom + D2_ROW_GAP + ARROW_ROW_H;
   const d2SpeedValueY = d2ArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
   const d2GustValueY = d2SpeedValueY + VALUE_LINE_H;
   // Horizontaler Abstand vom Stundenpunkt für den Vergleichs-Block: rotes
@@ -519,26 +504,11 @@ export default function WindHistoryPanel({
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
-  const areaPath = buildAreaPath(points, (p) => p.gust, (p) => p.speed, x, y);
   const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
   const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
-  const forecastAreaPath = buildAreaPath(
-    forecastPoints,
-    (p) => p.gust,
-    (p) => p.speed,
-    x,
-    y,
-  );
   // ICON-D2-Bodenwind (blau, durchgezogen) — gleiche Kurven wie ICON-CH1.
   const forecastD2SpeedPath = buildLinePath(forecastD2Points, (p) => p.speed, x, y);
   const forecastD2GustPath = buildLinePath(forecastD2Points, (p) => p.gust, x, y);
-  const forecastD2AreaPath = buildAreaPath(
-    forecastD2Points,
-    (p) => p.gust,
-    (p) => p.speed,
-    x,
-    y,
-  );
   // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
   const LINE_WIDTH = 1.8;
 
@@ -686,14 +656,7 @@ export default function WindHistoryPanel({
               {/* Prognose (ICON-CH1) in Rot, VOR den schwarzen Messwert-Kurven
                   gezeichnet: im Überlappungsbereich liegt so die echte Messung
                   optisch oben; rechts der "jetzt"-Linie steht Rot ohnehin
-                  allein. Beide Linien gleich dick, die Fläche dazwischen in
-                  derselben Farbe mit 30% Deckkraft. */}
-              <path
-                d={forecastAreaPath}
-                stroke="none"
-                fillOpacity={0.3}
-                className="fill-red-600 dark:fill-red-500"
-              />
+                  allein. Beide Linien gleich dick, ohne Füllfläche dazwischen. */}
               <path
                 d={forecastGustPath}
                 fill="none"
@@ -735,13 +698,7 @@ export default function WindHistoryPanel({
               ))}
 
               {/* Prognose (ICON-D2) in Blau, durchgezogen — gleiche Darstellung
-                  wie die rote ICON-CH1-Prognose (Böen + Mittelwind + Fläche). */}
-              <path
-                d={forecastD2AreaPath}
-                stroke="none"
-                fillOpacity={0.3}
-                className="fill-blue-600 dark:fill-blue-400"
-              />
+                  wie die rote ICON-CH1-Prognose (Böen + Mittelwind). */}
               <path
                 d={forecastD2GustPath}
                 fill="none"
@@ -780,14 +737,7 @@ export default function WindHistoryPanel({
               ))}
 
               {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
-                  unten), die Fläche dazwischen in derselben Farbe mit 30%
-                  Deckkraft. */}
-              <path
-                d={areaPath}
-                stroke="none"
-                fillOpacity={0.3}
-                className="fill-zinc-900 dark:fill-zinc-100"
-              />
+                  unten), ohne Füllfläche dazwischen. */}
               <path
                 d={gustPath}
                 fill="none"
@@ -858,41 +808,84 @@ export default function WindHistoryPanel({
                 );
               })}
 
-              {/* Werte-Text unter jedem Pfeil: oben Mittelwind, darunter Böe
-                  (gleiche Auswahl an Punkten wie die Pfeile, damit nichts
-                  überlappt) */}
+              {/* Messwerte unter jedem Pfeil: oben Mittelwind, darunter Böe,
+                  jede Zahl in einem Rechteck, das nach der Windskala des
+                  jeweiligen Werts eingefärbt ist (gleiche Farben wie die
+                  Farbbänder und die Kartenpfeile). Gleiche Auswahl an Punkten
+                  wie die Pfeile, damit nichts überlappt. */}
               {arrowIndices.map((i) => {
                 const p = points[i];
                 if (p.direction === null) return null;
-                const tx = x(p.t).toFixed(1);
-                // Stündliche Messwerte fett und kräftiger, damit sie sich zum
-                // Vergleich mit der (ebenfalls stündlichen) roten Prognose von
-                // den Zwischenwerten abheben.
+                const tx = x(p.t);
+                // Stündliche Messwerte fett, damit sie sich zum Vergleich mit
+                // der (ebenfalls stündlichen) Prognose von den Zwischenwerten
+                // abheben.
                 const isHourly = hourlyPointIndices.has(i);
-                const emphasisClass = isHourly
-                  ? "font-bold fill-zinc-900 dark:fill-zinc-100"
-                  : "fill-zinc-500 dark:fill-zinc-400";
+                const cells: { value: number | null; boxY: number }[] = [
+                  { value: p.speed, boxY: speedBoxY },
+                  { value: p.gust, boxY: gustBoxY },
+                ];
                 return (
                   <g key={`values-${p.t}`}>
-                    <text
-                      x={tx}
-                      y={speedValueY}
-                      textAnchor="middle"
-                      className={`text-[10px] tabular-nums ${emphasisClass}`}
-                    >
-                      {p.speed !== null ? Math.round(p.speed) : "–"}
-                    </text>
-                    <text
-                      x={tx}
-                      y={gustValueY}
-                      textAnchor="middle"
-                      className={`text-[10px] tabular-nums ${emphasisClass}`}
-                    >
-                      {p.gust !== null ? Math.round(p.gust) : "–"}
-                    </text>
+                    {cells.map(({ value, boxY }) => {
+                      // Ohne Messwert kein Rechteck, nur ein graues "–".
+                      if (value === null) {
+                        return (
+                          <text
+                            key={boxY}
+                            x={tx.toFixed(1)}
+                            y={boxY + MEAS_BOX_H / 2}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            className="fill-zinc-400 text-[10px] tabular-nums dark:fill-zinc-500"
+                          >
+                            –
+                          </text>
+                        );
+                      }
+                      const color = getWindColor(value);
+                      return (
+                        <g key={boxY}>
+                          <rect
+                            x={(tx - MEAS_BOX_W / 2).toFixed(1)}
+                            y={boxY}
+                            width={MEAS_BOX_W}
+                            height={MEAS_BOX_H}
+                            rx={2}
+                            fill={color}
+                          />
+                          <text
+                            x={tx.toFixed(1)}
+                            y={boxY + MEAS_BOX_H / 2}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            fill={contrastTextColor(color)}
+                            className={`text-[10px] tabular-nums ${isHourly ? "font-bold" : ""}`}
+                          >
+                            {Math.round(value)}
+                          </text>
+                        </g>
+                      );
+                    })}
                   </g>
                 );
               })}
+
+              {/* Uhrzeiten unter dem Messwert-Block noch einmal (gleiche
+                  Stunden-Auswahl wie die Zeitachse oben) */}
+              {hourTicks.map((d) =>
+                d.getHours() % labelEveryHours === 0 ? (
+                  <text
+                    key={`meas-time-${d.getTime()}`}
+                    x={x(d.getTime()).toFixed(1)}
+                    y={measTimeLabelY}
+                    textAnchor="middle"
+                    className="fill-zinc-500 text-[11px] tabular-nums dark:fill-zinc-400"
+                  >
+                    {formatHourLabel(d)}
+                  </text>
+                ) : null,
+              )}
 
               {/* Prognose-Vergleichsblock UNTER dem Messwert-Block: für jede
                   Stunde links das rote ICON-CH1-Ergebnis, rechts direkt
