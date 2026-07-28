@@ -106,8 +106,9 @@ Supabase.
    5 minutes and renders one marker per station: a rotating SVG arrow
    colored by speed on a 6-step scale agreed with the project owner via a
    legend screenshot — "schwach" 0–6 → green "spürbar" 7–14 → yellow
-   "mässig" 15–24 → orange "stark" 25–30 → dark red "sehr stark" 31–36 →
-   black "zu stark" >36 km/h (see `WIND_COLOR_SCALE`/`getWindColor` in
+   "mässig" 15–24 → orange "stark" 25–29 → dark red "sehr stark" 30–34 →
+   black "zu stark" ≥35 km/h (the top two boundaries were later lowered from
+   31/37 to 30/35 at the owner's request; see `WIND_COLOR_SCALE`/`getWindColor` in
    `src/lib/wind.ts`; thresholds sit on half values — 6.5, 14.5, … — so the
    color always matches the rounded number printed next to the arrow). The
    lowest step deliberately deviates from the screenshot: it is a very light
@@ -179,7 +180,7 @@ Supabase.
    the top edge instead of overflowing into the time-label row; the numbers
    under the arrows and the arrow colors still use the true (uncapped) values.
    Its labels are the wind-scale boundaries (`WIND_COLOR_SCALE[].label` — 0/7/
-   15/25/31/37, plus `Y_MAX_KMH` on top), not round 10-steps, so each number
+   15/25/30/35, plus `Y_MAX_KMH` on top), not round 10-steps, so each number
    sits exactly where the color band changes; they follow the scale
    automatically if it's ever edited.
    The

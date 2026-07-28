@@ -129,14 +129,17 @@ export interface WindColorStop {
  * bei Änderungswunsch bitte hier zentral anpassen. Die unterste Stufe ist
  * bewusst ein ganz helles Blau statt des Weiß der Vorlage, damit schwache
  * Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur sichtbar sind.
+ * Stufen: 0–6 / 7–14 / 15–24 / 25–29 / 30–34 / ab 35 km/h. Die beiden
+ * obersten Grenzen wurden auf Wunsch des Projektbesitzers nachträglich von
+ * 31/37 auf 30/35 herabgesetzt.
  */
 export const WIND_COLOR_SCALE: WindColorStop[] = [
   { max: 6.5, color: "#CFE8F7", label: "0", name: "schwach" }, // ganz helles Blau
   { max: 14.5, color: "#6EE45C", label: "7", name: "spürbar" }, // Hellgrün
   { max: 24.5, color: "#FAF264", label: "15", name: "mässig" }, // Gelb
-  { max: 30.5, color: "#F0913C", label: "25", name: "stark" }, // Orange
-  { max: 36.5, color: "#C0281B", label: "31", name: "sehr stark" }, // Dunkelrot
-  { max: Infinity, color: "#000000", label: "37", name: "zu stark", bandOpacity: 0.3 }, // Schwarz
+  { max: 29.5, color: "#F0913C", label: "25", name: "stark" }, // Orange
+  { max: 34.5, color: "#C0281B", label: "30", name: "sehr stark" }, // Dunkelrot
+  { max: Infinity, color: "#000000", label: "35", name: "zu stark", bandOpacity: 0.3 }, // Schwarz
 ];
 
 /** Liefert für einen Windwert (km/h) die passende Farbe der Windskala. */
