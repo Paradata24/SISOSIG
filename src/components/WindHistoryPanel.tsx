@@ -501,11 +501,21 @@ export default function WindHistoryPanel({
     combinedForecastTimeSelection.push(combinedForecastTimes[i]);
   }
 
-  // Beschriftung der km/h-Achse: runde 10er-Schritte, dazu immer die feste
-  // Obergrenze selbst (bei 45 km/h also 0/10/20/30/40/45).
-  const yTicks: number[] = [];
-  for (let v = 0; v < yMax; v += 10) yTicks.push(v);
-  yTicks.push(yMax);
+  // Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
+  // exakt an den Grenzen der Windskala — also dort, wo im Diagramm die Farbe
+  // wechselt. Die Zahlen sind dieselben wie in der Legende (0 / 7 / 15 / 25 /
+  // 31 / 37, aus WIND_COLOR_SCALE.label), damit man Farbband und Zahl direkt
+  // zusammenlesen kann. Ganz oben steht zusätzlich die feste Obergrenze der
+  // Achse, bei der die Kurve gekappt wird.
+  const yTicks: { at: number; label: string }[] = [
+    { at: 0, label: WIND_COLOR_SCALE[0].label },
+  ];
+  for (let i = 1; i < WIND_COLOR_SCALE.length; i++) {
+    const boundary = WIND_COLOR_SCALE[i - 1].max;
+    if (boundary >= yMax) break;
+    yTicks.push({ at: boundary, label: WIND_COLOR_SCALE[i].label });
+  }
+  yTicks.push({ at: yMax, label: String(yMax) });
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
@@ -988,13 +998,13 @@ export default function WindHistoryPanel({
             className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
             style={{ height: SVG_H }}
           >
-            {yTicks.map((v) => (
+            {yTicks.map((tick) => (
               <span
-                key={v}
+                key={tick.at}
                 className="absolute left-1.5 -translate-y-1/2 tabular-nums"
-                style={{ top: y(v) }}
+                style={{ top: y(tick.at) }}
               >
-                {v}
+                {tick.label}
               </span>
             ))}
             <span className="absolute left-1.5" style={{ top: chartBottom + 8 }}>
