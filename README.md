@@ -198,6 +198,13 @@ oberen Rand entlang. Die echten Zahlen stehen unverändert in den
 Werte-Zeilen unter den Pfeilen, und die Pfeilfarben nutzen weiterhin die
 volle Windskala.
 
+Die Zahlen an der Achse stehen bewusst nicht in runden 10er-Schritten,
+sondern genau dort, wo im Diagramm die Farbe wechselt — es sind dieselben
+Werte wie in der Legende (0 / 7 / 15 / 25 / 31 / 37, plus die Obergrenze 45
+ganz oben). Sie kommen direkt aus `WIND_COLOR_SCALE` in `src/lib/wind.ts`:
+Wird die Skala dort geändert, ändert sich die Achsenbeschriftung
+automatisch mit.
+
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 `/api/collect` getaktet ist (empfohlen alle 10 Minuten, siehe oben).

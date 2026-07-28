@@ -178,6 +178,10 @@ Supabase.
    look identical. `y()` clamps to that ceiling, so higher values ride along
    the top edge instead of overflowing into the time-label row; the numbers
    under the arrows and the arrow colors still use the true (uncapped) values.
+   Its labels are the wind-scale boundaries (`WIND_COLOR_SCALE[].label` — 0/7/
+   15/25/31/37, plus `Y_MAX_KMH` on top), not round 10-steps, so each number
+   sits exactly where the color band changes; they follow the scale
+   automatically if it's ever edited.
    The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
    to "now" on open); two points are only joined into a line when ≤ 1h apart
