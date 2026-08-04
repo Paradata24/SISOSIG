@@ -264,6 +264,18 @@ Supabase.
    Vinschgau) simply yields no points: empty path, no dots, no arrows/numbers
    in its half of the forecast row — never a line pinned to 0 km/h and never an
    error state.
+   **Measurement times are snapped to a fixed 10-minute display grid**
+   (`snapPointsToGrid`/`GRID_MS`, anchored on the local full hour, so the
+   columns land on :00/:10/:20 … in any timezone): per 10-minute slot exactly
+   one point survives — the real measurement closest to that slot (≤5 min off),
+   preferring one that actually has values. Reason: Bozen stations already
+   report on that grid, but the OpenWindMap/Pioupiou stations send at arbitrary
+   times (:03, :17, :26 …), which made their arrows and value squares sit
+   unevenly and the thinning drop columns at random. Nothing is invented — a
+   slot without a measurement stays an empty gap — and the arrow tooltip still
+   shows the **real** measurement time (`Point.tActual`). With that grid the
+   `MIN_LABEL_SPACING` thinning never actually triggers for measurements; it
+   stays as a safety net.
 
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
    Function** (Deno, not Next.js!) for phase 3: fetches ground-wind
