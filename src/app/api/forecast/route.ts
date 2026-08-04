@@ -3,7 +3,7 @@ import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 
 // Liefert die Windprognosen einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die
-// stündlich per pg_cron angestoßen wird): ICON-CH1 und AROME.
+// stündlich per pg_cron angestoßen wird): ICON-CH1.
 //
 // Aufruf: /api/forecast?station=<SCODE>
 //
@@ -26,12 +26,12 @@ export interface ForecastEntry {
   gust_kmh: number | null;
 }
 
-// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function): zwei
-// Bodenwind-Prognosen zum Vergleich (ICON-CH1 = rot, AROME = gelb).
-// ICON-D2 ('icon_d2') wird weiterhin gesammelt, aber nicht mehr ausgeliefert,
-// weil das Diagramm es nicht mehr zeichnet.
+// Modellname in der Tabelle wind_forecasts (siehe Edge Function): die
+// Bodenwind-Prognose ICON-CH1 (rote Kurve im Verlaufsbalken).
+// ICON-D2 ('icon_d2') wird weiterhin gesammelt, aber nicht ausgeliefert,
+// weil das Diagramm es nicht zeichnet. AROME wurde auf Wunsch des
+// Projektbesitzers komplett entfernt (weder gesammelt noch angezeigt).
 const MODEL_SURFACE = "icon_ch1";
-const MODEL_SURFACE_AROME = "arome";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -74,26 +74,14 @@ export async function GET(request: Request) {
     Authorization: `Bearer ${serviceKey}`,
   };
 
-  // Bodenwind ICON-CH1 (Pflicht) und AROME-Bodenwind (additiv) parallel
-  // abfragen.
+  // Bodenwind ICON-CH1 abfragen.
   const surfaceQuery =
     `${baseUrl}&model=eq.${MODEL_SURFACE}` +
     `&select=forecast_time,direction,speed_kmh,gust_kmh`;
-  const surfaceAromeQuery =
-    `${baseUrl}&model=eq.${MODEL_SURFACE_AROME}` +
-    `&select=forecast_time,direction,speed_kmh,gust_kmh`;
 
   let res: Response;
-  let aromeRes: Response | null = null;
   try {
-    [res, aromeRes] = await Promise.all([
-      fetch(surfaceQuery, { headers, cache: "no-store" }),
-      // Der AROME-Bodenwind ist optional: ein Fehler hier darf den
-      // ICON-CH1-Bodenwind nicht blockieren, deshalb separat aufgefangen.
-      // Stationen außerhalb des AROME-Gebiets liefern einfach eine leere
-      // Liste (die Edge Function speichert dafür keine Zeilen).
-      fetch(surfaceAromeQuery, { headers, cache: "no-store" }).catch(() => null),
-    ]);
+    res = await fetch(surfaceQuery, { headers, cache: "no-store" });
   } catch {
     return NextResponse.json(
       { error: "Supabase ist nicht erreichbar" },
@@ -110,20 +98,10 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
-  let entriesArome: ForecastEntry[] = [];
-  if (aromeRes?.ok) {
-    try {
-      entriesArome = (await aromeRes.json()) as ForecastEntry[];
-    } catch {
-      entriesArome = [];
-    }
-  }
-
   return NextResponse.json({
     stationCode: station,
     hours: HISTORY_HOURS,
     count: entries.length,
     entries,
-    entriesArome,
   });
 }
