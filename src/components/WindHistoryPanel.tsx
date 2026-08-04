@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   FUTURE_MARGIN_HOURS,
   getWindColor,
@@ -309,6 +309,9 @@ export default function WindHistoryPanel({
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
   // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
   const [now, setNow] = useState(() => Date.now());
+  // Eindeutige id für das <linearGradient> der Farbskala (SVG-ids dürfen im
+  // Dokument nicht kollidieren).
+  const gradientId = useId();
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
@@ -500,21 +503,26 @@ export default function WindHistoryPanel({
   const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
   const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
 
-  // --- Farbbänder aus der Windskala (bis yMax gekappt) ---
-  const bands: { from: number; to: number; color: string; opacity: number }[] = [];
-  let bandFrom = 0;
+  // --- Farbverlauf aus der Windskala (bis yMax gekappt) ---
+  // Ein <linearGradient>-Stop pro Stützpunkt aus WIND_COLOR_SCALE, statt
+  // getrennter Farbbänder — dieselben Stützpunkte, aber dazwischen wird
+  // gemischt statt hart geschnitten. offset 0 = 0 km/h (unten im Diagramm),
+  // offset 1 = yMax (oben).
+  const gradientStops: { offset: number; color: string; opacity: number }[] = [];
   for (const stop of WIND_COLOR_SCALE) {
-    if (bandFrom >= yMax) break;
-    bands.push({
-      from: bandFrom,
-      to: Math.min(stop.max, yMax),
+    if (stop.at > yMax) break;
+    gradientStops.push({
+      offset: stop.at / yMax,
       color: stop.color,
-      // Standard-Deckkraft 0.55; die schwarze Stufe "zu stark" bekommt über
-      // bandOpacity einen kleineren Wert, sonst verschwindet die schwarze
-      // Messkurve auf dem schwarzen Band.
+      // Standard-Deckkraft 0.55; der oberste Stützpunkt "zu stark" (Schwarz)
+      // bekommt über bandOpacity einen kleineren Wert, sonst verschwindet
+      // die schwarze Messkurve im fast schwarzen Bandbereich.
       opacity: stop.bandOpacity ?? 0.55,
     });
-    bandFrom = stop.max;
+  }
+  if (gradientStops.length === 0 || gradientStops[gradientStops.length - 1].offset < 1) {
+    const last = WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1];
+    gradientStops.push({ offset: 1, color: last.color, opacity: last.bandOpacity ?? 0.55 });
   }
 
   // --- Stunden-Raster ---
@@ -612,20 +620,19 @@ export default function WindHistoryPanel({
   }
 
   // Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
-  // exakt an den Grenzen der Windskala — also dort, wo im Diagramm die Farbe
-  // wechselt. Die Zahlen sind dieselben wie in der Legende (0 / 7 / 15 / 25 /
-  // 30 / 35, aus WIND_COLOR_SCALE.label), damit man Farbband und Zahl direkt
-  // zusammenlesen kann. Ganz oben steht zusätzlich die feste Obergrenze der
+  // exakt an den Stützpunkten der Windskala (0 / 7 / 15 / 20 / 25 / 30 / 35,
+  // aus WIND_COLOR_SCALE.label), damit man Verlauf und Zahl direkt
+  // zusammenlesen kann. Sie folgen der Skala automatisch, falls sie jemals
+  // bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
   // Achse, bei der die Kurve gekappt wird.
-  const yTicks: { at: number; label: string }[] = [
-    { at: 0, label: WIND_COLOR_SCALE[0].label },
-  ];
-  for (let i = 1; i < WIND_COLOR_SCALE.length; i++) {
-    const boundary = WIND_COLOR_SCALE[i - 1].max;
-    if (boundary >= yMax) break;
-    yTicks.push({ at: boundary, label: WIND_COLOR_SCALE[i].label });
+  const yTicks: { at: number; label: string }[] = [];
+  for (const stop of WIND_COLOR_SCALE) {
+    if (stop.at > yMax) break;
+    yTicks.push({ at: stop.at, label: stop.label });
   }
-  yTicks.push({ at: yMax, label: String(yMax) });
+  if (yTicks.length === 0 || yTicks[yTicks.length - 1].at !== yMax) {
+    yTicks.push({ at: yMax, label: String(yMax) });
+  }
 
   const speedPath = buildLinePath(points, (p) => p.speed, x, y);
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
@@ -711,20 +718,35 @@ export default function WindHistoryPanel({
               role="img"
               aria-label="Windverlauf: Mittelwind und Böen der letzten 12 Stunden"
             >
-              {/* Farbbänder der Windstärke-Bereiche (gleiche Skala wie die
-                  Kartenpfeile), leicht transparent, damit die Kurven gut
-                  lesbar bleiben */}
-              {bands.map((band) => (
-                <rect
-                  key={band.from}
-                  x={PAD_X}
-                  y={y(band.to)}
-                  width={bandWidth}
-                  height={y(band.from) - y(band.to)}
-                  fill={band.color}
-                  fillOpacity={band.opacity}
-                />
-              ))}
+              {/* Farbverlauf der Windstärke-Skala (gleiche Stützpunkte wie
+                  die Kartenpfeile, siehe WIND_COLOR_SCALE), leicht
+                  transparent, damit die Kurven gut lesbar bleiben */}
+              <defs>
+                <linearGradient
+                  id={gradientId}
+                  gradientUnits="userSpaceOnUse"
+                  x1={0}
+                  y1={chartBottom}
+                  x2={0}
+                  y2={chartTop}
+                >
+                  {gradientStops.map((stop) => (
+                    <stop
+                      key={stop.offset}
+                      offset={stop.offset}
+                      stopColor={stop.color}
+                      stopOpacity={stop.opacity}
+                    />
+                  ))}
+                </linearGradient>
+              </defs>
+              <rect
+                x={PAD_X}
+                y={chartTop}
+                width={bandWidth}
+                height={chartBottom - chartTop}
+                fill={`url(#${gradientId})`}
+              />
 
               {/* Stunden-Raster + Uhrzeiten */}
               {hourTicks.map((d) => {
