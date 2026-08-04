@@ -24,7 +24,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Phasenplan:
   1. Südtirol: Live-Wind + 12h-Historie auf Karte (aktuell in Arbeit)
   2. Erweiterung auf weitere Länder/Regionen (Schweiz, Österreich)
-  3. Prognosevergleich ICON-D2 vs. ICON-CH1 via Open-Meteo API
+  3. Prognosevergleich mehrerer Modelle via Open-Meteo API (aktuell im
+     Diagramm: ICON-CH1 vs. AROME; ICON-D2 wird weiter gesammelt)
 
 ## Wichtige Entscheidungen (bitte nicht ohne Rücksprache ändern)
 - Karten-Bibliothek: Leaflet (bewusst statt MapLibre GL JS gewählt)
@@ -153,7 +154,11 @@ Supabase.
    `@supabase/supabase-js` dependency, just `fetch`). `/api/forecast` mirrors it
    and additionally caps the upper end at `now + FUTURE_MARGIN_HOURS` so the
    edge function's deliberate extra forecast hours don't land outside the chart
-   axis. **Both window constants live in one place**, `HISTORY_HOURS` /
+   axis. It serves exactly the two models the panel draws: `entries` =
+   `model='icon_ch1'` (required) and `entriesArome` = `model='arome'`
+   (additive, its own catch — a station outside the AROME area just returns an
+   empty list). `model='icon_d2'` rows keep being collected but are no longer
+   queried or delivered. **Both window constants live in one place**, `HISTORY_HOURS` /
    `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` — the two API routes and the panel
    import them from there; don't reintroduce local copies.
 5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
@@ -166,18 +171,24 @@ Supabase.
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over horizontal wind-scale color bands, and a row of wind-direction
-   arrows below. There is deliberately **no filled area between the mean-wind
-   and gust curves** (removed at the owner's request, for measurements *and*
-   forecasts — `buildAreaPath` is gone; don't reintroduce it). Below the
+   arrows below. There is deliberately **no filled area** anywhere in the chart
+   — neither between the mean-wind and gust curves nor between measurement and
+   forecast (removed at the owner's request, for measurements *and* forecasts —
+   `buildAreaPath` is gone; don't reintroduce it). Below the
    measurement arrows, each measured number (mean wind on top, gust below) sits
    in a **square (`MEAS_BOX_W === MEAS_BOX_H`, no rounded corners — owner's
    decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**
    (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
    on the dark red/black steps), and below those two rows the hour labels are
    repeated. Three layers can appear: **black** = measurement, **red** =
-   ICON-CH1 ground-wind forecast, and **blue** = ICON-D2 ground-wind forecast
-   (`/api/forecast`'s `entriesD2`, same representation as the red CH1 layer — its
-   own arrows+values row sits below the measurement row). A former fourth layer
+   ICON-CH1 ground-wind forecast, and **yellow `#FFD400`** = AROME ground-wind
+   forecast (`/api/forecast`'s `entriesArome`, same representation as the red
+   CH1 layer — the two share one arrows+values row below the measurement row,
+   CH1 left / AROME right of each hour). The yellow layer replaced a blue
+   ICON-D2 layer at the owner's request; ICON-D2 is still collected into the
+   database, it is only no longer drawn. Its color is a hard-coded hex constant
+   (`AROME_COLOR`) rather than a Tailwind class so curve, dots, arrows and
+   numbers match exactly. A former fourth layer
    (blue dashed "Höhenwind", upper-air wind on a pressure level) was removed
    again — don't reintroduce it without asking. Colors and arrow rotation deliberately reuse
    `getWindColor`/`WIND_COLOR_SCALE` and the map's `(direction + 180) % 360`
@@ -197,14 +208,27 @@ Supabase.
    (`LINE_GAP_MS` — 6× the 10-minute collection interval, so a missed cron run
    still connects, but a real gap stays visible on the short 12h axis), and every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
-   error / "Keine Daten verfügbar" states are handled.
+   error / "Keine Daten verfügbar" states are handled. A forecast model with no
+   data for the selected station (AROME's model edge, e.g. the western
+   Vinschgau) simply yields no points: empty path, no dots, no arrows/numbers
+   in its half of the forecast row — never a line pinned to 0 km/h and never an
+   error state.
 
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
    Function** (Deno, not Next.js!) for phase 3: fetches ground-wind
-   forecasts from Open-Meteo for **two models** to compare — ICON-CH1
-   (`models=meteoswiss_icon_ch1`, DB `model='icon_ch1'`, red) and ICON-D2
-   (`models=dwd_icon_d2`, DB `model='icon_d2'`, blue) — via a parameterized
-   `fetchForecastBatch(batch, fetchedAt, modelApi, modelDb)` run once per model
+   forecasts from Open-Meteo for **three models** (`SURFACE_MODELS`) — ICON-CH1
+   (`meteoswiss_icon_ch1`, DB `model='icon_ch1'`, red in the panel), ICON-D2
+   (`dwd_icon_d2`, DB `model='icon_d2'`, collected but no longer drawn) and
+   **AROME from GeoSphere Austria** (`geosphere_arome_austria`, DB
+   `model='arome'`, yellow). The AROME model id is the **Austrian** one, taken
+   from Open-Meteo's model list — the French `arome_france`/`arome_france_hd`
+   domains don't cover South Tyrol; don't swap them in. All three models go out
+   in **one request per station batch** (`models=a,b,c`, owner's requirement —
+   don't split it back into one call per model). With several models Open-Meteo
+   suffixes each variable with the model name
+   (`wind_speed_10m_dwd_icon_d2`, …) while `hourly.time` stays shared; the
+   `hourlySeries()` helper reads the suffixed key and falls back to the plain
+   one. `fetchForecastBatch(batch, fetchedAt)` then emits rows for every model
    (rolling window `past_hours=12` + `forecast_hours=7` — the latter is
    deliberately larger than the panel's 4h look-ahead because Open-Meteo counts
    from the current full hour and this function only runs hourly, so the newest
@@ -221,11 +245,13 @@ Supabase.
    `PAST_HOURS`/`FORECAST_HOURS`/`RETENTION_DAYS` mirror `HISTORY_HOURS` /
    `FUTURE_MARGIN_HOURS` (`src/lib/wind.ts`) and `/api/collect`'s
    `RETENTION_DAYS` — Deno can't import from `src/`, so change both sides. The
-   `model` column exists so ICON-D2 can later be added as extra rows, no
-   schema change. Stations are queried in batches of 50 (comma-separated
-   coordinates; the response list has the same order as the request) and
-   hours where Open-Meteo returns only nulls (station at/outside the model
-   edge) are skipped. An **upper-air wind (Höhenwind)** branch used to live here
+   `model` column is what lets extra models be added as extra rows, **no schema
+   change** — that's how AROME was added. Stations are queried in batches of 50
+   (comma-separated coordinates; the response list has the same order as the
+   request) and hours where Open-Meteo returns only nulls for a model (station
+   at/outside that model's edge — AROME's western edge cuts through the
+   Vinschgau) are skipped for that model only; the other models still get their
+   rows, and the panel simply draws no yellow line there. An **upper-air wind (Höhenwind)** branch used to live here
    (pressure levels from ICON-D2 for the Windanzeiger stations, stored as
    `model='icon_d2_upper'`); it was removed again together with the panel layer
    — `supabase/remove-upper-wind.sql` is the optional one-off cleanup for

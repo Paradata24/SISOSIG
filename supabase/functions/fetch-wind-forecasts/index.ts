@@ -1,5 +1,5 @@
-// Supabase Edge Function "fetch-wind-forecasts": holt ICON-CH1-Windprognosen
-// von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
+// Supabase Edge Function "fetch-wind-forecasts": holt Windprognosen mehrerer
+// Modelle von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
 // (Bozner Wetterdienst UND Südtiroler OpenWindMap/Pioupiou-Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
@@ -18,8 +18,9 @@
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
-//      abfragen — für ZWEI Modelle: meteoswiss_icon_ch1 (model 'icon_ch1')
-//      und dwd_icon_d2 (model 'icon_d2'), damit sich beide Prognosen
+//      abfragen — für DREI Modelle in EINEM Aufruf je Batch (models=a,b,c):
+//      meteoswiss_icon_ch1 (model 'icon_ch1'), dwd_icon_d2 (model 'icon_d2')
+//      und geosphere_arome_austria (model 'arome'), damit sich die Prognosen
 //      vergleichen lassen. Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
 //      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
 //      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
@@ -50,17 +51,35 @@ const PIOUPIOU_API_BASE =
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
-// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil. Es werden
-// zwei Zeilen-Sorten gespeichert:
+// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil — und der
+// dazu passende Modellname der Open-Meteo-API. Es werden drei Zeilen-Sorten
+// gespeichert:
 //   'icon_ch1' — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
-//   'icon_d2'  — Bodenwind aus DWD ICON-D2 (blaue Kurve im Panel)
+//   'icon_d2'  — Bodenwind aus DWD ICON-D2 (~2 km, deckt Südtirol ab); wird
+//                weiterhin gesammelt, im Panel aber nicht mehr gezeichnet
+//   'arome'    — Bodenwind aus AROME von GeoSphere Austria (2,5 km,
+//                Alpenraum; API-Name laut Open-Meteo-Doku
+//                "geosphere_arome_austria" — NICHT die Frankreich-Varianten
+//                arome_france/arome_france_hd, die Südtirol nicht abdecken).
+//                Gelbe Kurve im Panel. Am westlichen Modellrand (z.B.
+//                Vinschgau) liefert AROME nur null-Werte — solche Stunden
+//                werden übersprungen, es entsteht einfach keine Zeile.
 const MODEL_DB = "icon_ch1";
 const MODEL_D2_DB = "icon_d2";
-// Modellname, den die Open-Meteo-API für ICON-CH1 erwartet.
+const MODEL_AROME_DB = "arome";
 const MODEL_API = "meteoswiss_icon_ch1";
-// Modellname, den die Open-Meteo-API für ICON-D2 erwartet. ICON-D2 ist
-// hochauflösend (~2 km) und deckt den Alpenraum inkl. Südtirol ab.
 const MODEL_D2_API = "dwd_icon_d2";
+const MODEL_AROME_API = "geosphere_arome_austria";
+
+// Alle Bodenwind-Modelle, die pro Batch in EINEM Open-Meteo-Aufruf abgefragt
+// werden (Parameter models=a,b,c). Open-Meteo hängt in diesem Fall an jeden
+// Variablennamen den Modellnamen an, z.B. "wind_speed_10m_dwd_icon_d2"; die
+// Zeitachse ("time") bleibt für alle Modelle gemeinsam.
+const SURFACE_MODELS = [
+  { api: MODEL_API, db: MODEL_DB },
+  { api: MODEL_D2_API, db: MODEL_D2_DB },
+  { api: MODEL_AROME_API, db: MODEL_AROME_DB },
+];
 
 // Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
@@ -108,14 +127,29 @@ interface ForecastRow {
   fetched_at: string;
 }
 
-// Antwortform eines Standorts bei Open-Meteo (timeformat=unixtime).
+// Antwortform eines Standorts bei Open-Meteo (timeformat=unixtime). Die
+// Schlüssel unter "hourly" sind nicht fix, weil bei mehreren Modellen der
+// Modellname angehängt wird (z.B. "wind_speed_10m_meteoswiss_icon_ch1") —
+// deshalb ein offener Record statt fester Feldnamen.
 interface OpenMeteoLocation {
-  hourly?: {
-    time?: number[];
-    wind_speed_10m?: Array<number | null>;
-    wind_direction_10m?: Array<number | null>;
-    wind_gusts_10m?: Array<number | null>;
-  };
+  hourly?: Record<string, unknown>;
+}
+
+// Eine Messreihe aus der Antwort holen. Bei mehreren Modellen heißt sie
+// "<variable>_<modell>"; wird die Funktion einmal nur mit einem Modell
+// aufgerufen, liefert Open-Meteo den Namen ohne Suffix — beides wird
+// akzeptiert. Fehlt die Reihe ganz (Station außerhalb des Modellgebiets),
+// kommt undefined zurück und alle Stunden gelten als leer.
+function hourlySeries(
+  hourly: Record<string, unknown>,
+  variable: string,
+  modelApi: string,
+): Array<number | null> | undefined {
+  const withModel = hourly[`${variable}_${modelApi}`];
+  if (Array.isArray(withModel)) return withModel as Array<number | null>;
+  const plain = hourly[variable];
+  if (Array.isArray(plain)) return plain as Array<number | null>;
+  return undefined;
 }
 
 // Windsensor-Erkennung per deutscher Beschreibung — identisch zu
@@ -229,18 +263,18 @@ async function loadOpenWindMapStations(): Promise<Station[]> {
 }
 
 // Einen Batch Stationen bei Open-Meteo abfragen und zu Tabellenzeilen
-// aufbereiten. Die Antwort ist eine Liste in derselben Reihenfolge wie die
-// übergebenen Koordinaten (bei nur einer Station ein einzelnes Objekt).
+// aufbereiten — ALLE Modelle in einem einzigen Aufruf (models=a,b,c), nicht
+// ein Aufruf je Modell. Die Antwort ist eine Liste in derselben Reihenfolge
+// wie die übergebenen Koordinaten (bei nur einer Station ein einzelnes
+// Objekt); je Standort stehen die Modelle als Variablen-Suffix nebeneinander.
 async function fetchForecastBatch(
   batch: Station[],
   fetchedAt: string,
-  modelApi: string,
-  modelDb: string,
 ): Promise<{ rows: ForecastRow[]; skippedNullHours: number }> {
   const params = new URLSearchParams({
     latitude: batch.map((s) => s.lat).join(","),
     longitude: batch.map((s) => s.lng).join(","),
-    models: modelApi,
+    models: SURFACE_MODELS.map((m) => m.api).join(","),
     hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),
@@ -272,28 +306,43 @@ async function fetchForecastBatch(
   locations.forEach((loc, i) => {
     const station = batch[i];
     const hourly = loc.hourly;
-    if (!hourly?.time) return;
+    // Gemeinsame Zeitachse aller Modelle dieses Standorts (nur die
+    // Wetter-Variablen bekommen ein Modell-Suffix, "time" nicht).
+    const times = Array.isArray(hourly?.time)
+      ? (hourly.time as Array<number | null>)
+      : undefined;
+    if (!hourly || !times) return;
 
-    hourly.time.forEach((t, k) => {
-      const speed = hourly.wind_speed_10m?.[k] ?? null;
-      const direction = hourly.wind_direction_10m?.[k] ?? null;
-      const gust = hourly.wind_gusts_10m?.[k] ?? null;
-      // Station am/außerhalb des Modellrands: Open-Meteo liefert null —
-      // solche Stunden sauber überspringen statt leere Zeilen zu speichern.
-      if (speed === null && direction === null && gust === null) {
-        skippedNullHours++;
-        return;
-      }
-      rows.push({
-        station_code: station.code,
-        model: modelDb,
-        forecast_time: new Date(t * 1000).toISOString(),
-        direction,
-        speed_kmh: speed !== null ? round1(speed) : null,
-        gust_kmh: gust !== null ? round1(gust) : null,
-        fetched_at: fetchedAt,
+    for (const model of SURFACE_MODELS) {
+      const speeds = hourlySeries(hourly, "wind_speed_10m", model.api);
+      const directions = hourlySeries(hourly, "wind_direction_10m", model.api);
+      const gusts = hourlySeries(hourly, "wind_gusts_10m", model.api);
+
+      times.forEach((t, k) => {
+        if (typeof t !== "number") return;
+        const speed = speeds?.[k] ?? null;
+        const direction = directions?.[k] ?? null;
+        const gust = gusts?.[k] ?? null;
+        // Station am/außerhalb des Modellrands (z.B. AROME im westlichen
+        // Vinschgau): Open-Meteo liefert null — solche Stunden sauber
+        // überspringen statt leere Zeilen zu speichern. Für dieses Modell
+        // entsteht dann einfach keine Prognose, die anderen bleiben davon
+        // unberührt.
+        if (speed === null && direction === null && gust === null) {
+          skippedNullHours++;
+          return;
+        }
+        rows.push({
+          station_code: station.code,
+          model: model.db,
+          forecast_time: new Date(t * 1000).toISOString(),
+          direction,
+          speed_kmh: speed !== null ? round1(speed) : null,
+          gust_kmh: gust !== null ? round1(gust) : null,
+          fetched_at: fetchedAt,
+        });
       });
-    });
+    }
   });
 
   return { rows, skippedNullHours };
@@ -340,32 +389,26 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
 
-  // 3) Bodenwind batchweise abfragen — für BEIDE Modelle (ICON-CH1 und
-  //    ICON-D2), damit sich die zwei Prognosen im Panel vergleichen lassen.
-  //    Ein fehlgeschlagener Batch bricht nicht den ganzen Lauf ab — die
-  //    übrigen Stationen werden trotzdem gespeichert, der Fehler wird
-  //    geloggt und in der Antwort gemeldet.
+  // 3) Bodenwind batchweise abfragen — alle Modelle (ICON-CH1, ICON-D2,
+  //    AROME) je Batch in EINEM Open-Meteo-Aufruf. Ein fehlgeschlagener
+  //    Batch bricht nicht den ganzen Lauf ab — die übrigen Stationen werden
+  //    trotzdem gespeichert, der Fehler wird geloggt und in der Antwort
+  //    gemeldet.
   const fetchedAt = new Date().toISOString();
   const rows: ForecastRow[] = [];
   let skippedNullHours = 0;
   const batchErrors: string[] = [];
 
-  const surfaceModels = [
-    { api: MODEL_API, db: MODEL_DB },
-    { api: MODEL_D2_API, db: MODEL_D2_DB },
-  ];
-  for (const model of surfaceModels) {
-    for (let i = 0; i < stations.length; i += BATCH_SIZE) {
-      const batch = stations.slice(i, i + BATCH_SIZE);
-      try {
-        const result = await fetchForecastBatch(batch, fetchedAt, model.api, model.db);
-        rows.push(...result.rows);
-        skippedNullHours += result.skippedNullHours;
-      } catch (err) {
-        const message = `Batch ${model.db} ab Station ${batch[0].code}: ${(err as Error).message}`;
-        console.error(message);
-        batchErrors.push(message);
-      }
+  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
+    const batch = stations.slice(i, i + BATCH_SIZE);
+    try {
+      const result = await fetchForecastBatch(batch, fetchedAt);
+      rows.push(...result.rows);
+      skippedNullHours += result.skippedNullHours;
+    } catch (err) {
+      const message = `Batch ab Station ${batch[0].code}: ${(err as Error).message}`;
+      console.error(message);
+      batchErrors.push(message);
     }
   }
 
@@ -421,11 +464,12 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   return json({
     ok: true,
-    models: [MODEL_DB, MODEL_D2_DB],
+    models: SURFACE_MODELS.map((m) => m.db),
     stations: stations.length,
     saved: rows.length,
     ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
     d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
+    aromeSaved: rows.filter((r) => r.model === MODEL_AROME_DB).length,
     skippedNullHours,
     batchErrors,
     cleanupBefore: cutoff,

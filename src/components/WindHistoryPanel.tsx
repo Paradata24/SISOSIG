@@ -53,17 +53,17 @@ const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Quadrat → Böen-Quad
 const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
 const MEAS_TIME_GAP = 5; // Abstand Böen-Rechteck → wiederholte Uhrzeit-Zeile
 const MEAS_TIME_ROW_H = 15; // Höhe der wiederholten Uhrzeit-Zeile
-const D2_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
+const FORECAST_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 // Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2 Zeilen
 // eingefärbte Werte + wiederholte Uhrzeiten) + Prognose-Vergleichsblock
-// (Pfeile + 2 Zeilen, ICON-CH1 rot links / ICON-D2 blau rechts nebeneinander)
+// (Pfeile + 2 Zeilen, ICON-CH1 rot links / AROME gelb rechts nebeneinander)
 // + unterer Rand.
 const SVG_H =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + MEAS_VALUES_ROW_H +
   MEAS_TIME_GAP + MEAS_TIME_ROW_H +
-  D2_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
+  FORECAST_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
   BOTTOM_PAD;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
@@ -98,6 +98,11 @@ const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
 // Unterbrechung sichtbar (die Messpunkte selbst werden ohnehin als Punkte
 // gezeichnet).
 const LINE_GAP_MS = 60 * 60 * 1000;
+
+// Farbe der AROME-Prognose (GeoSphere Austria). Fester Hex-Wert (vom
+// Projektbesitzer vorgegeben) statt einer Tailwind-Klasse, damit der Ton in
+// Kurve, Punkten, Pfeilen und Zahlen exakt derselbe ist.
+const AROME_COLOR = "#FFD400";
 
 interface Point {
   t: number; // Zeitstempel (ms)
@@ -182,8 +187,9 @@ export default function WindHistoryPanel({
     // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
     // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
     forecast?: ForecastEntry[];
-    // ICON-D2-Bodenwind (zweite Prognose zum Vergleich), ebenfalls additiv.
-    forecastD2?: ForecastEntry[];
+    // AROME-Bodenwind (zweite Prognose zum Vergleich), ebenfalls additiv:
+    // Stationen ohne AROME-Abdeckung liefern hier einfach nichts.
+    forecastArome?: ForecastEntry[];
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -195,7 +201,7 @@ export default function WindHistoryPanel({
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
   const forecast = loading ? null : (result?.forecast ?? null);
-  const forecastD2 = loading ? null : (result?.forecastD2 ?? null);
+  const forecastArome = loading ? null : (result?.forecastArome ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -216,8 +222,8 @@ export default function WindHistoryPanel({
         ]);
         const forecastEntries =
           (forecastJson?.entries as ForecastEntry[] | undefined) ?? [];
-        const forecastD2Entries =
-          (forecastJson?.entriesD2 as ForecastEntry[] | undefined) ?? [];
+        const forecastAromeEntries =
+          (forecastJson?.entriesArome as ForecastEntry[] | undefined) ?? [];
         const data = await res.json();
         if (cancelled) return;
         setNow(Date.now());
@@ -231,7 +237,7 @@ export default function WindHistoryPanel({
             code,
             entries: data.entries as HistoryEntry[],
             forecast: forecastEntries,
-            forecastD2: forecastD2Entries,
+            forecastArome: forecastAromeEntries,
           });
         }
       } catch {
@@ -295,9 +301,11 @@ export default function WindHistoryPanel({
     }))
     .filter((p) => !Number.isNaN(p.t));
 
-  // ICON-D2-Bodenwind-Punkte (zweite Prognose, blau) — gleiche Aufbereitung
-  // wie die roten ICON-CH1-Punkte.
-  const forecastD2Points: Point[] = (forecastD2 ?? [])
+  // AROME-Bodenwind-Punkte (zweite Prognose, gelb) — gleiche Aufbereitung
+  // wie die roten ICON-CH1-Punkte. Liegt eine Station außerhalb des
+  // AROME-Gebiets (z.B. westlicher Vinschgau), bleibt diese Liste leer und
+  // es wird schlicht keine gelbe Kurve gezeichnet.
+  const forecastAromePoints: Point[] = (forecastArome ?? [])
     .map((e) => ({
       t: Date.parse(e.forecast_time),
       speed: e.speed_kmh,
@@ -311,7 +319,7 @@ export default function WindHistoryPanel({
   const hasData =
     points.some((p) => p.speed !== null || p.gust !== null) ||
     forecastPoints.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastD2Points.some((p) => p.speed !== null || p.gust !== null);
+    forecastAromePoints.some((p) => p.speed !== null || p.gust !== null);
 
   // --- Skalen ---
   // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
@@ -365,15 +373,15 @@ export default function WindHistoryPanel({
   const measTimeLabelY = measValuesBottom + MEAS_TIME_GAP + 11;
   const measBlockBottom = measValuesBottom + MEAS_TIME_GAP + MEAS_TIME_ROW_H;
 
-  // ICON-D2-Bodenwind-Block (blau), direkt unter dem Messwert-Block: eigene
-  // Pfeilreihe + zwei Zahlenzeilen (Mittelwind, Böe) — dieselbe Darstellung
-  // wie Messung und ICON-CH1, nur in Blau und weiter unten.
-  const d2ArrowCy = measBlockBottom + D2_ROW_GAP + ARROW_ROW_H / 2;
-  const d2ArrowRowBottom = measBlockBottom + D2_ROW_GAP + ARROW_ROW_H;
-  const d2SpeedValueY = d2ArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
-  const d2GustValueY = d2SpeedValueY + VALUE_LINE_H;
+  // Prognose-Block (AROME gelb neben ICON-CH1 rot), direkt unter dem
+  // Messwert-Block: eigene Pfeilreihe + zwei Zahlenzeilen (Mittelwind, Böe)
+  // — dieselbe Darstellung wie die Messung, nur weiter unten.
+  const forecastArrowCy = measBlockBottom + FORECAST_ROW_GAP + ARROW_ROW_H / 2;
+  const forecastArrowRowBottom = measBlockBottom + FORECAST_ROW_GAP + ARROW_ROW_H;
+  const forecastSpeedValueY = forecastArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
+  const forecastGustValueY = forecastSpeedValueY + VALUE_LINE_H;
   // Horizontaler Abstand vom Stundenpunkt für den Vergleichs-Block: rotes
-  // ICON-CH1 links, blaues ICON-D2 rechts nebeneinander unter derselben
+  // ICON-CH1 links, gelbes AROME rechts nebeneinander unter derselben
   // Stunde (ersetzt die vormals separate rote Überlagerung im Kurvenbereich).
   const FORECAST_PAIR_HALF_GAP = 11;
 
@@ -461,14 +469,14 @@ export default function WindHistoryPanel({
   }
 
   // Gemeinsame Ausdünnung für den Prognose-Vergleichsblock (CH1 links rot,
-  // D2 rechts blau): Vereinigung aller Zeitpunkte aus beiden Prognosen (ein
-  // Modell kann für einzelne Stunden fehlen), damit an jeder gezeigten
-  // Stunde zumindest ein Wert erscheint. Der Platzbedarf ist größer als bei
-  // einer einzelnen Spalte, da rot+blau nebeneinander stehen.
+  // AROME rechts gelb): Vereinigung aller Zeitpunkte aus beiden Prognosen
+  // (ein Modell kann für einzelne Stunden oder ganz fehlen), damit an jeder
+  // gezeigten Stunde zumindest ein Wert erscheint. Der Platzbedarf ist größer
+  // als bei einer einzelnen Spalte, da rot+gelb nebeneinander stehen.
   const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
-  const forecastD2ByT = new Map(forecastD2Points.map((p) => [p.t, p]));
+  const forecastAromeByT = new Map(forecastAromePoints.map((p) => [p.t, p]));
   const combinedForecastTimes = Array.from(
-    new Set([...forecastPoints.map((p) => p.t), ...forecastD2Points.map((p) => p.t)]),
+    new Set([...forecastPoints.map((p) => p.t), ...forecastAromePoints.map((p) => p.t)]),
   ).sort((a, b) => a - b);
   const combinedPxPerPoint =
     combinedForecastTimes.length > 1
@@ -508,9 +516,11 @@ export default function WindHistoryPanel({
   const gustPath = buildLinePath(points, (p) => p.gust, x, y);
   const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
   const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
-  // ICON-D2-Bodenwind (blau, durchgezogen) — gleiche Kurven wie ICON-CH1.
-  const forecastD2SpeedPath = buildLinePath(forecastD2Points, (p) => p.speed, x, y);
-  const forecastD2GustPath = buildLinePath(forecastD2Points, (p) => p.gust, x, y);
+  // AROME-Bodenwind (gelb, durchgezogen) — gleiche Kurven wie ICON-CH1
+  // (Mittelwind und Böen). Fehlt AROME an dieser Station, sind die Pfade
+  // leer und es wird nichts gezeichnet.
+  const forecastAromeSpeedPath = buildLinePath(forecastAromePoints, (p) => p.speed, x, y);
+  const forecastAromeGustPath = buildLinePath(forecastAromePoints, (p) => p.gust, x, y);
   // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
   const LINE_WIDTH = 1.8;
 
@@ -540,8 +550,7 @@ export default function WindHistoryPanel({
             Messung ·{" "}
             <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
             (ICON-CH1) ·{" "}
-            <span className="text-blue-600 dark:text-blue-400">blau</span>:
-            Prognose (ICON-D2)
+            <span style={{ color: AROME_COLOR }}>gelb</span>: Prognose (AROME)
           </span>
         </span>
         <button
@@ -699,41 +708,33 @@ export default function WindHistoryPanel({
                 </g>
               ))}
 
-              {/* Prognose (ICON-D2) in Blau, durchgezogen — gleiche Darstellung
-                  wie die rote ICON-CH1-Prognose (Böen + Mittelwind). */}
+              {/* Prognose (AROME) in Gelb, durchgezogen — gleiche Darstellung
+                  wie die rote ICON-CH1-Prognose (Böen + Mittelwind). Ohne
+                  AROME-Daten sind die Pfade leer, es fehlt dann einfach die
+                  gelbe Linie. */}
               <path
-                d={forecastD2GustPath}
+                d={forecastAromeGustPath}
                 fill="none"
                 strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
+                stroke={AROME_COLOR}
               />
               <path
-                d={forecastD2SpeedPath}
+                d={forecastAromeSpeedPath}
                 fill="none"
                 strokeWidth={LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
-                className="stroke-blue-600 dark:stroke-blue-400"
+                stroke={AROME_COLOR}
               />
-              {forecastD2Points.map((p) => (
-                <g key={`d2dot-${p.t}`}>
+              {forecastAromePoints.map((p) => (
+                <g key={`aromedot-${p.t}`}>
                   {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-blue-600 dark:fill-blue-400"
-                    />
+                    <circle cx={x(p.t)} cy={y(p.gust)} r={2} fill={AROME_COLOR} />
                   )}
                   {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-blue-600 dark:fill-blue-400"
-                    />
+                    <circle cx={x(p.t)} cy={y(p.speed)} r={1.7} fill={AROME_COLOR} />
                   )}
                 </g>
               ))}
@@ -890,19 +891,19 @@ export default function WindHistoryPanel({
 
               {/* Prognose-Vergleichsblock UNTER dem Messwert-Block: für jede
                   Stunde links das rote ICON-CH1-Ergebnis, rechts direkt
-                  daneben das blaue ICON-D2-Ergebnis — Windpfeil (Mittelwind),
+                  daneben das gelbe AROME-Ergebnis — Windpfeil (Mittelwind),
                   darunter Mittelwind- und Böen-Zahl, jeweils als Paar. Fehlt
                   eines der beiden Modelle für eine Stunde, erscheint nur die
                   andere Seite. */}
               {combinedForecastTimeSelection.map((t) => {
                 const chP = forecastByT.get(t);
-                const d2P = forecastD2ByT.get(t);
+                const aromeP = forecastAromeByT.get(t);
                 const tx = x(t);
                 return (
                   <g key={`fcarrow-${t}`}>
                     {chP && chP.direction !== null && (
                       <g
-                        transform={`translate(${(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                        transform={`translate(${(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                       >
                         <title>
                           {`Prognose ICON-CH1 ${formatTime(t)} Uhr — Wind ${chP.speed ?? "–"} km/h, Böen ${chP.gust ?? "–"} km/h, Richtung ${Math.round(chP.direction)}°`}
@@ -914,17 +915,17 @@ export default function WindHistoryPanel({
                         />
                       </g>
                     )}
-                    {d2P && d2P.direction !== null && (
+                    {aromeP && aromeP.direction !== null && (
                       <g
-                        transform={`translate(${(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${d2ArrowCy}) rotate(${((snapDirectionTo8(d2P.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                        transform={`translate(${(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(aromeP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                       >
                         <title>
-                          {`Prognose ICON-D2 ${formatTime(t)} Uhr — Wind ${d2P.speed ?? "–"} km/h, Böen ${d2P.gust ?? "–"} km/h, Richtung ${Math.round(d2P.direction)}°`}
+                          {`Prognose AROME ${formatTime(t)} Uhr — Wind ${aromeP.speed ?? "–"} km/h, Böen ${aromeP.gust ?? "–"} km/h, Richtung ${Math.round(aromeP.direction)}°`}
                         </title>
                         <path
                           d="M20 2 L34 34 L20 26 L6 34 Z"
                           transform="translate(-20 -20)"
-                          className="fill-blue-600 dark:fill-blue-400"
+                          fill={AROME_COLOR}
                         />
                       </g>
                     )}
@@ -933,7 +934,7 @@ export default function WindHistoryPanel({
               })}
               {combinedForecastTimeSelection.map((t) => {
                 const chP = forecastByT.get(t);
-                const d2P = forecastD2ByT.get(t);
+                const aromeP = forecastAromeByT.get(t);
                 const tx = x(t);
                 return (
                   <g key={`fcvalues-${t}`}>
@@ -941,7 +942,7 @@ export default function WindHistoryPanel({
                       <g className="fill-red-600 dark:fill-red-500">
                         <text
                           x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2SpeedValueY}
+                          y={forecastSpeedValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
@@ -949,7 +950,7 @@ export default function WindHistoryPanel({
                         </text>
                         <text
                           x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2GustValueY}
+                          y={forecastGustValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
@@ -957,23 +958,23 @@ export default function WindHistoryPanel({
                         </text>
                       </g>
                     )}
-                    {d2P && (
-                      <g className="fill-blue-600 dark:fill-blue-400">
+                    {aromeP && (
+                      <g fill={AROME_COLOR}>
                         <text
                           x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2SpeedValueY}
+                          y={forecastSpeedValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
-                          {d2P.speed !== null ? Math.round(d2P.speed) : "–"}
+                          {aromeP.speed !== null ? Math.round(aromeP.speed) : "–"}
                         </text>
                         <text
                           x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={d2GustValueY}
+                          y={forecastGustValueY}
                           textAnchor="middle"
                           className="text-[10px] tabular-nums"
                         >
-                          {d2P.gust !== null ? Math.round(d2P.gust) : "–"}
+                          {aromeP.gust !== null ? Math.round(aromeP.gust) : "–"}
                         </text>
                       </g>
                     )}
