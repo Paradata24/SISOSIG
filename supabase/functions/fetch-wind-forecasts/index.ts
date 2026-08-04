@@ -18,10 +18,9 @@
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
-//      abfragen — für DREI Modelle in EINEM Aufruf je Batch (models=a,b,c):
-//      meteoswiss_icon_ch1 (model 'icon_ch1'), dwd_icon_d2 (model 'icon_d2')
-//      und geosphere_arome_austria (model 'arome'), damit sich die Prognosen
-//      vergleichen lassen. Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
+//      abfragen — für ZWEI Modelle in EINEM Aufruf je Batch (models=a,b):
+//      meteoswiss_icon_ch1 (model 'icon_ch1') und dwd_icon_d2 (model
+//      'icon_d2'). Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
 //      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
 //      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
 //      per Index den Stationen zugeordnet.
@@ -52,33 +51,25 @@ const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 
 // Modellnamen in der Datenbank (Spalte "model") — kurz und stabil — und der
-// dazu passende Modellname der Open-Meteo-API. Es werden drei Zeilen-Sorten
+// dazu passende Modellname der Open-Meteo-API. Es werden zwei Zeilen-Sorten
 // gespeichert:
 //   'icon_ch1' — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
 //   'icon_d2'  — Bodenwind aus DWD ICON-D2 (~2 km, deckt Südtirol ab); wird
-//                weiterhin gesammelt, im Panel aber nicht mehr gezeichnet
-//   'arome'    — Bodenwind aus AROME von GeoSphere Austria (2,5 km,
-//                Alpenraum; API-Name laut Open-Meteo-Doku
-//                "geosphere_arome_austria" — NICHT die Frankreich-Varianten
-//                arome_france/arome_france_hd, die Südtirol nicht abdecken).
-//                Gelbe Kurve im Panel. Am westlichen Modellrand (z.B.
-//                Vinschgau) liefert AROME nur null-Werte — solche Stunden
-//                werden übersprungen, es entsteht einfach keine Zeile.
+//                weiterhin gesammelt, im Panel aber nicht gezeichnet
+// AROME (GeoSphere Austria, 'arome') wurde auf Wunsch des Projektbesitzers
+// wieder entfernt — es wird weder abgefragt noch gespeichert noch angezeigt.
 const MODEL_DB = "icon_ch1";
 const MODEL_D2_DB = "icon_d2";
-const MODEL_AROME_DB = "arome";
 const MODEL_API = "meteoswiss_icon_ch1";
 const MODEL_D2_API = "dwd_icon_d2";
-const MODEL_AROME_API = "geosphere_arome_austria";
 
 // Alle Bodenwind-Modelle, die pro Batch in EINEM Open-Meteo-Aufruf abgefragt
-// werden (Parameter models=a,b,c). Open-Meteo hängt in diesem Fall an jeden
+// werden (Parameter models=a,b). Open-Meteo hängt in diesem Fall an jeden
 // Variablennamen den Modellnamen an, z.B. "wind_speed_10m_dwd_icon_d2"; die
 // Zeitachse ("time") bleibt für alle Modelle gemeinsam.
 const SURFACE_MODELS = [
   { api: MODEL_API, db: MODEL_DB },
   { api: MODEL_D2_API, db: MODEL_D2_DB },
-  { api: MODEL_AROME_API, db: MODEL_AROME_DB },
 ];
 
 // Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
@@ -323,8 +314,8 @@ async function fetchForecastBatch(
         const speed = speeds?.[k] ?? null;
         const direction = directions?.[k] ?? null;
         const gust = gusts?.[k] ?? null;
-        // Station am/außerhalb des Modellrands (z.B. AROME im westlichen
-        // Vinschgau): Open-Meteo liefert null — solche Stunden sauber
+        // Station am/außerhalb des Modellrands: Open-Meteo liefert für alle
+        // Variablen null — solche Stunden sauber
         // überspringen statt leere Zeilen zu speichern. Für dieses Modell
         // entsteht dann einfach keine Prognose, die anderen bleiben davon
         // unberührt.
@@ -389,8 +380,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
 
-  // 3) Bodenwind batchweise abfragen — alle Modelle (ICON-CH1, ICON-D2,
-  //    AROME) je Batch in EINEM Open-Meteo-Aufruf. Ein fehlgeschlagener
+  // 3) Bodenwind batchweise abfragen — beide Modelle (ICON-CH1, ICON-D2)
+  //    je Batch in EINEM Open-Meteo-Aufruf. Ein fehlgeschlagener
   //    Batch bricht nicht den ganzen Lauf ab — die übrigen Stationen werden
   //    trotzdem gespeichert, der Fehler wird geloggt und in der Antwort
   //    gemeldet.
@@ -469,7 +460,6 @@ export async function handleRequest(request: Request): Promise<Response> {
     saved: rows.length,
     ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
     d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
-    aromeSaved: rows.filter((r) => r.model === MODEL_AROME_DB).length,
     skippedNullHours,
     batchErrors,
     cleanupBefore: cutoff,
