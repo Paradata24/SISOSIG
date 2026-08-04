@@ -182,8 +182,18 @@ Supabase.
    anymore), and a row of wind-direction arrows below. The area **between the
    two measurement curves** (gust above, mean wind below) is filled white at
    50% opacity (`buildBandPath`, `fill-zinc-900/50 dark:fill-zinc-100/50` —
-   added at the owner's request after having been removed earlier; the band
-   breaks at the same gaps as the lines, see `LINE_GAP_MS`). There is still
+   added at the owner's request after having been removed earlier). **Curves
+   and band deliberately use different point sets** (owner's decision): the two
+   measurement *curves* connect **only the full-hour points** (`hourlyPoints`,
+   i.e. grid slots with minute 00) exactly like the hourly forecast curves, so
+   measurement and forecast can be compared in the same raster and the line
+   isn't blurred by 10-minute jitter; the *band* keeps following **every**
+   10-minute value. Gaps are honest on both: a missing full hour breaks the
+   curves (`LINE_GAP_MS` = 1h, so a 2h step can't be bridged), and a single
+   missing 10-minute value tears the band (`BAND_GAP_MS` = one grid step —
+   accepted side effect: a skipped `/api/collect` run now shows as a narrow
+   gap). Both `buildLinePath` and `buildBandPath` take the allowed gap as a
+   parameter. There is still
    deliberately **no fill anywhere else** — not between the two curves of a
    forecast model and not between measurement and forecast. **Draw order:**
    measurement band → measurement curves + dots → the two forecast models, so
@@ -255,9 +265,10 @@ Supabase.
    `MEAS_BOX_GAP_X` (the gap between two neighbouring value squares);
    `COLUMN_SPACING`, `MIN_LABEL_SPACING` and `HISTORY_PX_PER_HOUR` /
    `FUTURE_PX_PER_HOUR` all derive from it, so widening or tightening the whole
-   Verlaufsbalken means editing that one constant; two points are only joined into a line when ≤ 1h apart
-   (`LINE_GAP_MS` — 6× the 10-minute collection interval, so a missed cron run
-   still connects, but a real gap stays visible on the short 12h axis), and every
+   Verlaufsbalken means editing that one constant; two points are only joined
+   into a line when at most `LINE_GAP_MS` (1h, one hourly step) apart, and the
+   band only when at most `BAND_GAP_MS` (10 min, one grid step) apart, so every
+   real hole in the data stays visible on the short 12h axis; every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
    error / "Keine Daten verfügbar" states are handled. A forecast model with no
    data for the selected station (AROME's model edge, e.g. the western
