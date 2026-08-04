@@ -170,7 +170,8 @@ Supabase.
    and gust curves** (removed at the owner's request, for measurements *and*
    forecasts — `buildAreaPath` is gone; don't reintroduce it). Below the
    measurement arrows, each measured number (mean wind on top, gust below) sits
-   in a **rectangle filled with its own `getWindColor(value)`**
+   in a **square (`MEAS_BOX_W === MEAS_BOX_H`, no rounded corners — owner's
+   decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**
    (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
    on the dark red/black steps), and below those two rows the hour labels are
    repeated. Three layers can appear: **black** = measurement, **red** =
