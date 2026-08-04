@@ -154,10 +154,61 @@ const AROME_COLOR = "#FFD400";
 const CH1_COLOR = "#ef4444";
 
 interface Point {
-  t: number; // Zeitstempel (ms)
+  t: number; // Zeitstempel (ms) — bei Messwerten der Raster-Zeitpunkt (s.u.)
   speed: number | null;
   gust: number | null;
   direction: number | null;
+  // Nur bei Messwerten gesetzt: der echte Mess-Zeitstempel der Station, bevor
+  // er auf das 10-Minuten-Raster eingerastet wurde. Wird im Tooltip gezeigt,
+  // damit die tatsächliche Messzeit nicht verloren geht.
+  tActual?: number;
+}
+
+// --- Messwerte auf ein festes 10-Minuten-Raster einrasten ---
+// Die Bozner Stationen messen bereits zur vollen Stunde und alle 10 Minuten
+// (:00, :10, :20 …). Die OpenWindMap-/Pioupiou-Stationen dagegen senden zu
+// beliebigen Zeitpunkten (z. B. :03, :17, :26), wodurch ihre Pfeile und
+// Wert-Quadrate im Verlaufsbalken ungleichmäßig standen und die Ausdünnung
+// mal die eine, mal die andere Spalte verschluckte.
+// Deshalb werden alle Messpunkte hier auf dasselbe Anzeige-Raster gelegt:
+// pro 10-Minuten-Fenster genau ein Punkt, nämlich die zeitlich am nächsten
+// am Rasterpunkt liegende echte Messung (also höchstens 5 Minuten Versatz).
+// Ergebnis: gleiche, gleichmäßige Spalten für beide Quellen. Fehlt in einem
+// Fenster eine Messung, bleibt die Lücke sichtbar — es wird nichts erfunden.
+// Rasterweite = die ohnehin gewünschte Anzeige-Dichte (LABEL_INTERVAL_MIN,
+// 10 min), damit Raster und Spaltenbreite nicht auseinanderlaufen können.
+const GRID_MS = LABEL_INTERVAL_MIN * 60 * 1000;
+
+function snapToGrid(t: number): number {
+  // Bezugspunkt ist die volle LOKALE Stunde (nicht die Epoche), damit das
+  // Raster auch in Zeitzonen mit halbstündigem Versatz exakt auf :00/:10/:20
+  // fällt.
+  const hourStart = new Date(t);
+  hourStart.setMinutes(0, 0, 0);
+  const base = hourStart.getTime();
+  return base + Math.round((t - base) / GRID_MS) * GRID_MS;
+}
+
+function snapPointsToGrid(points: Point[]): Point[] {
+  const bySlot = new Map<number, { point: Point; dist: number; hasData: boolean }>();
+  for (const p of points) {
+    const slot = snapToGrid(p.t);
+    const dist = Math.abs(p.t - slot);
+    const hasData = p.speed !== null || p.gust !== null;
+    const cur = bySlot.get(slot);
+    // Punkte mit Werten haben Vorrang vor leeren; danach entscheidet die
+    // geringere Entfernung zum Rasterpunkt.
+    const better =
+      !cur ||
+      (hasData && !cur.hasData) ||
+      (hasData === cur.hasData && dist < cur.dist);
+    if (better) {
+      bySlot.set(slot, { point: { ...p, t: slot, tActual: p.t }, dist, hasData });
+    }
+  }
+  return Array.from(bySlot.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, v]) => v.point);
 }
 
 function formatHourLabel(date: Date): string {
@@ -444,14 +495,20 @@ export default function WindHistoryPanel({
     }
   }, [entries]);
 
-  const points: Point[] = (entries ?? [])
-    .map((e) => ({
-      t: Date.parse(e.measured_at),
-      speed: e.speed_kmh,
-      gust: e.gust_kmh,
-      direction: e.direction,
-    }))
-    .filter((p) => !Number.isNaN(p.t));
+  // Messpunkte, eingerastet auf das 10-Minuten-Anzeige-Raster (siehe
+  // snapPointsToGrid): dadurch stehen die Pfeile und Wert-Quadrate bei ALLEN
+  // Stationen zur vollen Stunde und alle 10 Minuten — auch bei den
+  // OpenWindMap-Stationen, die zu krummen Zeiten senden.
+  const points: Point[] = snapPointsToGrid(
+    (entries ?? [])
+      .map((e) => ({
+        t: Date.parse(e.measured_at),
+        speed: e.speed_kmh,
+        gust: e.gust_kmh,
+        direction: e.direction,
+      }))
+      .filter((p) => !Number.isNaN(p.t)),
+  );
 
   // Prognose-Punkte genau wie die Messpunkte aufbereiten (nur andere Quelle).
   const forecastPoints: Point[] = (forecast ?? [])
@@ -1008,7 +1065,7 @@ export default function WindHistoryPanel({
                     transform={`translate(${x(p.t).toFixed(1)} ${arrowCy}) rotate(${rotation.toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                   >
                     <title>
-                      {`${formatTime(p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
+                      {`${formatTime(p.tActual ?? p.t)} Uhr — Wind ${p.speed ?? "–"} km/h, Böen ${p.gust ?? "–"} km/h, Richtung ${Math.round(p.direction)}°`}
                     </title>
                     <path
                       d="M20 2 L34 34 L20 26 L6 34 Z"
