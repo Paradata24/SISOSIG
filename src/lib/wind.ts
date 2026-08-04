@@ -132,9 +132,11 @@ export interface WindColorStop {
  * Änderungswunsch bitte hier zentral anpassen. Die unterste Stufe ist
  * bewusst ein ganz helles Blau statt des Weiß der Vorlage, damit schwache
  * Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur sichtbar sind,
- * und bleibt bis 7 km/h absichtlich flach (zwei Stützpunkte mit derselben
- * Farbe), damit der ruhige Bereich nicht schon vorzeitig einfärbt.
- * Stützpunkte: 0 / 7 (beide hellblau) / 15 (grün) / 20 (zusätzlicher
+ * und bleibt bis 5 km/h absichtlich flach (zwei Stützpunkte mit derselben
+ * Farbe), damit der ruhige Bereich nicht schon vorzeitig einfärbt. Dieser
+ * flache Anfang endete früher erst bei 7 km/h und wurde auf Wunsch des
+ * Projektbesitzers auf 5 km/h verkürzt.
+ * Stützpunkte: 0 / 5 (beide hellblau) / 15 (grün) / 20 (zusätzlicher
  * Zwischenpunkt in kräftigem Gelbgrün, auf Wunsch des Projektbesitzers,
  * damit es schon ab 20 km/h deutlich mehr ins Gelb geht) / 25 (gelb) /
  * 30 (orange) / 35 (dunkelrot) / 45 (schwarz, entspricht Y_MAX_KMH in
@@ -143,7 +145,7 @@ export interface WindColorStop {
  */
 export const WIND_COLOR_SCALE: WindColorStop[] = [
   { at: 0, color: "#CFE8F7", label: "0", name: "schwach" }, // ganz helles Blau
-  { at: 7, color: "#CFE8F7", label: "7", name: "schwach" }, // Blau endet, Verlauf beginnt
+  { at: 5, color: "#CFE8F7", label: "5", name: "schwach" }, // Blau endet, Verlauf beginnt
   { at: 15, color: "#6EE45C", label: "15", name: "spürbar" }, // Hellgrün
   { at: 20, color: "#DEEF62", label: "20", name: "mässig" }, // Gelbgrün-Zwischenpunkt
   { at: 25, color: "#FAF264", label: "25", name: "mässig" }, // Gelb

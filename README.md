@@ -209,10 +209,16 @@ volle Windskala.
 
 Die Zahlen an der Achse stehen bewusst nicht in runden 10er-Schritten,
 sondern genau dort, wo im Diagramm die Farbe wechselt — es sind dieselben
-Werte wie in der Legende (0 / 7 / 15 / 25 / 30 / 35, plus die Obergrenze 45
-ganz oben). Sie kommen direkt aus `WIND_COLOR_SCALE` in `src/lib/wind.ts`:
-Wird die Skala dort geändert, ändert sich die Achsenbeschriftung
-automatisch mit.
+Werte wie in der Legende (0 / 5 / 15 / 20 / 25 / 30 / 35, plus die
+Obergrenze 45 ganz oben). Sie kommen direkt aus `WIND_COLOR_SCALE` in
+`src/lib/wind.ts`: Wird die Skala dort geändert, ändert sich die
+Achsenbeschriftung automatisch mit.
+
+**Waagrechte Schwellenlinien:** Quer durch das Diagramm laufen gestrichelte
+Hilfslinien bei 5, 15 und 25 km/h, damit man ohne Blick auf die Achse sieht,
+wann Mittelwind oder Böen diese Grenzen überschreiten. Welche Werte das sind,
+steht in `THRESHOLD_LINES_KMH` in `src/components/WindHistoryPanel.tsx` — dort
+lassen sich Linien ergänzen oder entfernen.
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für

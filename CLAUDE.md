@@ -109,13 +109,14 @@ Supabase.
    agreed with the project owner via a legend screenshot, later turned into a
    smooth per-km/h blend at the owner's request — see `WIND_COLOR_SCALE`/
    `getWindColor` in `src/lib/wind.ts`). The scale's anchor points: flat light
-   blue 0–7 → green 15 → yellow-green 20 (extra anchor so the color visibly
+   blue 0–5 → green 15 → yellow-green 20 (extra anchor so the color visibly
    turns toward yellow starting around 20 km/h, not just at 25) → yellow 25 →
    orange 30 → dark red 35 → black 45 (`Y_MAX_KMH`, the chart's y-axis
    ceiling); `getWindColor()` linearly mixes the RGB values between whichever
    two anchors bracket the given speed, so every whole km/h gets its own
    color instead of a hard step. The top two anchors were earlier lowered
-   from 31/37 to 30/35 at the owner's request — that history now lives in the
+   from 31/37 to 30/35, and the flat light-blue stretch was shortened from
+   0–7 to 0–5, both at the owner's request — that history now lives in the
    anchor list itself. The
    lowest step deliberately deviates from the original screenshot: it is a
    very light blue instead of white, because a white arrow would be invisible
@@ -232,9 +233,14 @@ Supabase.
    the top edge instead of overflowing into the time-label row; the numbers
    under the arrows and the arrow colors still use the true (uncapped) values.
    Its labels are the wind-scale gradient's anchor points (`WIND_COLOR_SCALE[].label`
-   — 0/7/15/20/25/30/35, plus `Y_MAX_KMH` on top), not round 10-steps, so each
+   — 0/5/15/20/25/30/35, plus `Y_MAX_KMH` on top), not round 10-steps, so each
    number sits exactly where the gradient is pinned to one of the agreed
    colors; they follow the scale automatically if it's ever edited.
+   Dashed **horizontal threshold lines** (`THRESHOLD_LINES_KMH` in the panel,
+   currently 5/15/25 km/h) cross the chart so it's obvious at a glance when a
+   curve passes those speeds; they're drawn above the gradient but below every
+   curve, and carry no label of their own since the same numbers already sit on
+   the y-axis. Add or remove a threshold by editing that one array.
    The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
    to "now" on open) — its horizontal density has **one knob**,
