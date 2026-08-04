@@ -51,7 +51,7 @@ const MEAS_BOX_H = 15; // Kantenlänge eines Wert-Quadrats (Höhe = Breite)
 const MEAS_BOX_W = MEAS_BOX_H;
 const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Quadrat → Böen-Quadrat
 const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
-const MEAS_TIME_GAP = 5; // Abstand Böen-Rechteck → wiederholte Uhrzeit-Zeile
+const MEAS_TIME_GAP = 5; // Abstand Böen-Quadrat → wiederholte Uhrzeit-Zeile
 const MEAS_TIME_ROW_H = 15; // Höhe der wiederholten Uhrzeit-Zeile
 const FORECAST_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
 const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
@@ -67,20 +67,29 @@ const SVG_H =
   BOTTOM_PAD;
 const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
 
+// Waagrechte Lücke zwischen zwei benachbarten Wert-Quadraten. Seit die
+// Kästchen quadratisch sind (15 statt vorher 27 px breit), blieb dazwischen
+// viel Leerraum; auf Wunsch des Projektbesitzers ist die Lücke um 25%
+// verkleinert (18 → 13.5 px). Weil daraus der Spaltenabstand und damit die
+// ganze Achsenbreite abgeleitet wird, rückt der komplette Verlaufsbalken
+// entsprechend enger zusammen — hier ist der einzige Stellknopf dafür.
+const MEAS_BOX_GAP_X = 13.5;
+// Abstand von Spaltenmitte zu Spaltenmitte = Kästchenbreite + Lücke.
+const COLUMN_SPACING = MEAS_BOX_W + MEAS_BOX_GAP_X;
 // Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
-// (bis zu 3-stelligen) Zahlen nicht überlappen. Bestimmt die feste Achsen-
-// Breite und – als Sicherheitsnetz – die Ausdünnung weiter unten.
-const MIN_LABEL_SPACING = 31;
+// (bis zu 3-stelligen) Zahlen nicht überlappen — Sicherheitsnetz für die
+// Ausdünnung weiter unten. Etwas kleiner als der Spaltenabstand, damit genau
+// 10 min auseinanderliegende Werte sicher darüber liegen.
+const MIN_LABEL_SPACING = COLUMN_SPACING - 2;
 // Gewünschte Anzeige-Dichte: zu jeder vollen Stunde eine Messung, dazwischen
 // alle 10 Minuten eine — also 6 Werte pro Stunde.
 const LABEL_INTERVAL_MIN = 10;
 // Breite pro Stunde für den Geschichts-Teil (jetzt − 12h bis jetzt). FEST (nicht
 // datenabhängig) so gewählt, dass die 6 Messungen pro Stunde (alle 10 min) mit
-// dem Mindestabstand nebeneinander Platz haben — mit kleinem Puffer, damit genau
-// 10 min auseinanderliegende Werte sicher über dem Mindestabstand liegen.
+// genau dem Spaltenabstand nebeneinander Platz haben.
 // Dadurch ist die Achse zugleich breiter als der Bildschirm → das Diagramm
 // bleibt horizontal scrollbar.
-const HISTORY_PX_PER_HOUR = Math.ceil((60 / LABEL_INTERVAL_MIN) * (MIN_LABEL_SPACING + 2));
+const HISTORY_PX_PER_HOUR = Math.ceil((60 / LABEL_INTERVAL_MIN) * COLUMN_SPACING);
 // Die Prognose-Reserve rechts von der "jetzt"-Linie enthält keine echten
 // Messwerte mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
 const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;

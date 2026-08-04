@@ -204,7 +204,11 @@ Supabase.
    automatically if it's ever edited.
    The
    chart is wider than the viewport (horizontally scrollable, auto-scrolled
-   to "now" on open); two points are only joined into a line when ≤ 1h apart
+   to "now" on open) — its horizontal density has **one knob**,
+   `MEAS_BOX_GAP_X` (the gap between two neighbouring value squares);
+   `COLUMN_SPACING`, `MIN_LABEL_SPACING` and `HISTORY_PX_PER_HOUR` /
+   `FUTURE_PX_PER_HOUR` all derive from it, so widening or tightening the whole
+   Verlaufsbalken means editing that one constant; two points are only joined into a line when ≤ 1h apart
    (`LINE_GAP_MS` — 6× the 10-minute collection interval, so a missed cron run
    still connects, but a real gap stays visible on the short 12h axis), and every
    measurement is also drawn as a dot so sparse data stays visible. Loading /
