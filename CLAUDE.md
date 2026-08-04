@@ -180,7 +180,21 @@ Supabase.
    decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**
    (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
    on the dark red/black steps), and below those two rows the hour labels are
-   repeated. Three layers can appear: **black** = measurement, **red** =
+   repeated. **The forecast numbers sit in exactly the same squares** — one
+   shared `ValueBox` component draws measurement and forecast cells, so the two
+   rows can't drift apart; forecast boxes additionally carry a 1.5px border in
+   their model color (`CH1_COLOR` red / `AROME_COLOR` yellow, drawn inset so the
+   outer square size stays identical), because the fill now encodes wind speed
+   and would otherwise no longer say which model a number came from. Box size
+   and font were raised ~10% (15 → `MEAS_BOX_H` 16.5 px, 10 → 11 px) and
+   `VALUES_GAP` shrank (8 → 4) so the numbers sit closer under their arrows;
+   `MEAS_BOX_GAP_X` was lowered by the same amount the boxes grew (13.5 → 12) so
+   the column spacing — and with it the whole panel width — stayed unchanged.
+   Because the outermost AROME box overhangs the time axis by
+   `FORECAST_PAIR_HALF_GAP + MEAS_BOX_W / 2`, the drawing area ends `RIGHT_PAD`
+   before the SVG edge while the color bands still span the full inner width
+   (`bandWidth`) — otherwise the last forecast square gets clipped.
+   Three layers can appear: **black** = measurement, **red** =
    ICON-CH1 ground-wind forecast, and **yellow `#FFD400`** = AROME ground-wind
    forecast (`/api/forecast`'s `entriesArome`, same representation as the red
    CH1 layer — the two share one arrows+values row below the measurement row,
