@@ -6,7 +6,7 @@ import type { BaseLayer, StationFilter } from "@/lib/wind";
 const WindMap = dynamic(() => import("@/components/WindMap"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-full w-full items-center justify-center text-zinc-500">
+    <div className="flex h-full w-full items-center justify-center text-zinc-500 dark:text-zinc-400">
       Karte wird geladen…
     </div>
   ),

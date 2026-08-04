@@ -260,6 +260,31 @@ Supabase.
    it runs every 10 min and stores the station's own measurement timestamp,
    with the upsert absorbing duplicates.
 
+**Dunkelmodus (dark mode):** the site runs permanently in dark mode, on the
+owner's request — never depending on the visitor's OS setting. Two pieces make
+that work: `@custom-variant dark (&:where(.dark, .dark *))` in
+`src/app/globals.css` rebinds all Tailwind `dark:` utilities from the default
+`@media (prefers-color-scheme: dark)` to a CSS class, and `<html>` in
+`src/app/layout.tsx` carries that `dark` class unconditionally (plus
+`color-scheme: dark` in `:root` for scrollbars, and a `viewport.themeColor` for
+the mobile browser bar). So components keep their light base classes and their
+`dark:` counterparts; making the theme switchable later means only toggling the
+class in `layout.tsx`. Surfaces: page/header/footer/Verlaufsbalken `zinc-900`
+(**not** pure black — the owner asked for dark gray), raised surfaces like the
+menu popover `zinc-800`, its inactive buttons `zinc-700`.
+Two things are deliberately **excluded** from dark mode and must stay light
+(explicit owner decisions, don't "fix" them):
+- **The map itself** — tile layers, wind-arrow markers, the white text halo and
+  `#1f2937` label color in `createWindIcon`, stale-station dots, the selection
+  ring and `STAATSGRENZE_STYLE` in `src/components/WindMap.tsx`, plus Leaflet's
+  own attribution chrome. The dark "Zuletzt aktualisiert" badge sitting on the
+  light map is intentional.
+- **`WIND_COLOR_SCALE`** in `src/lib/wind.ts` — all six colors unchanged,
+  including the black "zu stark" step. Known accepted trade-off: black arrows
+  and value boxes are hard to see inside the dark Verlaufsbalken.
+The Verlaufsbalken legend therefore says "**weiss**: Messung" (not "schwarz"),
+because the measurement curve is drawn `dark:stroke-zinc-100`.
+
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**
 - The webservice's station list (`/stations`) has been observed in two

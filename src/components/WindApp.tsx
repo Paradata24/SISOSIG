@@ -36,14 +36,14 @@ export default function WindApp() {
   function optionClass(active: boolean) {
     return `w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
       active
-        ? "border-emerald-700 bg-emerald-600 text-white"
-        : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700"
+        ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
+        : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
     }`;
   }
 
   return (
     <>
-      <header className="relative border-b border-zinc-200 bg-white px-4 py-3 text-center dark:border-zinc-800 dark:bg-black">
+      <header className="relative border-b border-zinc-200 bg-white px-4 py-3 text-center dark:border-zinc-800 dark:bg-zinc-900">
         <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
           Should I stay or should I go
         </h1>
@@ -53,20 +53,27 @@ export default function WindApp() {
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="Menü"
             aria-expanded={menuOpen}
-            className="flex h-9 w-9 items-center justify-center border border-black bg-white"
+            className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
           >
-            {/* 3 horizontale schwarze Linien, bewusst mit geraden Enden (nicht abgerundet) */}
-            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-              <rect x="2" y="4" width="16" height="2" fill="#000000" />
-              <rect x="2" y="9" width="16" height="2" fill="#000000" />
-              <rect x="2" y="14" width="16" height="2" fill="#000000" />
+            {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
+                fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              aria-hidden="true"
+              className="text-zinc-900 dark:text-zinc-50"
+            >
+              <rect x="2" y="4" width="16" height="2" fill="currentColor" />
+              <rect x="2" y="9" width="16" height="2" fill="currentColor" />
+              <rect x="2" y="14" width="16" height="2" fill="currentColor" />
             </svg>
           </button>
           {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
               Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
               abgerundete Ecken, passend zum eckigen Menü-Button. */}
           {menuOpen && (
-            <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-900">
+            <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
               <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 Karte
               </p>

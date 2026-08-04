@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
+/* Die Seite läuft fest im Dunkelmodus. Standardmäßig würden die
+   `dark:`-Klassen von Tailwind nur greifen, wenn Handy/PC selbst auf
+   "dunkel" stehen. Mit dieser Zeile hängen sie stattdessen an der CSS-Klasse
+   `dark`, die in src/app/layout.tsx fest am <html>-Element gesetzt ist.
+   Soll die Seite später wieder umschaltbar werden, muss nur dort die Klasse
+   gesetzt/entfernt werden — der Rest des Codes bleibt unverändert. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Sorgt dafür, dass auch Scrollbalken und Browser-Bedienelemente dunkel sind. */
+  color-scheme: dark;
+  --background: #18181b; /* zinc-900, bewusst dunkles Grau statt reinem Schwarz */
+  --foreground: #ededed;
 }
 
 @theme inline {
@@ -10,13 +20,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-barlow-semi-condensed);
   --font-mono: var(--font-barlow-semi-condensed);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
