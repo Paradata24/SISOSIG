@@ -173,9 +173,9 @@ function WindMarkers({
           center={[selectedStation.lat!, selectedStation.lng!]}
           radius={selectionRadius}
           pathOptions={{
-            color: "#2563eb",
+            color: "#000000",
             weight: 1.5,
-            opacity: 0.5,
+            opacity: 0.8,
             fillOpacity: 0,
           }}
           interactive={false}
