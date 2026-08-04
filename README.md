@@ -221,7 +221,7 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
 
-## Windprognosen ICON-CH1 & ICON-D2 (Supabase Edge Function)
+## Windprognosen ICON-CH1, ICON-D2 & AROME (Supabase Edge Function)
 
 Die Supabase Edge Function `fetch-wind-forecasts`
 (Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
@@ -234,9 +234,16 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
 — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
-- **Zwei Modelle zum Vergleich:** Der Bodenwind wird sowohl aus
-  **ICON-CH1** (`model = 'icon_ch1'`, im Panel rot) als auch aus **ICON-D2**
-  (`model = 'icon_d2'`, im Panel blau) geholt.
+- **Drei Modelle in einem Aufruf:** Der Bodenwind wird aus **ICON-CH1**
+  (`model = 'icon_ch1'`, im Panel rot), **ICON-D2** (`model = 'icon_d2'`) und
+  **AROME von GeoSphere Austria** (`model = 'arome'`, Open-Meteo-Modellname
+  `geosphere_arome_austria`, im Panel gelb) geholt — pro Stationsbatch mit
+  einer einzigen Anfrage (`models=a,b,c`), nicht mit einer Anfrage je Modell.
+  **ICON-D2 wird weiterhin gesammelt, aber seit der Umstellung auf AROME
+  nicht mehr im Verlaufsbalken gezeichnet** (die Daten bleiben also für
+  spätere Auswertungen erhalten).
+  Achtung: Nur die Österreich-Variante von AROME deckt Südtirol ab; die
+  französischen Modelle `arome_france` / `arome_france_hd` sind hier nutzlos.
 - Zeitfenster: letzte 12 Stunden + kommende ~7 Stunden (gleitendes
   Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
   paar Stunden neu rechnen). Angezeigt werden davon nur 4 Stunden Zukunft —
@@ -248,14 +255,17 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
   Prognosen älter als 2 Tage werden bei jedem Lauf gelöscht.
 - Stationen am/außerhalb des Modellrands liefern `null` und werden
-  übersprungen (in der Antwort als `skippedNullHours` gezählt).
+  übersprungen (in der Antwort als `skippedNullHours` gezählt). Das betrifft
+  vor allem AROME am Westrand (z. B. westlicher Vinschgau): dort werden
+  einfach keine Zeilen gespeichert, im Diagramm fehlt dann die gelbe Linie —
+  sie fällt nicht auf 0 km/h und es erscheint keine Fehlermeldung.
 - Zugriffsschutz wie bei `/api/collect`: nur **POST** mit
   `Authorization: Bearer <service_role Key>`, sonst `401`.
 
 **Antwort der Funktion (Erfolg):** Status `200` mit z. B.
-`{ "ok": true, "models": ["icon_ch1","icon_d2"],
-"stations": 89, "saved": 5000, "ch1Saved": 2500, "d2Saved": 2500,
-"skippedNullHours": 0, "batchErrors": [], … }`.
+`{ "ok": true, "models": ["icon_ch1","icon_d2","arome"],
+"stations": 89, "saved": 7500, "ch1Saved": 2500, "d2Saved": 2500,
+"aromeSaved": 2500, "skippedNullHours": 0, "batchErrors": [], … }`.
 
 > **Früher gab es hier zusätzlich einen „Höhenwind"** (Wind auf einer
 > Druckfläche, `model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt).

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 
-// Liefert die ICON-CH1-Windprognose einer Station aus der Supabase-Tabelle
+// Liefert die Windprognosen einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die
-// stündlich per pg_cron angestoßen wird).
+// stündlich per pg_cron angestoßen wird): ICON-CH1 und AROME.
 //
 // Aufruf: /api/forecast?station=<SCODE>
 //
@@ -27,9 +27,11 @@ export interface ForecastEntry {
 }
 
 // Modellnamen in der Tabelle wind_forecasts (siehe Edge Function): zwei
-// Bodenwind-Prognosen zum Vergleich (ICON-CH1 = rot, ICON-D2 = blau).
+// Bodenwind-Prognosen zum Vergleich (ICON-CH1 = rot, AROME = gelb).
+// ICON-D2 ('icon_d2') wird weiterhin gesammelt, aber nicht mehr ausgeliefert,
+// weil das Diagramm es nicht mehr zeichnet.
 const MODEL_SURFACE = "icon_ch1";
-const MODEL_SURFACE_D2 = "icon_d2";
+const MODEL_SURFACE_AROME = "arome";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -72,23 +74,25 @@ export async function GET(request: Request) {
     Authorization: `Bearer ${serviceKey}`,
   };
 
-  // Bodenwind ICON-CH1 (Pflicht) und ICON-D2-Bodenwind (additiv) parallel
+  // Bodenwind ICON-CH1 (Pflicht) und AROME-Bodenwind (additiv) parallel
   // abfragen.
   const surfaceQuery =
     `${baseUrl}&model=eq.${MODEL_SURFACE}` +
     `&select=forecast_time,direction,speed_kmh,gust_kmh`;
-  const surfaceD2Query =
-    `${baseUrl}&model=eq.${MODEL_SURFACE_D2}` +
+  const surfaceAromeQuery =
+    `${baseUrl}&model=eq.${MODEL_SURFACE_AROME}` +
     `&select=forecast_time,direction,speed_kmh,gust_kmh`;
 
   let res: Response;
-  let d2Res: Response | null = null;
+  let aromeRes: Response | null = null;
   try {
-    [res, d2Res] = await Promise.all([
+    [res, aromeRes] = await Promise.all([
       fetch(surfaceQuery, { headers, cache: "no-store" }),
-      // Der ICON-D2-Bodenwind ist optional: ein Fehler hier darf den
+      // Der AROME-Bodenwind ist optional: ein Fehler hier darf den
       // ICON-CH1-Bodenwind nicht blockieren, deshalb separat aufgefangen.
-      fetch(surfaceD2Query, { headers, cache: "no-store" }).catch(() => null),
+      // Stationen außerhalb des AROME-Gebiets liefern einfach eine leere
+      // Liste (die Edge Function speichert dafür keine Zeilen).
+      fetch(surfaceAromeQuery, { headers, cache: "no-store" }).catch(() => null),
     ]);
   } catch {
     return NextResponse.json(
@@ -106,12 +110,12 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
-  let entriesD2: ForecastEntry[] = [];
-  if (d2Res?.ok) {
+  let entriesArome: ForecastEntry[] = [];
+  if (aromeRes?.ok) {
     try {
-      entriesD2 = (await d2Res.json()) as ForecastEntry[];
+      entriesArome = (await aromeRes.json()) as ForecastEntry[];
     } catch {
-      entriesD2 = [];
+      entriesArome = [];
     }
   }
 
@@ -120,6 +124,6 @@ export async function GET(request: Request) {
     hours: HISTORY_HOURS,
     count: entries.length,
     entries,
-    entriesD2,
+    entriesArome,
   });
 }
