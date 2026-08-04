@@ -43,11 +43,13 @@ const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
 const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
 const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
 const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
-// Messwerte stehen in eingefärbten Rechtecken (Farbe = Windskala des jeweiligen
+// Messwerte stehen in eingefärbten Quadraten (Farbe = Windskala des jeweiligen
 // Werts), damit man die Windstärke schon an der Zahlenreihe ablesen kann.
-const MEAS_BOX_W = 27; // Breite eines Wert-Rechtecks
-const MEAS_BOX_H = 15; // Höhe eines Wert-Rechtecks
-const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Rechteck → Böen-Rechteck
+// Bewusst quadratisch und ohne abgerundete Ecken (Wunsch des Projektbesitzers):
+// Breite = Höhe, deshalb EINE gemeinsame Kantenlänge.
+const MEAS_BOX_H = 15; // Kantenlänge eines Wert-Quadrats (Höhe = Breite)
+const MEAS_BOX_W = MEAS_BOX_H;
+const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Quadrat → Böen-Quadrat
 const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
 const MEAS_TIME_GAP = 5; // Abstand Böen-Rechteck → wiederholte Uhrzeit-Zeile
 const MEAS_TIME_ROW_H = 15; // Höhe der wiederholten Uhrzeit-Zeile
@@ -809,7 +811,7 @@ export default function WindHistoryPanel({
               })}
 
               {/* Messwerte unter jedem Pfeil: oben Mittelwind, darunter Böe,
-                  jede Zahl in einem Rechteck, das nach der Windskala des
+                  jede Zahl in einem Quadrat, das nach der Windskala des
                   jeweiligen Werts eingefärbt ist (gleiche Farben wie die
                   Farbbänder und die Kartenpfeile). Gleiche Auswahl an Punkten
                   wie die Pfeile, damit nichts überlappt. */}
@@ -828,7 +830,7 @@ export default function WindHistoryPanel({
                 return (
                   <g key={`values-${p.t}`}>
                     {cells.map(({ value, boxY }) => {
-                      // Ohne Messwert kein Rechteck, nur ein graues "–".
+                      // Ohne Messwert kein Quadrat, nur ein graues "–".
                       if (value === null) {
                         return (
                           <text
@@ -851,7 +853,6 @@ export default function WindHistoryPanel({
                             y={boxY}
                             width={MEAS_BOX_W}
                             height={MEAS_BOX_H}
-                            rx={2}
                             fill={color}
                           />
                           <text
