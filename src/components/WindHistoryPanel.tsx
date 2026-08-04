@@ -41,7 +41,7 @@ const Y_MAX_KMH = 45;
 // Waagrechte Orientierungslinien im Kurvenbereich (km/h). Damit sieht man auf
 // einen Blick, wann Mittelwind bzw. Böen diese Schwellen überschreiten, ohne
 // die Kurve mit der Achsenbeschriftung links abgleichen zu müssen.
-const THRESHOLD_LINES_KMH = [15, 25];
+const THRESHOLD_LINES_KMH = [5, 15, 25];
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
 // Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
