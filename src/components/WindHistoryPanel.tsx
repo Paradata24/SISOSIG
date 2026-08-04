@@ -38,6 +38,10 @@ const CHART_H = 154; // Höhe des Kurvenbereichs
 // Werte über dieser Grenze werden gekappt (siehe y()), die echten Zahlen
 // stehen weiterhin in den Werte-Zeilen unter den Pfeilen.
 const Y_MAX_KMH = 45;
+// Waagrechte Orientierungslinien im Kurvenbereich (km/h). Damit sieht man auf
+// einen Blick, wann Mittelwind bzw. Böen diese Schwellen überschreiten, ohne
+// die Kurve mit der Achsenbeschriftung links abgleichen zu müssen.
+const THRESHOLD_LINES_KMH = [15, 25];
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
 // Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
@@ -780,6 +784,24 @@ export default function WindHistoryPanel({
                   </g>
                 );
               })}
+
+              {/* Waagrechte Schwellenlinien (siehe THRESHOLD_LINES_KMH):
+                  gestrichelt und halbtransparent, damit sie die Kurven nicht
+                  überdecken. Sie liegen über dem Farbverlauf, aber unter den
+                  Mess- und Prognosekurven. Die zugehörige Zahl steht bereits
+                  links an der km/h-Achse, deshalb hier ohne eigene Beschriftung. */}
+              {THRESHOLD_LINES_KMH.filter((v) => v <= yMax).map((v) => (
+                <line
+                  key={`threshold-${v}`}
+                  x1={PAD_X}
+                  y1={y(v)}
+                  x2={PAD_X + bandWidth}
+                  y2={y(v)}
+                  className="stroke-zinc-900/55 dark:stroke-zinc-100/55"
+                  strokeWidth={1}
+                  strokeDasharray="6 4"
+                />
+              ))}
 
               {/* "Jetzt"-Markierung: senkrechte Linie an der aktuellen Uhrzeit,
                   rechts davon die 4h-Prognose-Reserve */}
