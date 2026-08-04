@@ -179,11 +179,19 @@ Supabase.
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
    curve over a horizontal wind-scale color gradient (an SVG `<linearGradient>`
    built from `WIND_COLOR_SCALE`'s anchor points, not separate flat bands
-   anymore), and a row of wind-direction arrows below. There is deliberately
-   **no filled area** anywhere in the chart
-   — neither between the mean-wind and gust curves nor between measurement and
-   forecast (removed at the owner's request, for measurements *and* forecasts —
-   `buildAreaPath` is gone; don't reintroduce it). Below the
+   anymore), and a row of wind-direction arrows below. The area **between the
+   two measurement curves** (gust above, mean wind below) is filled white at
+   50% opacity (`buildBandPath`, `fill-zinc-900/50 dark:fill-zinc-100/50` —
+   added at the owner's request after having been removed earlier; the band
+   breaks at the same gaps as the lines, see `LINE_GAP_MS`). There is still
+   deliberately **no fill anywhere else** — not between the two curves of a
+   forecast model and not between measurement and forecast. **Draw order:**
+   measurement band → measurement curves + dots → the two forecast models, so
+   the forecasts sit in the **foreground** where they overlap the measurement
+   (owner's decision; it used to be the other way round). In every pair the
+   **upper (gust) curve is ~15% thicker** than its mean-wind curve
+   (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement, ICON-CH1 and
+   AROME alike. Below the
    measurement arrows, each measured number (mean wind on top, gust below) sits
    in a **square (`MEAS_BOX_W === MEAS_BOX_H`, no rounded corners — owner's
    decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**

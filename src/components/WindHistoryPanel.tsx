@@ -207,6 +207,49 @@ function buildLinePath(
   return d.trim();
 }
 
+// Baut den SVG-Pfad der Fläche zwischen zwei Kurven (oben Böe, unten
+// Mittelwind). Wie buildLinePath wird die Fläche unterbrochen, sobald ein
+// Wert fehlt oder die Messlücke zu groß ist — sonst würde über eine Lücke
+// hinweg eine Fläche gemalt, die es gar nicht gibt.
+function buildBandPath(
+  points: Point[],
+  x: (t: number) => number,
+  y: (v: number) => number,
+): string {
+  let d = "";
+  let run: Point[] = [];
+
+  const flush = () => {
+    // Eine Fläche braucht mindestens zwei Punkte
+    if (run.length < 2) {
+      run = [];
+      return;
+    }
+    const top = run
+      .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.t).toFixed(1)} ${y(p.gust!).toFixed(1)}`)
+      .join(" ");
+    const bottom = [...run]
+      .reverse()
+      .map((p) => `L${x(p.t).toFixed(1)} ${y(p.speed!).toFixed(1)}`)
+      .join(" ");
+    d += `${top} ${bottom} Z `;
+    run = [];
+  };
+
+  for (const p of points) {
+    if (p.speed === null || p.gust === null) {
+      flush();
+      continue;
+    }
+    const prev = run[run.length - 1];
+    if (prev && p.t - prev.t > LINE_GAP_MS) flush();
+    run.push(p);
+  }
+  flush();
+
+  return d.trim();
+}
+
 // Passende Textfarbe für ein eingefärbtes Wert-Rechteck: auf den dunklen
 // Stufen der Windskala (dunkelrot, schwarz) weiß, sonst dunkelgrau — sonst
 // wäre die Zahl im Rechteck nicht mehr lesbar.
@@ -647,8 +690,12 @@ export default function WindHistoryPanel({
   // leer und es wird nichts gezeichnet.
   const forecastAromeSpeedPath = buildLinePath(forecastAromePoints, (p) => p.speed, x, y);
   const forecastAromeGustPath = buildLinePath(forecastAromePoints, (p) => p.gust, x, y);
-  // Beide Linien (Böen oben, Mittelwind unten) gleich dick.
+  // Fläche zwischen den beiden Messkurven (Böe oben, Mittelwind unten)
+  const measurementBandPath = buildBandPath(points, x, y);
+  // Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
+  // dicker gezeichnet, damit sie sich von der Mittelwind-Kurve abhebt.
   const LINE_WIDTH = 1.8;
+  const GUST_LINE_WIDTH = LINE_WIDTH * 1.15;
 
   return (
     <section
@@ -823,14 +870,63 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
-              {/* Prognose (ICON-CH1) in Rot, VOR den schwarzen Messwert-Kurven
-                  gezeichnet: im Überlappungsbereich liegt so die echte Messung
-                  optisch oben; rechts der "jetzt"-Linie steht Rot ohnehin
-                  allein. Beide Linien gleich dick, ohne Füllfläche dazwischen. */}
+              {/* Messkurven: dazwischen eine weiße Fläche (50 % Deckkraft),
+                  die obere Kurve (Böen) etwas dicker als die untere
+                  (Mittelwind). */}
+              <path
+                d={measurementBandPath}
+                stroke="none"
+                className="fill-zinc-900/50 dark:fill-zinc-100/50"
+              />
+              <path
+                d={gustPath}
+                fill="none"
+                strokeWidth={GUST_LINE_WIDTH}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-zinc-900 dark:stroke-zinc-100"
+              />
+              <path
+                d={speedPath}
+                fill="none"
+                strokeWidth={LINE_WIDTH}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-zinc-900 dark:stroke-zinc-100"
+              />
+
+              {/* Messpunkte als kleine Punkte — dadurch bleiben auch einzelne
+                  Werte sichtbar, wenn wegen einer größeren Messlücke keine
+                  Linie zum Nachbarpunkt gezogen wird */}
+              {points.map((p) => (
+                <g key={`dot-${p.t}`}>
+                  {p.gust !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.gust)}
+                      r={2}
+                      className="fill-zinc-900 dark:fill-zinc-100"
+                    />
+                  )}
+                  {p.speed !== null && (
+                    <circle
+                      cx={x(p.t)}
+                      cy={y(p.speed)}
+                      r={1.7}
+                      className="fill-zinc-900 dark:fill-zinc-100"
+                    />
+                  )}
+                </g>
+              ))}
+
+              {/* Prognose (ICON-CH1) in Rot, NACH den Messwert-Kurven
+                  gezeichnet: im Überlappungsbereich liegen die Prognosen so
+                  optisch oben (Wunsch des Projektbesitzers). Die obere Kurve
+                  (Böen) ist etwas dicker, keine Füllfläche dazwischen. */}
               <path
                 d={forecastGustPath}
                 fill="none"
-                strokeWidth={LINE_WIDTH}
+                strokeWidth={GUST_LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 className="stroke-red-600 dark:stroke-red-500"
@@ -874,7 +970,7 @@ export default function WindHistoryPanel({
               <path
                 d={forecastAromeGustPath}
                 fill="none"
-                strokeWidth={LINE_WIDTH}
+                strokeWidth={GUST_LINE_WIDTH}
                 strokeLinejoin="round"
                 strokeLinecap="round"
                 stroke={AROME_COLOR}
@@ -894,49 +990,6 @@ export default function WindHistoryPanel({
                   )}
                   {p.speed !== null && (
                     <circle cx={x(p.t)} cy={y(p.speed)} r={1.7} fill={AROME_COLOR} />
-                  )}
-                </g>
-              ))}
-
-              {/* Messkurven: beide Linien gleich dick (Böen oben, Mittelwind
-                  unten), ohne Füllfläche dazwischen. */}
-              <path
-                d={gustPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-zinc-900 dark:stroke-zinc-100"
-              />
-              <path
-                d={speedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-zinc-900 dark:stroke-zinc-100"
-              />
-
-              {/* Messpunkte als kleine Punkte — dadurch bleiben auch einzelne
-                  Werte sichtbar, wenn wegen einer größeren Messlücke keine
-                  Linie zum Nachbarpunkt gezogen wird */}
-              {points.map((p) => (
-                <g key={`dot-${p.t}`}>
-                  {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-zinc-900 dark:fill-zinc-100"
-                    />
-                  )}
-                  {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-zinc-900 dark:fill-zinc-100"
-                    />
                   )}
                 </g>
               ))}
