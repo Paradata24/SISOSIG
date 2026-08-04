@@ -188,10 +188,35 @@ Supabase.
    decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**
    (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
    on the dark red/black steps), and below those two rows the hour labels are
-   repeated. Three layers can appear: **black** = measurement, **red** =
+   repeated. **The forecast numbers sit in exactly the same squares** — one
+   shared `ValueBox` component draws measurement and forecast cells, so the two
+   rows can't drift apart. Unlike the measurement row, the forecast comparison
+   row has **no arrow row of its own above it** — each model's direction arrow
+   sits directly beside its own square pair instead (CH1's arrow to the left of
+   the CH1 pair, AROME's arrow to the right of the AROME pair; the pairs
+   themselves stay `FORECAST_PAIR_HALF_GAP` apart, CH1 left / AROME right of
+   each hour, same as before). The squares have **no colored border** (removed
+   again at the owner's request — model identity is now shown by arrow color
+   and position, not a ring around the number); `CH1_COLOR`/`AROME_COLOR` only
+   tint the "–" placeholder text for hours with a missing value. Dropping the
+   forecast arrow row saves `ARROW_ROW_H + VALUES_GAP` of panel height. Box size
+   and font were raised ~10% (15 → `MEAS_BOX_H` 16.5 px, 10 → 11 px) and
+   `VALUES_GAP` shrank (8 → 4) so the numbers sit closer under their arrows;
+   `MEAS_BOX_GAP_X` was lowered by the same amount the boxes grew (13.5 → 12) so
+   the column spacing — and with it the whole panel width — stayed unchanged.
+   Because a forecast arrow can now overhang the time axis by up to
+   `FORECAST_ARROW_CX_OFFSET + ARROW_SIZE / 2` on **either** side (CH1's arrow
+   sticks out past the left edge of its hour, AROME's past the right edge),
+   both the left and right inner padding of the SVG are widened to `AXIS_PAD`
+   (`Math.max(PAD_X, …)`) — asymmetric `RIGHT_PAD`-only padding stopped being
+   enough once arrows moved outward on both sides. The color gradient
+   (measurement chart background) still uses the smaller `PAD_X`/`bandWidth`,
+   since only the forecast row below needs the wider margin — otherwise the
+   outermost arrows get clipped.
+   Three layers can appear: **black** = measurement, **red** =
    ICON-CH1 ground-wind forecast, and **yellow `#FFD400`** = AROME ground-wind
    forecast (`/api/forecast`'s `entriesArome`, same representation as the red
-   CH1 layer — the two share one arrows+values row below the measurement row,
+   CH1 layer — the two share one comparison row below the measurement row,
    CH1 left / AROME right of each hour). The yellow layer replaced a blue
    ICON-D2 layer at the owner's request; ICON-D2 is still collected into the
    database, it is only no longer drawn. Its color is a hard-coded hex constant

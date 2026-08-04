@@ -39,41 +39,56 @@ const CHART_H = 154; // Höhe des Kurvenbereichs
 // stehen weiterhin in den Werte-Zeilen unter den Pfeilen.
 const Y_MAX_KMH = 45;
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
-const ARROW_ROW_H = 29; // Höhe der Pfeilreihe
-const VALUES_GAP = 8; // Abstand Pfeilreihe → Werte-Text
-const VALUE_LINE_H = 12; // Zeilenhöhe je Textzeile (Mittelwind / Böe)
-const VALUES_ROW_H = VALUE_LINE_H * 2; // zwei Zeilen: oben Mittelwind, unten Böe
-// Messwerte stehen in eingefärbten Quadraten (Farbe = Windskala des jeweiligen
-// Werts), damit man die Windstärke schon an der Zahlenreihe ablesen kann.
-// Bewusst quadratisch und ohne abgerundete Ecken (Wunsch des Projektbesitzers):
-// Breite = Höhe, deshalb EINE gemeinsame Kantenlänge.
-const MEAS_BOX_H = 15; // Kantenlänge eines Wert-Quadrats (Höhe = Breite)
+const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
+// Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
+// unter "ihrem" Pfeil sitzen und das Panel insgesamt flacher bleibt (Wunsch
+// des Projektbesitzers: mehr Karte sichtbar).
+const VALUES_GAP = 4;
+// Messwerte UND Prognosewerte stehen in eingefärbten Quadraten (Farbe =
+// Windskala des jeweiligen Werts), damit man die Windstärke schon an der
+// Zahlenreihe ablesen kann. Bewusst quadratisch und ohne abgerundete Ecken
+// (Wunsch des Projektbesitzers): Breite = Höhe, deshalb EINE gemeinsame
+// Kantenlänge. Auf Wunsch um ca. 10% vergrößert (15 → 16.5), die Schrift
+// darin entsprechend von 10 auf 11 px.
+const MEAS_BOX_H = 16.5; // Kantenlänge eines Wert-Quadrats (Höhe = Breite)
 const MEAS_BOX_W = MEAS_BOX_H;
 const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Quadrat → Böen-Quadrat
 const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
-const MEAS_TIME_GAP = 5; // Abstand Böen-Quadrat → wiederholte Uhrzeit-Zeile
-const MEAS_TIME_ROW_H = 15; // Höhe der wiederholten Uhrzeit-Zeile
-const FORECAST_ROW_GAP = 12; // Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock
-const BOTTOM_PAD = 10; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
+const MEAS_TIME_GAP = 4; // Abstand Böen-Quadrat → wiederholte Uhrzeit-Zeile
+const MEAS_TIME_ROW_H = 13; // Höhe der wiederholten Uhrzeit-Zeile
+// Trennung zwischen Messwert-Block (schwarz) und Prognose-Vergleichsblock.
+const FORECAST_ROW_GAP = 10;
+const BOTTOM_PAD = 6; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
 // Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2 Zeilen
 // eingefärbte Werte + wiederholte Uhrzeiten) + Prognose-Vergleichsblock
-// (Pfeile + 2 Zeilen, ICON-CH1 rot links / AROME gelb rechts nebeneinander)
-// + unterer Rand.
+// (2 Zeilen eingefärbte Werte, ICON-CH1 links / AROME rechts nebeneinander,
+// je mit dem Richtungspfeil außen neben dem eigenen Quadrat-Paar statt einer
+// eigenen Pfeilreihe darüber — deshalb braucht der Block hier keine eigene
+// ARROW_ROW_H mehr) + unterer Rand.
 const SVG_H =
   TIME_LABEL_H + CHART_H +
   ARROW_GAP + ARROW_ROW_H + VALUES_GAP + MEAS_VALUES_ROW_H +
   MEAS_TIME_GAP + MEAS_TIME_ROW_H +
-  FORECAST_ROW_GAP + ARROW_ROW_H + VALUES_GAP + VALUES_ROW_H +
+  FORECAST_ROW_GAP + MEAS_VALUES_ROW_H +
   BOTTOM_PAD;
-const PAD_X = 11; // linker/rechter Innenabstand des Diagramms
+const PAD_X = 11; // Innenabstand der Farbbänder (Kurvenbereich) vom SVG-Rand
+// Horizontaler Abstand vom Stundenpunkt für den Prognose-Vergleichsblock:
+// rotes ICON-CH1 links, gelbes AROME rechts nebeneinander unter derselben
+// Stunde.
+const FORECAST_PAIR_HALF_GAP = 11;
+// Waagrechter Abstand zwischen Quadrat-Kante und Pfeil im Prognose-Block.
+const FORECAST_ARROW_GAP_X = 3;
 
 // Waagrechte Lücke zwischen zwei benachbarten Wert-Quadraten. Seit die
-// Kästchen quadratisch sind (15 statt vorher 27 px breit), blieb dazwischen
+// Kästchen quadratisch sind (16.5 statt vorher 27 px breit), blieb dazwischen
 // viel Leerraum; auf Wunsch des Projektbesitzers ist die Lücke um 25%
-// verkleinert (18 → 13.5 px). Weil daraus der Spaltenabstand und damit die
-// ganze Achsenbreite abgeleitet wird, rückt der komplette Verlaufsbalken
-// entsprechend enger zusammen — hier ist der einzige Stellknopf dafür.
-const MEAS_BOX_GAP_X = 13.5;
+// verkleinert (18 → 13.5 px) und beim späteren Vergrößern der Quadrate um
+// deren Zuwachs nachgezogen (13.5 → 12), damit der Spaltenabstand — und damit
+// die Gesamtbreite des Verlaufsbalkens — exakt gleich bleibt. Weil daraus der
+// Spaltenabstand und damit die ganze Achsenbreite abgeleitet wird, rückt der
+// komplette Verlaufsbalken entsprechend enger zusammen — hier ist der einzige
+// Stellknopf dafür.
+const MEAS_BOX_GAP_X = 12;
 // Abstand von Spaltenmitte zu Spaltenmitte = Kästchenbreite + Lücke.
 const COLUMN_SPACING = MEAS_BOX_W + MEAS_BOX_GAP_X;
 // Mindestabstand (px) zwischen zwei Pfeil-/Werte-Spalten, damit sich die
@@ -94,6 +109,20 @@ const HISTORY_PX_PER_HOUR = Math.ceil((60 / LABEL_INTERVAL_MIN) * COLUMN_SPACING
 // Messwerte mehr und darf daher 50% enger gepackt sein als der Geschichts-Teil.
 const FUTURE_PX_PER_HOUR = HISTORY_PX_PER_HOUR / 2;
 const ARROW_SIZE = 17; // Kantenlänge eines Richtungspfeils
+// Größter waagrechter Abstand, den ein Prognose-Pfeil vom Stundenpunkt haben
+// kann (Paar-Abstand + halbes Quadrat + Pfeil-Abstand + Pfeil selbst, der
+// Pfeil steht ja außen neben dem Quadrat-Paar). Sowohl der linke als auch der
+// rechte Innenabstand des SVG müssen mindestens so groß sein, sonst wird der
+// äußerste CH1- bzw. AROME-Pfeil am Rand angeschnitten.
+const AXIS_PAD = Math.max(
+  PAD_X,
+  FORECAST_PAIR_HALF_GAP + MEAS_BOX_W / 2 + FORECAST_ARROW_GAP_X + ARROW_SIZE,
+);
+// Waagrechter Abstand der Pfeil-MITTE (nicht der Außenkante wie AXIS_PAD) vom
+// Stundenpunkt: CH1-Pfeil bei tx − diesem Wert, AROME-Pfeil bei tx + diesem
+// Wert, jeweils außen neben dem eigenen Quadrat-Paar.
+const FORECAST_ARROW_CX_OFFSET =
+  FORECAST_PAIR_HALF_GAP + MEAS_BOX_W / 2 + FORECAST_ARROW_GAP_X + ARROW_SIZE / 2;
 // Wie weit die Historie zurückreicht (HISTORY_HOURS) bzw. wie viel Platz rechts
 // nach "jetzt" bleibt (FUTURE_MARGIN_HOURS) — beides zentral in src/lib/wind.ts,
 // weil /api/history und /api/forecast dieselben Werte brauchen. Die Zeitachse
@@ -112,6 +141,13 @@ const LINE_GAP_MS = 60 * 60 * 1000;
 // Projektbesitzer vorgegeben) statt einer Tailwind-Klasse, damit der Ton in
 // Kurve, Punkten, Pfeilen und Zahlen exakt derselbe ist.
 const AROME_COLOR = "#FFD400";
+// Farbe der ICON-CH1-Prognose als fester Hex-Wert. Kurve, Punkte und der
+// Vergleichs-Pfeil im Prognose-Block benutzen dafür die Tailwind-Klassen
+// stroke-red-600/dark:stroke-red-500 bzw. fill-red-600/dark:fill-red-500; für
+// die Textfarbe des "–" bei fehlendem Wert brauchen wir einen konkreten
+// Farbwert, und weil die Seite dauerhaft im Dunkelmodus läuft, ist das genau
+// red-500.
+const CH1_COLOR = "#ef4444";
 
 interface Point {
   t: number; // Zeitstempel (ms)
@@ -178,6 +214,73 @@ function contrastTextColor(hexColor: string): string {
   // wahrgenommene Helligkeit (0–255)
   const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
   return brightness > 140 ? "#18181b" : "#ffffff";
+}
+
+// Ein einzelnes Wert-Quadrat: die gerundete Zahl mittig in einem Quadrat, das
+// nach der Windskala des Werts eingefärbt ist. Wird sowohl für die Messwerte
+// (schwarzer Block) als auch für die beiden Prognosen benutzt, damit beide
+// Zeilen garantiert identisch aussehen — ohne Rahmen, denn welches Modell
+// gemeint ist, zeigt inzwischen der Richtungspfeil daneben (CH1 links, AROME
+// rechts vom jeweiligen Quadrat-Paar).
+// - `bold`: stündliche Messwerte werden fett gesetzt (Vergleich mit der
+//   ebenfalls stündlichen Prognose).
+// - `accent`: Textfarbe des "–" bei fehlendem Prognosewert (rot = ICON-CH1,
+//   gelb = AROME), damit auch eine leere Zelle noch ihrer Spalte zuzuordnen
+//   ist; Messwert-Quadrate lassen `accent` weg und bleiben neutral grau.
+function ValueBox({
+  cx,
+  boxY,
+  value,
+  bold = false,
+  accent,
+}: {
+  cx: number;
+  boxY: number;
+  value: number | null;
+  bold?: boolean;
+  accent?: string;
+}) {
+  // Ohne Wert kein Quadrat, nur ein "–" in der jeweiligen Zeilenfarbe.
+  if (value === null) {
+    return (
+      <text
+        x={cx.toFixed(1)}
+        y={boxY + MEAS_BOX_H / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={accent}
+        className={
+          accent
+            ? "text-[11px] tabular-nums"
+            : "fill-zinc-400 text-[11px] tabular-nums dark:fill-zinc-500"
+        }
+      >
+        –
+      </text>
+    );
+  }
+  const color = getWindColor(value);
+  return (
+    <g>
+      <rect
+        x={(cx - MEAS_BOX_W / 2).toFixed(1)}
+        y={boxY}
+        width={MEAS_BOX_W}
+        height={MEAS_BOX_H}
+        fill={color}
+      />
+      <text
+        x={cx.toFixed(1)}
+        y={boxY + MEAS_BOX_H / 2}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={contrastTextColor(color)}
+        className={`text-[11px] tabular-nums ${bold ? "font-bold" : ""}`}
+      >
+        {Math.round(value)}
+      </text>
+    </g>
+  );
 }
 
 export default function WindHistoryPanel({
@@ -350,9 +453,15 @@ export default function WindHistoryPanel({
 
   const svgWidth = Math.max(
     containerW,
-    Math.ceil(contentWidth0) + 2 * PAD_X,
+    Math.ceil(contentWidth0) + 2 * AXIS_PAD,
   );
-  const innerW = svgWidth - 2 * PAD_X;
+  // Zeichenbreite der Zeitachse (endet vor dem beidseitigen Zuschlag für die
+  // äußersten Prognose-Pfeile) …
+  const innerW = svgWidth - 2 * AXIS_PAD;
+  // … die Farbbänder reichen dagegen bis zum kleineren PAD_X-Innenrand, damit
+  // links/rechts kein unbemalter Streifen im Kurvenbereich entsteht (der
+  // größere AXIS_PAD ist nur für den Prognose-Block unten nötig).
+  const bandWidth = svgWidth - 2 * PAD_X;
   // Auf breiten Bildschirmen füllt das Diagramm die volle Breite; beide
   // Abschnitte werden dabei im gleichen Verhältnis gestreckt.
   const stretch = innerW / contentWidth0;
@@ -364,8 +473,8 @@ export default function WindHistoryPanel({
 
   const x = (t: number) =>
     t <= now
-      ? PAD_X + ((t - minT) / (now - minT)) * historyWidth
-      : PAD_X + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
+      ? AXIS_PAD + ((t - minT) / (now - minT)) * historyWidth
+      : AXIS_PAD + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
   const chartTop = TIME_LABEL_H;
   const chartBottom = TIME_LABEL_H + CHART_H;
   // Werte über der festen Obergrenze werden gekappt: die Kurve läuft dann
@@ -386,16 +495,13 @@ export default function WindHistoryPanel({
   const measBlockBottom = measValuesBottom + MEAS_TIME_GAP + MEAS_TIME_ROW_H;
 
   // Prognose-Block (AROME gelb neben ICON-CH1 rot), direkt unter dem
-  // Messwert-Block: eigene Pfeilreihe + zwei Zahlenzeilen (Mittelwind, Böe)
-  // — dieselbe Darstellung wie die Messung, nur weiter unten.
-  const forecastArrowCy = measBlockBottom + FORECAST_ROW_GAP + ARROW_ROW_H / 2;
-  const forecastArrowRowBottom = measBlockBottom + FORECAST_ROW_GAP + ARROW_ROW_H;
-  const forecastSpeedValueY = forecastArrowRowBottom + VALUES_GAP + VALUE_LINE_H - 2;
-  const forecastGustValueY = forecastSpeedValueY + VALUE_LINE_H;
-  // Horizontaler Abstand vom Stundenpunkt für den Vergleichs-Block: rotes
-  // ICON-CH1 links, gelbes AROME rechts nebeneinander unter derselben
-  // Stunde (ersetzt die vormals separate rote Überlagerung im Kurvenbereich).
-  const FORECAST_PAIR_HALF_GAP = 11;
+  // Messwert-Block: zwei Zahlenzeilen (Mittelwind, Böe) je Modell, mit dem
+  // Richtungspfeil außen daneben statt in einer eigenen Reihe darüber — der
+  // Pfeil steht auf Höhe der Quadrat-Mitte. Auch die Prognosezahlen sitzen in
+  // Quadraten mit der Farbe ihres Werts.
+  const forecastSpeedBoxY = measBlockBottom + FORECAST_ROW_GAP;
+  const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
+  const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
 
   // --- Farbverlauf aus der Windskala (bis yMax gekappt) ---
   // Ein <linearGradient>-Stop pro Stützpunkt aus WIND_COLOR_SCALE, statt
@@ -501,12 +607,12 @@ export default function WindHistoryPanel({
           x(combinedForecastTimes[0])) /
         (combinedForecastTimes.length - 1)
       : historyWidth;
+  // Platzbedarf einer Prognose-Spalte: von der äußeren Kante des linken
+  // CH1-Pfeils bis zur äußeren Kante des rechten AROME-Pfeils (2× AXIS_PAD,
+  // das genau für diesen Zweck bemessen ist).
   const combinedForecastStep = Math.max(
     1,
-    Math.ceil(
-      Math.max(ARROW_SIZE + 2 * FORECAST_PAIR_HALF_GAP, MIN_LABEL_SPACING) /
-        combinedPxPerPoint,
-    ),
+    Math.ceil(Math.max(2 * AXIS_PAD, MIN_LABEL_SPACING) / combinedPxPerPoint),
   );
   const combinedForecastTimeSelection: number[] = [];
   for (let i = combinedForecastTimes.length - 1; i >= 0; i -= combinedForecastStep) {
@@ -637,7 +743,7 @@ export default function WindHistoryPanel({
               <rect
                 x={PAD_X}
                 y={chartTop}
-                width={innerW}
+                width={bandWidth}
                 height={chartBottom - chartTop}
                 fill={`url(#${gradientId})`}
               />
@@ -855,51 +961,10 @@ export default function WindHistoryPanel({
                 // der (ebenfalls stündlichen) Prognose von den Zwischenwerten
                 // abheben.
                 const isHourly = hourlyPointIndices.has(i);
-                const cells: { value: number | null; boxY: number }[] = [
-                  { value: p.speed, boxY: speedBoxY },
-                  { value: p.gust, boxY: gustBoxY },
-                ];
                 return (
                   <g key={`values-${p.t}`}>
-                    {cells.map(({ value, boxY }) => {
-                      // Ohne Messwert kein Quadrat, nur ein graues "–".
-                      if (value === null) {
-                        return (
-                          <text
-                            key={boxY}
-                            x={tx.toFixed(1)}
-                            y={boxY + MEAS_BOX_H / 2}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            className="fill-zinc-400 text-[10px] tabular-nums dark:fill-zinc-500"
-                          >
-                            –
-                          </text>
-                        );
-                      }
-                      const color = getWindColor(value);
-                      return (
-                        <g key={boxY}>
-                          <rect
-                            x={(tx - MEAS_BOX_W / 2).toFixed(1)}
-                            y={boxY}
-                            width={MEAS_BOX_W}
-                            height={MEAS_BOX_H}
-                            fill={color}
-                          />
-                          <text
-                            x={tx.toFixed(1)}
-                            y={boxY + MEAS_BOX_H / 2}
-                            textAnchor="middle"
-                            dominantBaseline="central"
-                            fill={contrastTextColor(color)}
-                            className={`text-[10px] tabular-nums ${isHourly ? "font-bold" : ""}`}
-                          >
-                            {Math.round(value)}
-                          </text>
-                        </g>
-                      );
-                    })}
+                    <ValueBox cx={tx} boxY={speedBoxY} value={p.speed} bold={isHourly} />
+                    <ValueBox cx={tx} boxY={gustBoxY} value={p.gust} bold={isHourly} />
                   </g>
                 );
               })}
@@ -922,10 +987,11 @@ export default function WindHistoryPanel({
 
               {/* Prognose-Vergleichsblock UNTER dem Messwert-Block: für jede
                   Stunde links das rote ICON-CH1-Ergebnis, rechts direkt
-                  daneben das gelbe AROME-Ergebnis — Windpfeil (Mittelwind),
-                  darunter Mittelwind- und Böen-Zahl, jeweils als Paar. Fehlt
-                  eines der beiden Modelle für eine Stunde, erscheint nur die
-                  andere Seite. */}
+                  daneben das gelbe AROME-Ergebnis — je Mittelwind- und
+                  Böen-Zahl übereinander, mit dem Richtungspfeil außen neben
+                  dem eigenen Quadrat-Paar (CH1-Pfeil links vom CH1-Paar,
+                  AROME-Pfeil rechts vom AROME-Paar). Fehlt eines der beiden
+                  Modelle für eine Stunde, erscheint nur die andere Seite. */}
               {combinedForecastTimeSelection.map((t) => {
                 const chP = forecastByT.get(t);
                 const aromeP = forecastAromeByT.get(t);
@@ -934,7 +1000,7 @@ export default function WindHistoryPanel({
                   <g key={`fcarrow-${t}`}>
                     {chP && chP.direction !== null && (
                       <g
-                        transform={`translate(${(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                        transform={`translate(${(tx - FORECAST_ARROW_CX_OFFSET).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(chP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                       >
                         <title>
                           {`Prognose ICON-CH1 ${formatTime(t)} Uhr — Wind ${chP.speed ?? "–"} km/h, Böen ${chP.gust ?? "–"} km/h, Richtung ${Math.round(chP.direction)}°`}
@@ -948,7 +1014,7 @@ export default function WindHistoryPanel({
                     )}
                     {aromeP && aromeP.direction !== null && (
                       <g
-                        transform={`translate(${(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(aromeP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
+                        transform={`translate(${(tx + FORECAST_ARROW_CX_OFFSET).toFixed(1)} ${forecastArrowCy}) rotate(${((snapDirectionTo8(aromeP.direction) + 180) % 360).toFixed(0)}) scale(${(ARROW_SIZE / 40).toFixed(3)})`}
                       >
                         <title>
                           {`Prognose AROME ${formatTime(t)} Uhr — Wind ${aromeP.speed ?? "–"} km/h, Böen ${aromeP.gust ?? "–"} km/h, Richtung ${Math.round(aromeP.direction)}°`}
@@ -970,44 +1036,36 @@ export default function WindHistoryPanel({
                 return (
                   <g key={`fcvalues-${t}`}>
                     {chP && (
-                      <g className="fill-red-600 dark:fill-red-500">
-                        <text
-                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={forecastSpeedValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {chP.speed !== null ? Math.round(chP.speed) : "–"}
-                        </text>
-                        <text
-                          x={(tx - FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={forecastGustValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {chP.gust !== null ? Math.round(chP.gust) : "–"}
-                        </text>
-                      </g>
+                      <>
+                        <ValueBox
+                          cx={tx - FORECAST_PAIR_HALF_GAP}
+                          boxY={forecastSpeedBoxY}
+                          value={chP.speed}
+                          accent={CH1_COLOR}
+                        />
+                        <ValueBox
+                          cx={tx - FORECAST_PAIR_HALF_GAP}
+                          boxY={forecastGustBoxY}
+                          value={chP.gust}
+                          accent={CH1_COLOR}
+                        />
+                      </>
                     )}
                     {aromeP && (
-                      <g fill={AROME_COLOR}>
-                        <text
-                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={forecastSpeedValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {aromeP.speed !== null ? Math.round(aromeP.speed) : "–"}
-                        </text>
-                        <text
-                          x={(tx + FORECAST_PAIR_HALF_GAP).toFixed(1)}
-                          y={forecastGustValueY}
-                          textAnchor="middle"
-                          className="text-[10px] tabular-nums"
-                        >
-                          {aromeP.gust !== null ? Math.round(aromeP.gust) : "–"}
-                        </text>
-                      </g>
+                      <>
+                        <ValueBox
+                          cx={tx + FORECAST_PAIR_HALF_GAP}
+                          boxY={forecastSpeedBoxY}
+                          value={aromeP.speed}
+                          accent={AROME_COLOR}
+                        />
+                        <ValueBox
+                          cx={tx + FORECAST_PAIR_HALF_GAP}
+                          boxY={forecastGustBoxY}
+                          value={aromeP.gust}
+                          accent={AROME_COLOR}
+                        />
+                      </>
                     )}
                   </g>
                 );
