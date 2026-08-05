@@ -60,7 +60,10 @@ export const WINDANZEIGER_STATION_NAMES: string[] = [
   "lengspitze", // Prettau Lengspitze
   "pisciadu", // Abtei Piz Pisciadù (Akzent wird beim Vergleich ignoriert)
   "plose", // Plose
-  "raujoch", // Pfelders Raujoch
+  "raujoch", // Pfelders Raujoch (Schreibweise ohne "h")
+  "rauhjoch", // Pfelders Rauhjoch (Schreibweise mit "h" – je nach Datenquelle)
+  "elferspitze", // Graun Elferspitze
+  "regelspitze", // Gsies Regelspitze
 ];
 
 /**
