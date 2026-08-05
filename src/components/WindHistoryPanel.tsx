@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FUTURE_MARGIN_HOURS,
   getWindColor,
@@ -40,10 +40,6 @@ const CHART_H = 154; // Höhe des Kurvenbereichs
 // Werte über dieser Grenze werden gekappt (siehe y()), die echten Zahlen
 // stehen weiterhin in den Werte-Zeilen unter den Pfeilen.
 const Y_MAX_KMH = 45;
-// Waagrechte Orientierungslinien im Kurvenbereich (km/h). Damit sieht man auf
-// einen Blick, wann Mittelwind bzw. Böen diese Schwellen überschreiten, ohne
-// die Kurve mit der Achsenbeschriftung links abgleichen zu müssen.
-const THRESHOLD_LINES_KMH = [5, 15, 25];
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
 // Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
@@ -191,42 +187,33 @@ const forecastSpeedBoxY = measBlockBottom + FORECAST_ROW_GAP;
 const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
 const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
 
-// --- Farbverlauf aus der Windskala (bis yMax gekappt) ---
-// Ein <linearGradient>-Stop pro Stützpunkt aus WIND_COLOR_SCALE, statt
-// getrennter Farbbänder — dieselben Stützpunkte, aber dazwischen wird
-// gemischt statt hart geschnitten. offset 0 = 0 km/h (unten im Diagramm),
-// offset 1 = yMax (oben).
-const GRADIENT_STOPS: { offset: number; color: string; opacity: number }[] = [];
-for (const stop of WIND_COLOR_SCALE) {
-  if (stop.at > yMax) break;
-  GRADIENT_STOPS.push({
-    offset: stop.at / yMax,
-    color: stop.color,
-    // Standard-Deckkraft 0.55; der oberste Stützpunkt "zu stark" (Schwarz)
-    // bekommt über bandOpacity einen kleineren Wert, sonst verschwindet
-    // die schwarze Messkurve im fast schwarzen Bandbereich.
-    opacity: stop.bandOpacity ?? 0.55,
-  });
-}
-if (GRADIENT_STOPS.length === 0 || GRADIENT_STOPS[GRADIENT_STOPS.length - 1].offset < 1) {
-  const last = WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1];
-  GRADIENT_STOPS.push({ offset: 1, color: last.color, opacity: last.bandOpacity ?? 0.55 });
+// --- Farbflächen aus der Windskala (bis yMax gekappt) ---
+// Pro Bereich der Windskala EIN farbiges Rechteck mit harter Kante statt
+// eines weichen Verlaufs (Wunsch des Projektbesitzers). Leicht transparent,
+// damit die Mess- und Prognosekurven darüber gut lesbar bleiben.
+const BAND_OPACITY = 0.55;
+const COLOR_BANDS: { color: string; yTop: number; yBottom: number }[] = [];
+for (let i = 0; i < WIND_COLOR_SCALE.length; i++) {
+  const band = WIND_COLOR_SCALE[i];
+  // Untergrenze = Obergrenze des vorherigen Bereichs (das erste beginnt bei 0),
+  // Obergrenze = eigene Grenze bzw. das Achsenende beim offenen obersten Band.
+  const from = i === 0 ? 0 : (WIND_COLOR_SCALE[i - 1].upTo ?? yMax);
+  const to = band.upTo === null ? yMax : Math.min(band.upTo, yMax);
+  if (to <= from) continue; // Bereich liegt komplett über der Achsen-Obergrenze
+  COLOR_BANDS.push({ color: band.color, yTop: y(to), yBottom: y(from) });
 }
 
-// Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
-// exakt an den Stützpunkten der Windskala (0 / 5 / 15 / 20 / 25 / 30 / 35,
-// aus WIND_COLOR_SCALE.label), damit man Verlauf und Zahl direkt
-// zusammenlesen kann. Sie folgen der Skala automatisch, falls sie jemals
-// bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
+// Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern genau
+// an den Grenzen der Windskala (0 / 10 / 20 / 25 / 30), also dort, wo im
+// Diagramm die Farbe wechselt. Sie folgt der Skala automatisch, falls diese
+// jemals bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
 // Achse, bei der die Kurve gekappt wird.
-const Y_TICKS: { at: number; label: string }[] = [];
-for (const stop of WIND_COLOR_SCALE) {
-  if (stop.at > yMax) break;
-  Y_TICKS.push({ at: stop.at, label: stop.label });
+const Y_TICKS: { at: number; label: string }[] = [{ at: 0, label: "0" }];
+for (const band of WIND_COLOR_SCALE) {
+  if (band.upTo === null || band.upTo >= yMax) break;
+  Y_TICKS.push({ at: band.upTo, label: String(band.upTo) });
 }
-if (Y_TICKS.length === 0 || Y_TICKS[Y_TICKS.length - 1].at !== yMax) {
-  Y_TICKS.push({ at: yMax, label: String(yMax) });
-}
+Y_TICKS.push({ at: yMax, label: String(yMax) });
 
 interface Point {
   t: number; // Zeitstempel (ms) — bei Messwerten der Raster-Zeitpunkt (s.u.)
@@ -390,8 +377,8 @@ function buildBandPath(
 }
 
 // Passende Textfarbe für ein eingefärbtes Wert-Rechteck: auf den dunklen
-// Stufen der Windskala (dunkelrot, schwarz) weiß, sonst dunkelgrau — sonst
-// wäre die Zahl im Rechteck nicht mehr lesbar.
+// Stufen der Windskala (rot, violett) weiß, sonst dunkelgrau — sonst wäre
+// die Zahl im Rechteck nicht mehr lesbar.
 function contrastTextColor(hexColor: string): string {
   const hex = hexColor.replace("#", "");
   const r = parseInt(hex.slice(0, 2), 16);
@@ -490,9 +477,6 @@ export default function WindHistoryPanel({
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
   // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
   const [now, setNow] = useState(() => Date.now());
-  // Eindeutige id für das <linearGradient> der Farbskala (SVG-ids dürfen im
-  // Dokument nicht kollidieren).
-  const gradientId = useId();
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
@@ -881,35 +865,21 @@ export default function WindHistoryPanel({
               role="img"
               aria-label="Windverlauf: Mittelwind und Böen der letzten 12 Stunden"
             >
-              {/* Farbverlauf der Windstärke-Skala (gleiche Stützpunkte wie
-                  die Kartenpfeile, siehe WIND_COLOR_SCALE), leicht
-                  transparent, damit die Kurven gut lesbar bleiben */}
-              <defs>
-                <linearGradient
-                  id={gradientId}
-                  gradientUnits="userSpaceOnUse"
-                  x1={0}
-                  y1={chartBottom}
-                  x2={0}
-                  y2={chartTop}
-                >
-                  {GRADIENT_STOPS.map((stop) => (
-                    <stop
-                      key={stop.offset}
-                      offset={stop.offset}
-                      stopColor={stop.color}
-                      stopOpacity={stop.opacity}
-                    />
-                  ))}
-                </linearGradient>
-              </defs>
-              <rect
-                x={PAD_X}
-                y={chartTop}
-                width={bandWidth}
-                height={chartBottom - chartTop}
-                fill={`url(#${gradientId})`}
-              />
+              {/* Farbflächen der Windstärke-Skala (gleiche Bereiche wie die
+                  Kartenpfeile, siehe WIND_COLOR_SCALE): eine Fläche je
+                  Bereich mit harter Kante, leicht transparent, damit die
+                  Kurven gut lesbar bleiben */}
+              {COLOR_BANDS.map((band) => (
+                <rect
+                  key={band.color}
+                  x={PAD_X}
+                  y={band.yTop}
+                  width={bandWidth}
+                  height={band.yBottom - band.yTop}
+                  fill={band.color}
+                  opacity={BAND_OPACITY}
+                />
+              ))}
 
               {/* 10-Minuten-Raster: sehr dünne, blasse Senkrechte an jedem
                   Rasterpunkt (Ersatz für die früheren Messpunkte). Zuerst
@@ -959,24 +929,6 @@ export default function WindHistoryPanel({
                   </g>
                 );
               })}
-
-              {/* Waagrechte Schwellenlinien (siehe THRESHOLD_LINES_KMH):
-                  gestrichelt und halbtransparent, damit sie die Kurven nicht
-                  überdecken. Sie liegen über dem Farbverlauf, aber unter den
-                  Mess- und Prognosekurven. Die zugehörige Zahl steht bereits
-                  links an der km/h-Achse, deshalb hier ohne eigene Beschriftung. */}
-              {THRESHOLD_LINES_KMH.filter((v) => v <= yMax).map((v) => (
-                <line
-                  key={`threshold-${v}`}
-                  x1={PAD_X}
-                  y1={y(v)}
-                  x2={PAD_X + bandWidth}
-                  y2={y(v)}
-                  className="stroke-zinc-900/55 dark:stroke-zinc-100/55"
-                  strokeWidth={1}
-                  strokeDasharray="6 4"
-                />
-              ))}
 
               {/* "Jetzt"-Markierung: senkrechte Linie an der aktuellen Uhrzeit,
                   rechts davon die 4h-Prognose-Reserve */}

@@ -187,7 +187,7 @@ klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
 - eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
   „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
 - zwei weisse Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
-  dem Farbverlauf der Windstärke-Skala (dieselbe Skala wie die Windpfeile
+  den Farbflächen der Windstärke-Skala (dieselbe Skala wie die Windpfeile
   auf der Karte); die Fläche **zwischen** den beiden Kurven ist
   halbtransparent weiss gefüllt, damit man den Abstand zwischen Mittelwind
   und Böen auf einen Blick sieht,
@@ -229,17 +229,16 @@ Werte-Zeilen unter den Pfeilen, und die Pfeilfarben nutzen weiterhin die
 volle Windskala.
 
 Die Zahlen an der Achse stehen bewusst nicht in runden 10er-Schritten,
-sondern genau dort, wo im Diagramm die Farbe wechselt — es sind dieselben
-Werte wie in der Legende (0 / 5 / 15 / 20 / 25 / 30 / 35, plus die
-Obergrenze 45 ganz oben). Sie kommen direkt aus `WIND_COLOR_SCALE` in
-`src/lib/wind.ts`: Wird die Skala dort geändert, ändert sich die
-Achsenbeschriftung automatisch mit.
+sondern genau dort, wo im Diagramm die Farbe wechselt (0 / 10 / 20 / 25 /
+30, plus die Obergrenze 45 ganz oben). Sie kommen direkt aus
+`WIND_COLOR_SCALE` in `src/lib/wind.ts`: Wird die Skala dort geändert,
+ändert sich die Achsenbeschriftung automatisch mit.
 
-**Waagrechte Schwellenlinien:** Quer durch das Diagramm laufen gestrichelte
-Hilfslinien bei 5, 15 und 25 km/h, damit man ohne Blick auf die Achse sieht,
-wann Mittelwind oder Böen diese Grenzen überschreiten. Welche Werte das sind,
-steht in `THRESHOLD_LINES_KMH` in `src/components/WindHistoryPanel.tsx` — dort
-lassen sich Linien ergänzen oder entfernen.
+**Farbskala:** Die Windstärke wird in klaren Farbflächen dargestellt, nicht
+als weicher Verlauf: 0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30 rot,
+ab 31 violett. Dieselben Farben gelten für die Pfeile auf der Karte, die
+Wert-Quadrate im Verlaufsbalken und die Flächen hinter den Kurven. Geändert
+wird das an einer Stelle: `WIND_COLOR_SCALE` in `src/lib/wind.ts`.
 
 **Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
 Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für

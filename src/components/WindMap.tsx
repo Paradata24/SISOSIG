@@ -73,6 +73,16 @@ function getIconScale(zoom: number): number {
   return Math.max(MIN_ICON_SCALE, scale);
 }
 
+// Ist ein Stationsfilter aktiv (also NICHT "Alle"), stehen deutlich weniger
+// Pfeile auf der Karte — dann ist Platz da, und Pfeile samt Zahlen werden auf
+// Wunsch des Projektbesitzers um 25 % vergrößert, damit sie besser ablesbar
+// sind.
+const FILTERED_ICON_SCALE_BOOST = 1.25;
+
+function getFilterScaleBoost(stationFilter: StationFilter): number {
+  return stationFilter === "all" ? 1 : FILTERED_ICON_SCALE_BOOST;
+}
+
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
 // die Richtung meldet, AUS der der Wind kommt). Die angezeigte Richtung wird
@@ -207,6 +217,7 @@ function WindMarkers({
   stations,
   onSelect,
   selectedStationCode,
+  stationFilter,
 }: {
   stations: WindStation[];
   // Bewusst nur der Stationscode (nicht das ganze Stations-Objekt): so bleibt
@@ -214,12 +225,15 @@ function WindMarkers({
   // derselbe — siehe handlersByCode unten.
   onSelect: (stationCode: string) => void;
   selectedStationCode: string | null;
+  // Nur für die Pfeilgröße: bei aktivem Filter größere Marker
+  // (siehe getFilterScaleBoost).
+  stationFilter: StationFilter;
 }) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
   const map = useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
   });
-  const scale = getIconScale(zoom);
+  const scale = getIconScale(zoom) * getFilterScaleBoost(stationFilter);
   const selectedStation = stations.find(
     (s) => s.stationCode === selectedStationCode && s.lat !== null && s.lng !== null,
   );
@@ -437,6 +451,7 @@ export default function WindMap({
           stations={visibleStations}
           onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
+          stationFilter={stationFilter}
         />
       </MapContainer>
       {lastUpdated && (
