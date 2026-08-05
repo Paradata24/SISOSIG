@@ -108,93 +108,54 @@ export type StationFilter = "all" | "high" | "veryHigh" | "windanzeiger";
 export const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 export const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
 
-export interface WindColorStop {
+export interface WindColorBand {
   /**
-   * Windgeschwindigkeit (km/h) dieses Stützpunkts der Farbskala. Zwischen
-   * zwei Stützpunkten wird die Farbe linear gemischt (siehe getWindColor)
-   * — es gibt also keine harten Stufen mehr, sondern einen durchgehenden
-   * Verlauf mit einer eigenen Farbe pro km/h.
+   * Obergrenze dieses Farbbereichs in km/h, EINSCHLIESSLICH: der Bereich
+   * gilt von der Obergrenze des vorherigen Bands (ausschließlich) bis
+   * hierher. null = nach oben offen, gilt also für alles darüber.
    */
-  at: number;
-  /** Hex-Farbcode an diesem Stützpunkt. */
+  upTo: number | null;
+  /** Hex-Farbcode dieses Bereichs. */
   color: string;
-  /** Beschriftung an diesem Stützpunkt für die km/h-Achse im Verlaufsbalken. */
-  label: string;
-  /** Wortbezeichnung zur Einordnung laut ursprünglicher Legende, z. B. "mässig". */
+  /** Wortbezeichnung zur Einordnung, z. B. "mässig". */
   name: string;
-  /**
-   * Abweichende Deckkraft für das Farbband im Verlaufsbalken an diesem
-   * Stützpunkt (Standard 0.55). Nur am obersten Stützpunkt (Schwarz) auf
-   * einen kleineren Wert gesetzt, sonst verschwindet die schwarze
-   * Messkurve im fast schwarzen Bandbereich.
-   */
-  bandOpacity?: number;
 }
 
 /**
- * Farbskala der Windstärke (Windwerte für Gleitschirmflieger) als
- * durchgehender Verlauf: pro km/h eine eigene, zwischen den Stützpunkten
- * linear gemischte Farbe (siehe getWindColor). Die Stützpunkte selbst sind
- * weiterhin exakt die mit dem Projektbesitzer abgestimmten Werte/Farben
- * (hellblau → grün → gelb → orange → dunkelrot → schwarz); bei
- * Änderungswunsch bitte hier zentral anpassen. Die unterste Stufe ist
- * bewusst ein ganz helles Blau statt des Weiß der Vorlage, damit schwache
- * Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur sichtbar sind,
- * und bleibt bis 5 km/h absichtlich flach (zwei Stützpunkte mit derselben
- * Farbe), damit der ruhige Bereich nicht schon vorzeitig einfärbt. Dieser
- * flache Anfang endete früher erst bei 7 km/h und wurde auf Wunsch des
- * Projektbesitzers auf 5 km/h verkürzt.
- * Stützpunkte: 0 / 5 (beide hellblau) / 15 (grün) / 20 (zusätzlicher
- * Zwischenpunkt in kräftigem Gelbgrün, auf Wunsch des Projektbesitzers,
- * damit es schon ab 20 km/h deutlich mehr ins Gelb geht) / 25 (gelb) /
- * 30 (orange) / 35 (dunkelrot) / 45 (schwarz, entspricht Y_MAX_KMH in
- * WindHistoryPanel.tsx). Die beiden obersten Farben wurden auf Wunsch des
- * Projektbesitzers nachträglich von 31/37 auf 30/35 herabgesetzt.
+ * Farbskala der Windstärke (Windwerte für Gleitschirmflieger) als klare
+ * Farbflächen: jeder Bereich hat GENAU EINE Farbe, dazwischen wird nichts
+ * gemischt. Die Bereiche sind vom Projektbesitzer vorgegeben:
+ *   0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30 rot, ab 31 violett.
+ * (Früher war das ein durchgehender Verlauf mit einer eigenen Farbe pro
+ * km/h; auf Wunsch des Projektbesitzers wieder zurück auf harte Stufen.)
+ * Die unterste Stufe ist bewusst ein ganz helles Blau statt Weiß, damit
+ * schwache Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur
+ * sichtbar sind. Bei Änderungswunsch bitte hier zentral anpassen — die
+ * Kartenpfeile, die Wert-Quadrate und die Farbflächen samt Achsen-
+ * beschriftung im Verlaufsbalken leiten sich alle hiervon ab.
  */
-export const WIND_COLOR_SCALE: WindColorStop[] = [
-  { at: 0, color: "#CFE8F7", label: "0", name: "schwach" }, // ganz helles Blau
-  { at: 5, color: "#CFE8F7", label: "5", name: "schwach" }, // Blau endet, Verlauf beginnt
-  { at: 15, color: "#6EE45C", label: "15", name: "spürbar" }, // Hellgrün
-  { at: 20, color: "#DEEF62", label: "20", name: "mässig" }, // Gelbgrün-Zwischenpunkt
-  { at: 25, color: "#FAF264", label: "25", name: "mässig" }, // Gelb
-  { at: 30, color: "#F0913C", label: "30", name: "stark" }, // Orange
-  { at: 35, color: "#C0281B", label: "35", name: "sehr stark" }, // Dunkelrot
-  { at: 45, color: "#000000", label: "45", name: "zu stark", bandOpacity: 0.3 }, // Schwarz
+export const WIND_COLOR_SCALE: WindColorBand[] = [
+  { upTo: 10, color: "#CFE8F7", name: "schwach" }, // ganz helles Blau
+  { upTo: 20, color: "#6EE45C", name: "spürbar" }, // Grün
+  { upTo: 25, color: "#FAF264", name: "mässig" }, // Gelb
+  // Etwas dunkleres Rot als die rote Prognosekurve im Verlaufsbalken
+  // (CH1_COLOR), damit sich Kurve und Farbfläche nicht ins Gehege kommen.
+  { upTo: 30, color: "#D42A1E", name: "stark" }, // Rot
+  { upTo: null, color: "#8B2FC9", name: "zu stark" }, // Violett
 ];
 
-/** Mischt zwei Hex-Farben linear (t=0 → colorA, t=1 → colorB). */
-function mixHexColors(colorA: string, colorB: string, t: number): string {
-  const toRgb = (hexColor: string) => {
-    const clean = hexColor.replace("#", "");
-    return [0, 2, 4].map((i) => parseInt(clean.slice(i, i + 2), 16));
-  };
-  const [ar, ag, ab] = toRgb(colorA);
-  const [br, bg, bb] = toRgb(colorB);
-  const mix = (a: number, b: number) =>
-    Math.round(a + (b - a) * t)
-      .toString(16)
-      .padStart(2, "0");
-  return `#${mix(ar, br)}${mix(ag, bg)}${mix(ab, bb)}`.toUpperCase();
-}
-
 /**
- * Liefert für einen Windwert (km/h) die passende Farbe der Windskala: liegt
- * er zwischen zwei Stützpunkten, wird linear gemischt; davor/danach gilt die
- * Farbe des jeweils äußersten Stützpunkts.
+ * Liefert für einen Windwert (km/h) die Farbe seines Bereichs aus der
+ * Windskala. Gerundet wird auf ganze km/h, damit die angezeigte Zahl und
+ * ihre Farbe immer zusammenpassen (z. B. 10,4 km/h wird als "10" angezeigt
+ * und ist deshalb auch hellblau).
  */
 export function getWindColor(speedKmh: number | null): string {
-  const speed = speedKmh ?? 0;
-  const stops = WIND_COLOR_SCALE;
-  if (speed <= stops[0].at) return stops[0].color;
-  for (let i = 1; i < stops.length; i++) {
-    if (speed <= stops[i].at) {
-      const prev = stops[i - 1];
-      const next = stops[i];
-      const t = (speed - prev.at) / (next.at - prev.at);
-      return mixHexColors(prev.color, next.color, t);
-    }
+  const speed = Math.round(speedKmh ?? 0);
+  for (const band of WIND_COLOR_SCALE) {
+    if (band.upTo === null || speed <= band.upTo) return band.color;
   }
-  return stops[stops.length - 1].color;
+  return WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1].color;
 }
 
 const COMPASS_POINTS = [

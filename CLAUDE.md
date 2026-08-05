@@ -154,7 +154,13 @@ Supabase.
    (`snapDirectionTo8`) and turned by +180°, so it points where the wind blows
    *to*. Marker size scales continuously with the zoom level (`getIconScale`,
    with `MIN_ICON_SCALE` as floor so the map doesn't drown in arrows when zoomed
-   out) instead of using a fixed pixel size. Clicking a marker opens the
+   out) instead of using a fixed pixel size, and is multiplied by
+   `getFilterScaleBoost(stationFilter)`: as soon as the station filter is
+   anything other than `Alle`, arrows *and* their numbers grow by 25 %
+   (`FILTERED_ICON_SCALE_BOOST`, owner's request — fewer markers on screen, so
+   there is room for bigger ones). That's the only reason `WindMarkers` takes
+   the `stationFilter` prop; the selection ring scales with it automatically
+   since it derives from the same `scale`. Clicking a marker opens the
    Verlaufsbalken and draws a black `CircleMarker` ring around that station
    (radius covers arrow *and* its number label); the panel reads its station
    from `stations` by code on every render, so the "Stand" timestamp keeps
@@ -171,21 +177,18 @@ Supabase.
    handlers are memoized the same way (`handlersByCode`, keyed on the joined
    station codes), which is why `WindMarkers`' `onSelect` takes a plain
    `stationCode: string` rather than the whole station object.
-   The arrow color comes from a **continuous gradient** (originally a 6-step scale
-   agreed with the project owner via a legend screenshot, later turned into a
-   smooth per-km/h blend at the owner's request — see `WIND_COLOR_SCALE`/
-   `getWindColor` in `src/lib/wind.ts`). The scale's anchor points: flat light
-   blue 0–5 → green 15 → yellow-green 20 (extra anchor so the color visibly
-   turns toward yellow starting around 20 km/h, not just at 25) → yellow 25 →
-   orange 30 → dark red 35 → black 45 (`Y_MAX_KMH`, the chart's y-axis
-   ceiling); `getWindColor()` linearly mixes the RGB values between whichever
-   two anchors bracket the given speed, so every whole km/h gets its own
-   color instead of a hard step. The top two anchors were earlier lowered
-   from 31/37 to 30/35, and the flat light-blue stretch was shortened from
-   0–7 to 0–5, both at the owner's request — that history now lives in the
-   anchor list itself. The
-   lowest step deliberately deviates from the original screenshot: it is a
-   very light blue instead of white, because a white arrow would be invisible
+   The arrow color comes from **discrete color bands** — one flat color per
+   speed range, no blending (`WIND_COLOR_SCALE`/`getWindColor` in
+   `src/lib/wind.ts`). The bands, exactly as specified by the owner: 0–10 km/h
+   light blue → 11–20 green → 21–25 yellow → 26–30 red → 31+ violet. Each entry
+   carries only its inclusive upper bound (`upTo`, `null` = open-ended), so the
+   ranges can't overlap or leave holes. `getWindColor()` rounds to whole km/h
+   first, so a value's displayed number and its color always agree. This was a
+   continuous per-km/h gradient (anchors at 0/5/15/20/25/30/35/45, mixed with
+   `mixHexColors`) for a while and was turned back into hard steps at the
+   owner's request — don't reintroduce the blend. The
+   lowest step deliberately deviates from the original legend screenshot: it is
+   a very light blue instead of white, because a white arrow would be invisible
    on a light map background — don't change it back to white (the owner
    explicitly asked for light blue and against adding an arrow outline).
    Stations
@@ -256,9 +259,10 @@ Supabase.
    a failed forecast never blocks the measurements) and draws an SVG chart of
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
    "jetzt" marker near the right edge), a mean-wind (thin) and a gust (thick)
-   curve over a horizontal wind-scale color gradient (an SVG `<linearGradient>`
-   built from `WIND_COLOR_SCALE`'s anchor points, not separate flat bands
-   anymore), and a row of wind-direction arrows below. The area **between the
+   curve over the wind scale's **flat color bands** (one `<rect>` per band from
+   `COLOR_BANDS`, hard edges, `BAND_OPACITY` 0.55 — this was an SVG
+   `<linearGradient>` for a while and went back to bands at the owner's
+   request), and a row of wind-direction arrows below. The area **between the
    two measurement curves** (gust above, mean wind below) is filled white at
    50% opacity (`buildBandPath`, `fill-zinc-900/50 dark:fill-zinc-100/50` —
    added at the owner's request after having been removed earlier). **Curves
@@ -334,21 +338,17 @@ Supabase.
    look identical. `y()` clamps to that ceiling, so higher values ride along
    the top edge instead of overflowing into the time-label row; the numbers
    under the arrows and the arrow colors still use the true (uncapped) values.
-   Its labels are the wind-scale gradient's anchor points (`WIND_COLOR_SCALE[].label`
-   — 0/5/15/20/25/30/35, plus `Y_MAX_KMH` on top), not round 10-steps, so each
-   number sits exactly where the gradient is pinned to one of the agreed
-   colors; they follow the scale automatically if it's ever edited. That axis
+   Its labels are the wind scale's band boundaries (`WIND_COLOR_SCALE[].upTo`
+   — 0/10/20/25/30, plus `Y_MAX_KMH` on top), not round 10-steps, so each
+   number sits exactly where the color changes; they follow the scale
+   automatically if it's ever edited. That axis
    is **not** part of the SVG: it's a narrow HTML column to the right of the
    scroll container, so the numbers stay put while the chart scrolls
-   horizontally. The gradient itself uses 55% opacity per anchor, except the
-   top black anchor, which carries a lower `bandOpacity` (0.3) in
-   `WIND_COLOR_SCALE` — otherwise the dark measurement curve would vanish in
-   the near-black top of the chart.
-   Dashed **horizontal threshold lines** (`THRESHOLD_LINES_KMH` in the panel,
-   currently 5/15/25 km/h) cross the chart so it's obvious at a glance when a
-   curve passes those speeds; they're drawn above the gradient but below every
-   curve, and carry no label of their own since the same numbers already sit on
-   the y-axis. Add or remove a threshold by editing that one array.
+   horizontally.
+   There are **no dashed horizontal threshold lines** any more — 5/15/25 km/h
+   guides existed briefly (`THRESHOLD_LINES_KMH`) and were removed again at the
+   owner's request; the band edges now do that job. Don't reintroduce them
+   without asking.
    The
    chart is wider than the viewport (horizontally scrollable; on open it jumps
    to the right end, i.e. to "now") — its horizontal density has **one knob**,
@@ -381,7 +381,7 @@ Supabase.
    `MIN_LABEL_SPACING` thinning never actually triggers for measurements; it
    stays as a safety net.
    **Render structure:** everything that depends only on the constants above
-   (`chartTop`/`chartBottom`/`y()`/the box rows/`GRADIENT_STOPS`/`Y_TICKS`/
+   (`chartTop`/`chartBottom`/`y()`/the box rows/`COLOR_BANDS`/`Y_TICKS`/
    `LINE_WIDTH`) lives at module scope and is computed once at import. The
    data-dependent half (grid snapping, tick arrays, thinning, all six SVG
    paths) sits in one `useMemo` keyed on `[entries, forecast, now, containerW]`
@@ -483,9 +483,8 @@ Two things are deliberately **excluded** from dark mode and must stay light
   ring and `STAATSGRENZE_STYLE` in `src/components/WindMap.tsx`, plus Leaflet's
   own attribution chrome. The dark "Zuletzt aktualisiert" badge sitting on the
   light map is intentional.
-- **`WIND_COLOR_SCALE`** in `src/lib/wind.ts` — all anchor colors unchanged,
-  including the black "zu stark" anchor. Known accepted trade-off: black
-  arrows and value boxes are hard to see inside the dark Verlaufsbalken.
+- **`WIND_COLOR_SCALE`** in `src/lib/wind.ts` — all band colors unchanged,
+  including the violet "zu stark" band.
 The Verlaufsbalken legend therefore says "**weiss**: Messung" (not "schwarz"),
 because the measurement curve is drawn `dark:stroke-zinc-100`.
 
