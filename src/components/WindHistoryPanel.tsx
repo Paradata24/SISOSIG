@@ -16,11 +16,13 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
 // Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
 //  - Zeitachse (Lokalzeit) oben
-//  - Liniendiagramm: Mittelwind (unten) und Böen (oben), beide gleich dick,
-//    ohne Füllfläche dazwischen, vor horizontalen Farbbändern der
-//    Windstärke-Skala
+//  - Liniendiagramm vor dem Farbverlauf der Windstärke-Skala: Mittelwind
+//    (unten, dünn) und Böen (oben, ca. 15% dicker), dazwischen eine
+//    halbtransparente Fläche — je einmal für die Messung (weiß) und für die
+//    ICON-CH1-Prognose (rot)
 //  - darunter eine Reihe Windrichtungs-Pfeile, die Messwerte in eingefärbten
-//    Rechtecken (Farbe = Windskala) und noch einmal die Uhrzeiten
+//    Quadraten (Farbe = Windskala), noch einmal die Uhrzeiten und ganz unten
+//    die Prognosewerte in denselben Quadraten
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
 // Pfeile (getWindColor bzw. auf 8 Himmelsrichtungen eingerastete Richtung
 // + 180°), damit nichts auseinanderläuft. Der exakte Grad-Wert bleibt in
@@ -727,7 +729,8 @@ export default function WindHistoryPanel({
   // genau wie die stündlichen Prognosekurven, damit sich Messung und Prognose
   // im selben Raster vergleichen lassen und die Kurve nicht vom
   // 10-Minuten-Zappeln überlagert wird. Die Detailwerte dazwischen bleiben
-  // sichtbar: als Punkte und über die 50%-Fläche zwischen den Kurven.
+  // sichtbar: über die 50%-Fläche zwischen den Kurven und in den Zahlenreihen
+  // unter den Pfeilen.
   const speedPath = buildLinePath(hourlyPoints, (p) => p.speed, x, y);
   const gustPath = buildLinePath(hourlyPoints, (p) => p.gust, x, y);
   const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
