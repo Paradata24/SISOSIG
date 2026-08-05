@@ -195,23 +195,18 @@ Supabase.
    missing 10-minute value tears the band (`BAND_GAP_MS` = one grid step —
    accepted side effect: a skipped `/api/collect` run now shows as a narrow
    gap). Both `buildLinePath` and `buildBandPath` take the allowed gap as a
-   parameter. There is
-   deliberately **no fill between the two curves of a forecast model**. There
-   *is* one more filled area, added at the owner's request: the **comparison
-   area between the hourly forecast and measurement curves** (`buildDiffAreaPath`
-   / `buildDiffSamples`, 50% opacity) — **red** (`DIFF_ABOVE_COLOR`, same red as
-   the forecast curve) where the forecast gust runs above the measured gust,
-   **blue** (`DIFF_BELOW_COLOR` `#3b82f6`) where the forecast mean wind runs
-   below the measured mean wind, and **nothing at all** while the forecast stays
-   between measured mean wind and gust ("dazwischen = keine Einfärbung"). Because
-   the upper edges (gust vs gust) and lower edges (mean vs mean) are compared
-   separately, the two areas can never overlap and double their opacity. Where
-   the curves cross inside an hourly step, the crossing point is interpolated so
-   the area tapers to a point instead of ending at the next full hour. **Draw
-   order:** comparison areas → measurement band → measurement curves → the
-   forecast, so the forecast sits in the **foreground** where it overlaps the
-   measurement (owner's decision; it used to be the other way round) and both
-   curve pairs stay crisp on top of the 50% areas. In every pair the
+   parameter. The **ICON-CH1 forecast has the same kind of band** between its
+   own two curves, added at the owner's request: `buildBandPath(forecastPoints,
+   …, LINE_GAP_MS)` filled with `CH1_COLOR` at `FORECAST_BAND_OPACITY` (0.5) —
+   the red counterpart to the white measurement band. Its allowed gap is a full
+   hourly step because the forecast only has one value per hour. There is still
+   **no fill between measurement and forecast**: a red/blue "comparison area"
+   between the two curve pairs existed briefly and was dropped again at the
+   owner's request — don't reintroduce it without asking. **Draw order:**
+   measurement band → measurement curves → forecast band → forecast curves, so
+   the forecast sits in the **foreground** where it overlaps the measurement
+   (owner's decision; it used to be the other way round) and each curve pair
+   stays crisp on top of its own 50% band. In every pair the
    **upper (gust) curve is ~15% thicker** than its mean-wind curve
    (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement and ICON-CH1
    alike. Below the
