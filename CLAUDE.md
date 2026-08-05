@@ -263,8 +263,12 @@ Supabase.
    Verlaufsbalken means editing that one constant; two points are only joined
    into a line when at most `LINE_GAP_MS` (1h, one hourly step) apart, and the
    band only when at most `BAND_GAP_MS` (10 min, one grid step) apart, so every
-   real hole in the data stays visible on the short 12h axis; every
-   measurement is also drawn as a dot so sparse data stays visible. Loading /
+   real hole in the data stays visible on the short 12h axis. Measurements used
+   to be drawn as small dots on the curves as well; those were removed at the
+   owner's request and replaced by **very thin vertical grid lines every 10
+   minutes** (`minuteTicks`, drawn first so hour lines, threshold lines and all
+   curves stay on top; full hours are skipped because the stronger hour line
+   already sits there). The red forecast dots are unaffected. Loading /
    error / "Keine Daten verfügbar" states are handled. A forecast model with no
    data for the selected station (a station outside the model's edge) simply
    yields no points: empty path, no dots, no arrows/numbers in the forecast

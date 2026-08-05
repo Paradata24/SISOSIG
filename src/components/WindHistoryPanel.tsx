@@ -621,6 +621,19 @@ export default function WindHistoryPanel({
       hourTicks.push(d);
     }
   }
+  // --- 10-Minuten-Raster ---
+  // Ganz dünne, sehr blasse Senkrechte auf jedem 10-Minuten-Rasterpunkt
+  // (also dort, wo auch die Messwert-Spalten sitzen). Sie ersetzen die früher
+  // gezeichneten Messpunkte auf den Kurven: das Zeitraster bleibt ablesbar,
+  // ohne dass Punkte die Kurven zerstückeln. Die vollen Stunden werden
+  // ausgelassen, dort steht bereits die kräftigere Stundenlinie.
+  const minuteTicks: number[] = [];
+  {
+    const first = snapToGrid(minT);
+    for (let t = first < minT ? first + GRID_MS : first; t <= maxT; t += GRID_MS) {
+      if (new Date(t).getMinutes() !== 0) minuteTicks.push(t);
+    }
+  }
   // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
   // Prognose-Reserve keine überlappenden Beschriftungen bekommt.
   const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
@@ -824,6 +837,22 @@ export default function WindHistoryPanel({
                 fill={`url(#${gradientId})`}
               />
 
+              {/* 10-Minuten-Raster: sehr dünne, blasse Senkrechte an jedem
+                  Rasterpunkt (Ersatz für die früheren Messpunkte). Zuerst
+                  gezeichnet, damit die kräftigeren Stundenlinien, die
+                  Schwellenlinien und alle Kurven darüber liegen. */}
+              {minuteTicks.map((t) => (
+                <line
+                  key={`grid-${t}`}
+                  x1={x(t)}
+                  y1={chartTop}
+                  x2={x(t)}
+                  y2={chartBottom}
+                  className="stroke-zinc-400/25 dark:stroke-zinc-500/30"
+                  strokeWidth={0.5}
+                />
+              ))}
+
               {/* Stunden-Raster + Uhrzeiten */}
               {hourTicks.map((d) => {
                 const tx = x(d.getTime());
@@ -923,29 +952,11 @@ export default function WindHistoryPanel({
                 className="stroke-zinc-900 dark:stroke-zinc-100"
               />
 
-              {/* Messpunkte als kleine Punkte — dadurch bleiben auch einzelne
-                  Werte sichtbar, wenn wegen einer größeren Messlücke keine
-                  Linie zum Nachbarpunkt gezogen wird */}
-              {points.map((p) => (
-                <g key={`dot-${p.t}`}>
-                  {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-zinc-900 dark:fill-zinc-100"
-                    />
-                  )}
-                  {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-zinc-900 dark:fill-zinc-100"
-                    />
-                  )}
-                </g>
-              ))}
+              {/* Hier standen früher kleine Punkte auf jedem Messwert. Auf
+                  Wunsch des Projektbesitzers sind sie entfernt; die zeitliche
+                  Einordnung übernimmt jetzt das 10-Minuten-Raster (siehe
+                  minuteTicks oben), die Messwerte selbst stehen weiterhin in
+                  der Fläche zwischen den Kurven und in den Zahlen-Zeilen. */}
 
               {/* Prognose (ICON-CH1) in Rot, NACH den Messwert-Kurven
                   gezeichnet: im Überlappungsbereich liegen die Prognosen so
