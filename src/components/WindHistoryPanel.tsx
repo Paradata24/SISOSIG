@@ -936,18 +936,35 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
-              {/* Prognose (ICON-CH1) in Rot, VOR den Messwerten gezeichnet:
-                  im Überlappungsbereich liegt damit die Messung optisch oben
-                  (Wunsch des Projektbesitzers). Zuerst die rote Fläche
-                  zwischen Böen- und Mittelwind-Prognose (50 % Deckkraft),
-                  darüber die beiden Kurven; die obere (Böen) ist etwas
-                  dicker. */}
+              {/* Reihenfolge (Wunsch des Projektbesitzers): erst die beiden
+                  Flächen, dann die beiden Kurvenpaare. Dadurch liegen die
+                  roten Prognose-Kurven VOR der weißen Messfläche, aber HINTER
+                  den weißen Mess-Kurven — die Messung bleibt im Vordergrund,
+                  die Prognose-Linien verschwinden trotzdem nicht unter der
+                  halbtransparenten Messfläche. */}
+
+              {/* 1. Fläche zwischen Böen- und Mittelwind-Prognose (rot, 50 %
+                     Deckkraft) — ganz hinten. */}
               <path
                 d={forecastBandPath}
                 stroke="none"
                 fill={CH1_COLOR}
                 fillOpacity={FORECAST_BAND_OPACITY}
               />
+
+              {/* 2. Fläche zwischen Böen- und Mittelwind-Messung (weiß, 50 %
+                     Deckkraft) — sie folgt ALLEN Messwerten im
+                     10-Minuten-Takt und reißt bei jedem fehlenden Wert auf. */}
+              <path
+                d={measurementBandPath}
+                stroke="none"
+                className="fill-zinc-900/50 dark:fill-zinc-100/50"
+              />
+
+              {/* 3. Prognose-Kurven (ICON-CH1, rot); die obere (Böen) ist
+                     etwas dicker als die untere (Mittelwind). Punkte werden
+                     auf der Prognose nicht mehr gezeichnet (Wunsch des
+                     Projektbesitzers, wie bei der Messung). */}
               <path
                 d={forecastGustPath}
                 fill="none"
@@ -965,21 +982,15 @@ export default function WindHistoryPanel({
                 className="stroke-red-600 dark:stroke-red-500"
               />
 
-              {/* Auf der Prognose werden keine Punkte mehr gezeichnet
-                  (Wunsch des Projektbesitzers, wie bei der Messung). */}
-
-              {/* Messung ZULETZT, damit sie immer im Vordergrund liegt:
-                  zuerst die weiße Fläche (50 % Deckkraft) zwischen Böen- und
-                  Mittelwind-Werten — sie folgt ALLEN Messwerten im
-                  10-Minuten-Takt und reißt bei jedem fehlenden Wert auf.
-                  Darüber die beiden Kurven, die nur die Messpunkte zur vollen
-                  Stunde verbinden (wie die Prognosen); die obere Kurve (Böen)
-                  ist etwas dicker als die untere (Mittelwind). */}
-              <path
-                d={measurementBandPath}
-                stroke="none"
-                className="fill-zinc-900/50 dark:fill-zinc-100/50"
-              />
+              {/* 4. Mess-Kurven ganz vorne. Sie verbinden nur die Messpunkte
+                     zur vollen Stunde (wie die Prognosen); die obere Kurve
+                     (Böen) ist etwas dicker als die untere (Mittelwind).
+                     Hier standen früher kleine Punkte auf jedem Messwert. Auf
+                     Wunsch des Projektbesitzers sind sie entfernt; die
+                     zeitliche Einordnung übernimmt jetzt das
+                     10-Minuten-Raster (siehe minuteTicks oben), die Messwerte
+                     selbst stehen weiterhin in der Fläche zwischen den Kurven
+                     und in den Zahlen-Zeilen. */}
               <path
                 d={gustPath}
                 fill="none"
@@ -996,12 +1007,6 @@ export default function WindHistoryPanel({
                 strokeLinecap="round"
                 className="stroke-zinc-900 dark:stroke-zinc-100"
               />
-
-              {/* Hier standen früher kleine Punkte auf jedem Messwert. Auf
-                  Wunsch des Projektbesitzers sind sie entfernt; die zeitliche
-                  Einordnung übernimmt jetzt das 10-Minuten-Raster (siehe
-                  minuteTicks oben), die Messwerte selbst stehen weiterhin in
-                  der Fläche zwischen den Kurven und in den Zahlen-Zeilen. */}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (auf 8
                   Himmelsrichtungen eingerastete Richtung + 180°, Pfeil zeigt
