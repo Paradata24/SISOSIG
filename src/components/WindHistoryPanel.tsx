@@ -377,7 +377,8 @@ function buildBandPath(
 }
 
 // Passende Textfarbe für ein eingefärbtes Wert-Rechteck: auf den dunklen
-// Stufen der Windskala (rot, violett) weiß, sonst dunkelgrau — sonst wäre
+// Stufen der Windskala (aktuell das Rot ab 31 km/h) weiß, sonst dunkelgrau —
+// sonst wäre
 // die Zahl im Rechteck nicht mehr lesbar.
 function contrastTextColor(hexColor: string): string {
   const hex = hexColor.replace("#", "");
@@ -1043,7 +1044,9 @@ export default function WindHistoryPanel({
                       transform="translate(-20 -20)"
                       fill={getWindColor(p.speed)}
                       stroke={getWindColor(p.gust)}
-                      strokeWidth={3}
+                      // 10 % dicker als früher (3), damit die Böen-Farbe am
+                      // Pfeilrand besser ablesbar ist — wie auf der Karte.
+                      strokeWidth={3.3}
                       strokeLinejoin="round"
                       strokeLinecap="round"
                     />

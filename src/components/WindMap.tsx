@@ -105,7 +105,9 @@ function createWindIcon(
   const arrowSize = Math.round(ARROW_BASE_SIZE * scale);
   const labelHeight = Math.round(LABEL_BASE_HEIGHT * scale);
   const fontSize = Math.max(5, Math.round(6.5 * scale));
-  const strokeWidth = Math.max(0.75, 1.5 * scale);
+  // Randstärke bewusst 10 % über dem früheren Wert (1,5 bzw. 0,75), damit die
+  // Böen-Farbe am Pfeilrand besser ablesbar ist.
+  const strokeWidth = Math.max(0.825, 1.65 * scale);
 
   const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
 

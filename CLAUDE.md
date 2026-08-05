@@ -180,7 +180,9 @@ Supabase.
    The arrow color comes from **discrete color bands** — one flat color per
    speed range, no blending (`WIND_COLOR_SCALE`/`getWindColor` in
    `src/lib/wind.ts`). The bands, exactly as specified by the owner: 0–10 km/h
-   light blue → 11–20 green → 21–25 yellow → 26–30 red → 31+ violet. Each entry
+   light blue → 11–20 green → 21–25 yellow → 26–30 orange → 31+ red (the exact
+   hex tones were matched to a reference scale the owner supplied; the band
+   boundaries stayed put). Each entry
    carries only its inclusive upper bound (`upTo`, `null` = open-ended), so the
    ranges can't overlap or leave holes. `getWindColor()` rounds to whole km/h
    first, so a value's displayed number and its color always agree. This was a
@@ -484,7 +486,7 @@ Two things are deliberately **excluded** from dark mode and must stay light
   own attribution chrome. The dark "Zuletzt aktualisiert" badge sitting on the
   light map is intentional.
 - **`WIND_COLOR_SCALE`** in `src/lib/wind.ts` — all band colors unchanged,
-  including the violet "zu stark" band.
+  including the red "zu stark" band.
 The Verlaufsbalken legend therefore says "**weiss**: Messung" (not "schwarz"),
 because the measurement curve is drawn `dark:stroke-zinc-100`.
 
