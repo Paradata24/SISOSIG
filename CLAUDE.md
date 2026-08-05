@@ -202,12 +202,15 @@ Supabase.
    hourly step because the forecast only has one value per hour. There is still
    **no fill between measurement and forecast**: a red/blue "comparison area"
    between the two curve pairs existed briefly and was dropped again at the
-   owner's request — don't reintroduce it without asking. **Draw order:**
-   forecast band → forecast curves → measurement band → measurement curves, so
-   the **measurement** sits in the **foreground** where it overlaps the forecast
-   (owner's decision — "die Messung soll immer im Vordergrund sein"; the order
-   was flipped twice, so don't swap it back without asking) and each curve pair
-   stays crisp on top of its own 50% band. In every pair the
+   owner's request — don't reintroduce it without asking. **Draw order** (both
+   bands first, then both curve pairs — owner's decision, don't regroup it back
+   into two self-contained "band + its curves" blocks without asking):
+   forecast band → measurement band → forecast curves → measurement curves. So
+   the **measurement curves sit in the foreground** ("die Messung soll immer im
+   Vordergrund sein") while the **red forecast curves stay in front of the
+   white measurement band** — otherwise the 50%-opacity band washes them out.
+   The order has been changed several times; treat it as a settled decision.
+   In every pair the
    **upper (gust) curve is ~15% thicker** than its mean-wind curve
    (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement and ICON-CH1
    alike. Below the
