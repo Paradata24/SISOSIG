@@ -235,8 +235,8 @@ sondern genau dort, wo im Diagramm die Farbe wechselt (0 / 10 / 20 / 25 /
 ändert sich die Achsenbeschriftung automatisch mit.
 
 **Farbskala:** Die Windstärke wird in klaren Farbflächen dargestellt, nicht
-als weicher Verlauf: 0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30 rot,
-ab 31 violett. Dieselben Farben gelten für die Pfeile auf der Karte, die
+als weicher Verlauf: 0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30
+orange, ab 31 rot. Dieselben Farben gelten für die Pfeile auf der Karte, die
 Wert-Quadrate im Verlaufsbalken und die Flächen hinter den Kurven. Geändert
 wird das an einer Stelle: `WIND_COLOR_SCALE` in `src/lib/wind.ts`.
 

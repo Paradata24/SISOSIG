@@ -125,9 +125,12 @@ export interface WindColorBand {
  * Farbskala der Windstärke (Windwerte für Gleitschirmflieger) als klare
  * Farbflächen: jeder Bereich hat GENAU EINE Farbe, dazwischen wird nichts
  * gemischt. Die Bereiche sind vom Projektbesitzer vorgegeben:
- *   0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30 rot, ab 31 violett.
+ *   0–10 km/h hellblau, 11–20 grün, 21–25 gelb, 26–30 orange, ab 31 rot.
  * (Früher war das ein durchgehender Verlauf mit einer eigenen Farbe pro
- * km/h; auf Wunsch des Projektbesitzers wieder zurück auf harte Stufen.)
+ * km/h; auf Wunsch des Projektbesitzers wieder zurück auf harte Stufen.
+ * Die Farbtöne selbst wurden zuletzt an eine Vorlage des Projektbesitzers
+ * angeglichen: die oberste Stufe ist rot statt violett, darunter orange
+ * statt rot — die Bereichsgrenzen blieben dabei unverändert.)
  * Die unterste Stufe ist bewusst ein ganz helles Blau statt Weiß, damit
  * schwache Pfeile auf hellem Kartenhintergrund ohne zusätzliche Kontur
  * sichtbar sind. Bei Änderungswunsch bitte hier zentral anpassen — die
@@ -136,12 +139,10 @@ export interface WindColorBand {
  */
 export const WIND_COLOR_SCALE: WindColorBand[] = [
   { upTo: 10, color: "#CFE8F7", name: "schwach" }, // ganz helles Blau
-  { upTo: 20, color: "#6EE45C", name: "spürbar" }, // Grün
-  { upTo: 25, color: "#FAF264", name: "mässig" }, // Gelb
-  // Etwas dunkleres Rot als die rote Prognosekurve im Verlaufsbalken
-  // (CH1_COLOR), damit sich Kurve und Farbfläche nicht ins Gehege kommen.
-  { upTo: 30, color: "#D42A1E", name: "stark" }, // Rot
-  { upTo: null, color: "#8B2FC9", name: "zu stark" }, // Violett
+  { upTo: 20, color: "#7ED96F", name: "spürbar" }, // Grün
+  { upTo: 25, color: "#FAE45C", name: "mässig" }, // Gelb
+  { upTo: 30, color: "#F0812F", name: "stark" }, // Orange
+  { upTo: null, color: "#E24B45", name: "zu stark" }, // Rot
 ];
 
 /**
