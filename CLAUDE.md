@@ -203,9 +203,10 @@ Supabase.
    **no fill between measurement and forecast**: a red/blue "comparison area"
    between the two curve pairs existed briefly and was dropped again at the
    owner's request — don't reintroduce it without asking. **Draw order:**
-   measurement band → measurement curves → forecast band → forecast curves, so
-   the forecast sits in the **foreground** where it overlaps the measurement
-   (owner's decision; it used to be the other way round) and each curve pair
+   forecast band → forecast curves → measurement band → measurement curves, so
+   the **measurement** sits in the **foreground** where it overlaps the forecast
+   (owner's decision — "die Messung soll immer im Vordergrund sein"; the order
+   was flipped twice, so don't swap it back without asking) and each curve pair
    stays crisp on top of its own 50% band. In every pair the
    **upper (gust) curve is ~15% thicker** than its mean-wind curve
    (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement and ICON-CH1

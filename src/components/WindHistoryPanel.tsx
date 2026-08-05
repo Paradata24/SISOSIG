@@ -936,8 +936,41 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
-              {/* Messung: zuerst die weiße Fläche (50 % Deckkraft) zwischen
-                  Böen- und Mittelwind-Werten — sie folgt ALLEN Messwerten im
+              {/* Prognose (ICON-CH1) in Rot, VOR den Messwerten gezeichnet:
+                  im Überlappungsbereich liegt damit die Messung optisch oben
+                  (Wunsch des Projektbesitzers). Zuerst die rote Fläche
+                  zwischen Böen- und Mittelwind-Prognose (50 % Deckkraft),
+                  darüber die beiden Kurven; die obere (Böen) ist etwas
+                  dicker. */}
+              <path
+                d={forecastBandPath}
+                stroke="none"
+                fill={CH1_COLOR}
+                fillOpacity={FORECAST_BAND_OPACITY}
+              />
+              <path
+                d={forecastGustPath}
+                fill="none"
+                strokeWidth={GUST_LINE_WIDTH}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-red-600 dark:stroke-red-500"
+              />
+              <path
+                d={forecastSpeedPath}
+                fill="none"
+                strokeWidth={LINE_WIDTH}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                className="stroke-red-600 dark:stroke-red-500"
+              />
+
+              {/* Auf der Prognose werden keine Punkte mehr gezeichnet
+                  (Wunsch des Projektbesitzers, wie bei der Messung). */}
+
+              {/* Messung ZULETZT, damit sie immer im Vordergrund liegt:
+                  zuerst die weiße Fläche (50 % Deckkraft) zwischen Böen- und
+                  Mittelwind-Werten — sie folgt ALLEN Messwerten im
                   10-Minuten-Takt und reißt bei jedem fehlenden Wert auf.
                   Darüber die beiden Kurven, die nur die Messpunkte zur vollen
                   Stunde verbinden (wie die Prognosen); die obere Kurve (Böen)
@@ -969,38 +1002,6 @@ export default function WindHistoryPanel({
                   Einordnung übernimmt jetzt das 10-Minuten-Raster (siehe
                   minuteTicks oben), die Messwerte selbst stehen weiterhin in
                   der Fläche zwischen den Kurven und in den Zahlen-Zeilen. */}
-
-              {/* Prognose (ICON-CH1) in Rot, NACH den Messwert-Kurven
-                  gezeichnet: im Überlappungsbereich liegen die Prognosen so
-                  optisch oben (Wunsch des Projektbesitzers). Zuerst die rote
-                  Fläche zwischen Böen- und Mittelwind-Prognose (50 %
-                  Deckkraft), darüber die beiden Kurven; die obere (Böen) ist
-                  etwas dicker. */}
-              <path
-                d={forecastBandPath}
-                stroke="none"
-                fill={CH1_COLOR}
-                fillOpacity={FORECAST_BAND_OPACITY}
-              />
-              <path
-                d={forecastGustPath}
-                fill="none"
-                strokeWidth={GUST_LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-red-600 dark:stroke-red-500"
-              />
-              <path
-                d={forecastSpeedPath}
-                fill="none"
-                strokeWidth={LINE_WIDTH}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                className="stroke-red-600 dark:stroke-red-500"
-              />
-
-              {/* Auch auf der Prognose werden keine Punkte mehr gezeichnet
-                  (Wunsch des Projektbesitzers, wie bei der Messung). */}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (auf 8
                   Himmelsrichtungen eingerastete Richtung + 180°, Pfeil zeigt
