@@ -145,6 +145,14 @@ const LINE_GAP_MS = 60 * 60 * 1000;
 // red-500.
 const CH1_COLOR = "#ef4444";
 
+// Farben der Vergleichsflächen zwischen Prognose- und Messkurve (jeweils mit
+// 50 % Deckkraft gefüllt): Rot, wo die Prognose über der Messung lag, Blau, wo
+// sie darunter lag. Das Rot ist bewusst dasselbe wie die Prognose-Kurve; das
+// Blau ist im Verlaufsbalken sonst nirgends belegt und kollidiert daher weder
+// mit der Windskala noch mit der weißen Messkurve.
+const DIFF_ABOVE_COLOR = CH1_COLOR;
+const DIFF_BELOW_COLOR = "#3b82f6";
+
 interface Point {
   t: number; // Zeitstempel (ms) — bei Messwerten der Raster-Zeitpunkt (s.u.)
   speed: number | null;
@@ -304,6 +312,101 @@ function buildBandPath(
   flush();
 
   return d.trim();
+}
+
+// --- Vergleichsfläche Prognose ↔ Messung ---
+// Zwei Zeitreihen (jeweils ein Wert pro voller Stunde) werden übereinander
+// gelegt; eingefärbt wird nur die Fläche dazwischen, in der die Prognose auf
+// der "falschen" Seite der Messkurve liegt:
+//  - `sign = 1`  → Fläche, wo die Prognose ÜBER der Messung liegt (rot)
+//  - `sign = -1` → Fläche, wo die Prognose UNTER der Messung liegt (blau)
+// Weil oben die Böen-Kurven und unten die Mittelwind-Kurven verglichen werden,
+// bleibt die Fläche leer, solange die Prognose zwischen Mittelwind und Böe der
+// Messung verläuft — genau die gewünschte "dazwischen = keine Einfärbung".
+// Wechselt das Vorzeichen innerhalb eines Stundenschritts (die Kurven kreuzen
+// sich), wird der Schnittpunkt linear interpoliert, damit die Fläche exakt am
+// Kreuzungspunkt spitz zuläuft statt am nächsten Stundenpunkt zu enden.
+interface DiffSample {
+  t: number;
+  meas: number;
+  forecast: number;
+}
+
+function buildDiffAreaPath(
+  samples: DiffSample[],
+  sign: 1 | -1,
+  x: (t: number) => number,
+  y: (v: number) => number,
+  maxGapMs: number = LINE_GAP_MS,
+): string {
+  let d = "";
+  const quad = (
+    t0: number,
+    m0: number,
+    f0: number,
+    t1: number,
+    m1: number,
+    f1: number,
+  ) => {
+    d +=
+      `M${x(t0).toFixed(1)} ${y(f0).toFixed(1)} ` +
+      `L${x(t1).toFixed(1)} ${y(f1).toFixed(1)} ` +
+      `L${x(t1).toFixed(1)} ${y(m1).toFixed(1)} ` +
+      `L${x(t0).toFixed(1)} ${y(m0).toFixed(1)} Z `;
+  };
+
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i];
+    const b = samples[i + 1];
+    if (b.t - a.t > maxGapMs) continue;
+    // Abstand Prognose − Messung, mit `sign` so gedreht, dass "> 0" immer die
+    // einzufärbende Seite ist.
+    const da = sign * (a.forecast - a.meas);
+    const db = sign * (b.forecast - b.meas);
+    if (da <= 0 && db <= 0) continue; // ganzer Schritt auf der leeren Seite
+    if (da >= 0 && db >= 0) {
+      quad(a.t, a.meas, a.forecast, b.t, b.meas, b.forecast);
+      continue;
+    }
+    // Vorzeichenwechsel: Kreuzungspunkt suchen. Dort sind Prognose und
+    // Messung gleich, die Fläche läuft also spitz zu.
+    const r = da / (da - db);
+    const tc = a.t + r * (b.t - a.t);
+    const vc = a.meas + r * (b.meas - a.meas);
+    if (da > 0) {
+      quad(a.t, a.meas, a.forecast, tc, vc, vc);
+    } else {
+      quad(tc, vc, vc, b.t, b.meas, b.forecast);
+    }
+  }
+
+  return d.trim();
+}
+
+// Bringt Mess- und Prognosewerte derselben vollen Stunde zusammen. Beide
+// Reihen liegen auf vollen Stunden, können aber (Zeitzone, Rundung) minimal
+// abweichen — deshalb wird auf die nächste volle Stunde gerundet gruppiert.
+function buildDiffSamples(
+  measPoints: Point[],
+  forecastPoints: Point[],
+  getValue: (p: Point) => number | null,
+): DiffSample[] {
+  const hourKey = (t: number) => Math.round(t / 3_600_000);
+  const measByHour = new Map<number, { t: number; v: number }>();
+  for (const p of measPoints) {
+    const v = getValue(p);
+    if (v === null) continue;
+    measByHour.set(hourKey(p.t), { t: p.t, v });
+  }
+  const samples: DiffSample[] = [];
+  for (const p of forecastPoints) {
+    const v = getValue(p);
+    if (v === null) continue;
+    const m = measByHour.get(hourKey(p.t));
+    if (!m) continue;
+    samples.push({ t: m.t, meas: m.v, forecast: v });
+  }
+  return samples.sort((a, b) => a.t - b.t);
 }
 
 // Passende Textfarbe für ein eingefärbtes Wert-Rechteck: auf den dunklen
@@ -731,6 +834,24 @@ export default function WindHistoryPanel({
   // 10-Minuten-Takt und bricht schon bei einem einzigen fehlenden Wert ab
   // (BAND_GAP_MS).
   const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
+  // Vergleichsflächen Prognose ↔ Messung (jeweils zwischen den Kurven, die von
+  // Stunde zu Stunde laufen):
+  //  - ROT, wo die Prognose-Böe über der gemessenen Böe liegt (Prognose zu hoch)
+  //  - BLAU, wo der Prognose-Mittelwind unter dem gemessenen liegt (zu niedrig)
+  // Verläuft die Prognose zwischen gemessenem Mittelwind und gemessener Böe,
+  // trifft keiner der beiden Fälle zu und es wird nichts eingefärbt.
+  const forecastAboveArea = buildDiffAreaPath(
+    buildDiffSamples(hourlyPoints, forecastPoints, (p) => p.gust),
+    1,
+    x,
+    y,
+  );
+  const forecastBelowArea = buildDiffAreaPath(
+    buildDiffSamples(hourlyPoints, forecastPoints, (p) => p.speed),
+    -1,
+    x,
+    y,
+  );
   // Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
   // dicker gezeichnet, damit sie sich von der Mittelwind-Kurve abhebt.
   const LINE_WIDTH = 1.8;
@@ -761,7 +882,10 @@ export default function WindHistoryPanel({
             — <span className="text-zinc-700 dark:text-zinc-200">weiss</span>:
             Messung ·{" "}
             <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
-            (ICON-CH1)
+            (ICON-CH1) · Fläche{" "}
+            <span className="text-red-600 dark:text-red-500">rot</span>/
+            <span className="text-blue-600 dark:text-blue-500">blau</span>:
+            Prognose lag höher/tiefer
           </span>
         </span>
         <button
@@ -924,6 +1048,14 @@ export default function WindHistoryPanel({
                 jetzt
               </text>
 
+              {/* Vergleichsflächen zwischen Prognose- und Messkurve (50 %
+                  Deckkraft), zuerst gezeichnet, damit alle Kurven darüber
+                  scharf sichtbar bleiben. Rot = Prognose lag über der
+                  gemessenen Böe, Blau = Prognose lag unter dem gemessenen
+                  Mittelwind; dazwischen bleibt die Fläche leer. */}
+              <path d={forecastAboveArea} stroke="none" fill={DIFF_ABOVE_COLOR} fillOpacity={0.5} />
+              <path d={forecastBelowArea} stroke="none" fill={DIFF_BELOW_COLOR} fillOpacity={0.5} />
+
               {/* Messung: zuerst die weiße Fläche (50 % Deckkraft) zwischen
                   Böen- und Mittelwind-Werten — sie folgt ALLEN Messwerten im
                   10-Minuten-Takt und reißt bei jedem fehlenden Wert auf.
@@ -979,28 +1111,8 @@ export default function WindHistoryPanel({
                 className="stroke-red-600 dark:stroke-red-500"
               />
 
-              {/* Prognose-Punkte je Zeitpunkt (analog zu den schwarzen
-                  Messpunkten) */}
-              {forecastPoints.map((p) => (
-                <g key={`fdot-${p.t}`}>
-                  {p.gust !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.gust)}
-                      r={2}
-                      className="fill-red-600 dark:fill-red-500"
-                    />
-                  )}
-                  {p.speed !== null && (
-                    <circle
-                      cx={x(p.t)}
-                      cy={y(p.speed)}
-                      r={1.7}
-                      className="fill-red-600 dark:fill-red-500"
-                    />
-                  )}
-                </g>
-              ))}
+              {/* Auch auf der Prognose werden keine Punkte mehr gezeichnet
+                  (Wunsch des Projektbesitzers, wie bei der Messung). */}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (auf 8
                   Himmelsrichtungen eingerastete Richtung + 180°, Pfeil zeigt

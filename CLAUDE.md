@@ -195,12 +195,23 @@ Supabase.
    missing 10-minute value tears the band (`BAND_GAP_MS` = one grid step —
    accepted side effect: a skipped `/api/collect` run now shows as a narrow
    gap). Both `buildLinePath` and `buildBandPath` take the allowed gap as a
-   parameter. There is still
-   deliberately **no fill anywhere else** — not between the two curves of a
-   forecast model and not between measurement and forecast. **Draw order:**
-   measurement band → measurement curves + dots → the forecast, so
-   the forecast sits in the **foreground** where it overlaps the measurement
-   (owner's decision; it used to be the other way round). In every pair the
+   parameter. There is
+   deliberately **no fill between the two curves of a forecast model**. There
+   *is* one more filled area, added at the owner's request: the **comparison
+   area between the hourly forecast and measurement curves** (`buildDiffAreaPath`
+   / `buildDiffSamples`, 50% opacity) — **red** (`DIFF_ABOVE_COLOR`, same red as
+   the forecast curve) where the forecast gust runs above the measured gust,
+   **blue** (`DIFF_BELOW_COLOR` `#3b82f6`) where the forecast mean wind runs
+   below the measured mean wind, and **nothing at all** while the forecast stays
+   between measured mean wind and gust ("dazwischen = keine Einfärbung"). Because
+   the upper edges (gust vs gust) and lower edges (mean vs mean) are compared
+   separately, the two areas can never overlap and double their opacity. Where
+   the curves cross inside an hourly step, the crossing point is interpolated so
+   the area tapers to a point instead of ending at the next full hour. **Draw
+   order:** comparison areas → measurement band → measurement curves → the
+   forecast, so the forecast sits in the **foreground** where it overlaps the
+   measurement (owner's decision; it used to be the other way round) and both
+   curve pairs stay crisp on top of the 50% areas. In every pair the
    **upper (gust) curve is ~15% thicker** than its mean-wind curve
    (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement and ICON-CH1
    alike. Below the
@@ -263,12 +274,12 @@ Supabase.
    Verlaufsbalken means editing that one constant; two points are only joined
    into a line when at most `LINE_GAP_MS` (1h, one hourly step) apart, and the
    band only when at most `BAND_GAP_MS` (10 min, one grid step) apart, so every
-   real hole in the data stays visible on the short 12h axis. Measurements used
-   to be drawn as small dots on the curves as well; those were removed at the
-   owner's request and replaced by **very thin vertical grid lines every 10
-   minutes** (`minuteTicks`, drawn first so hour lines, threshold lines and all
-   curves stay on top; full hours are skipped because the stronger hour line
-   already sits there). The red forecast dots are unaffected. Loading /
+   real hole in the data stays visible on the short 12h axis. Measurements and
+   forecast values used to be drawn as small dots on the curves as well; **both
+   dot rows were removed** at the owner's request and replaced by **very thin
+   vertical grid lines every 10 minutes** (`minuteTicks`, drawn first so hour
+   lines, threshold lines and all curves stay on top; full hours are skipped
+   because the stronger hour line already sits there). Loading /
    error / "Keine Daten verfügbar" states are handled. A forecast model with no
    data for the selected station (a station outside the model's edge) simply
    yields no points: empty path, no dots, no arrows/numbers in the forecast
