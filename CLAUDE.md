@@ -195,12 +195,18 @@ Supabase.
    missing 10-minute value tears the band (`BAND_GAP_MS` = one grid step —
    accepted side effect: a skipped `/api/collect` run now shows as a narrow
    gap). Both `buildLinePath` and `buildBandPath` take the allowed gap as a
-   parameter. There is still
-   deliberately **no fill anywhere else** — not between the two curves of a
-   forecast model and not between measurement and forecast. **Draw order:**
-   measurement band → measurement curves + dots → the forecast, so
+   parameter. The **ICON-CH1 forecast has the same kind of band** between its
+   own two curves, added at the owner's request: `buildBandPath(forecastPoints,
+   …, LINE_GAP_MS)` filled with `CH1_COLOR` at `FORECAST_BAND_OPACITY` (0.5) —
+   the red counterpart to the white measurement band. Its allowed gap is a full
+   hourly step because the forecast only has one value per hour. There is still
+   **no fill between measurement and forecast**: a red/blue "comparison area"
+   between the two curve pairs existed briefly and was dropped again at the
+   owner's request — don't reintroduce it without asking. **Draw order:**
+   measurement band → measurement curves → forecast band → forecast curves, so
    the forecast sits in the **foreground** where it overlaps the measurement
-   (owner's decision; it used to be the other way round). In every pair the
+   (owner's decision; it used to be the other way round) and each curve pair
+   stays crisp on top of its own 50% band. In every pair the
    **upper (gust) curve is ~15% thicker** than its mean-wind curve
    (`GUST_LINE_WIDTH = LINE_WIDTH * 1.15`), for measurement and ICON-CH1
    alike. Below the
@@ -263,8 +269,12 @@ Supabase.
    Verlaufsbalken means editing that one constant; two points are only joined
    into a line when at most `LINE_GAP_MS` (1h, one hourly step) apart, and the
    band only when at most `BAND_GAP_MS` (10 min, one grid step) apart, so every
-   real hole in the data stays visible on the short 12h axis; every
-   measurement is also drawn as a dot so sparse data stays visible. Loading /
+   real hole in the data stays visible on the short 12h axis. Measurements and
+   forecast values used to be drawn as small dots on the curves as well; **both
+   dot rows were removed** at the owner's request and replaced by **very thin
+   vertical grid lines every 10 minutes** (`minuteTicks`, drawn first so hour
+   lines, threshold lines and all curves stay on top; full hours are skipped
+   because the stronger hour line already sits there). Loading /
    error / "Keine Daten verfügbar" states are handled. A forecast model with no
    data for the selected station (a station outside the model's edge) simply
    yields no points: empty path, no dots, no arrows/numbers in the forecast
