@@ -33,6 +33,13 @@ export interface ForecastEntry {
 // Projektbesitzers komplett entfernt (weder gesammelt noch angezeigt).
 const MODEL_SURFACE = "icon_ch1";
 
+// Zwischenspeicherung wie bei /api/history. Die Prognose wird sogar nur
+// STÜNDLICH neu geholt (Edge Function fetch-wind-forecasts), 120 s im CDN
+// sind hier also besonders unkritisch. Fehlerantworten bekommen bewusst
+// keinen Cache-Header.
+const RESPONSE_CACHE_CONTROL =
+  "public, s-maxage=120, stale-while-revalidate=600";
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const station = searchParams.get("station");
@@ -98,10 +105,13 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
-  return NextResponse.json({
-    stationCode: station,
-    hours: HISTORY_HOURS,
-    count: entries.length,
-    entries,
-  });
+  return NextResponse.json(
+    {
+      stationCode: station,
+      hours: HISTORY_HOURS,
+      count: entries.length,
+      entries,
+    },
+    { headers: { "Cache-Control": RESPONSE_CACHE_CONTROL } },
+  );
 }

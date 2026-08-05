@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   FUTURE_MARGIN_HOURS,
   getWindColor,
@@ -150,6 +150,81 @@ const CH1_COLOR = "#ef4444";
 // damit Messkurven und Farbverlauf dahinter sichtbar bleiben. Das Gegenstück
 // zur weißen 50 %-Fläche zwischen den Messkurven.
 const FORECAST_BAND_OPACITY = 0.5;
+
+// Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
+// dicker gezeichnet, damit sie sich von der Mittelwind-Kurve abhebt.
+const LINE_WIDTH = 1.8;
+const GUST_LINE_WIDTH = LINE_WIDTH * 1.15;
+
+// --- Senkrechte Geometrie (hängt NICHT von den Daten ab) ---
+// Alle folgenden Werte ergeben sich allein aus den Konstanten oben. Sie
+// standen früher im Bauch der Komponente und wurden dadurch bei jedem
+// Neuzeichnen erneut ausgerechnet — obwohl sie sich nie ändern. Jetzt werden
+// sie einmal beim Laden der Datei berechnet.
+const yMax = Y_MAX_KMH;
+const chartTop = TIME_LABEL_H;
+const chartBottom = TIME_LABEL_H + CHART_H;
+// Werte über der festen Obergrenze werden gekappt: die Kurve läuft dann
+// am oberen Rand entlang, statt aus dem Diagramm heraus in die Uhrzeiten-
+// Zeile zu ragen. So bleibt sichtbar, DASS es dort sehr windig war; der
+// genaue Wert steht in den Zahlen-Zeilen unter den Pfeilen.
+const y = (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
+const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
+const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
+// Obere Kante der beiden Messwert-Reihen (Rechtecke): oben Mittelwind,
+// darunter Böe. Die Zahl sitzt jeweils mittig im Rechteck.
+const speedBoxY = arrowRowBottom + VALUES_GAP;
+const gustBoxY = speedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
+const measValuesBottom = gustBoxY + MEAS_BOX_H;
+// Uhrzeiten unter dem Messwert-Block noch einmal wiederholen, damit man die
+// Zahlenreihen ohne Blick nach ganz oben zeitlich einordnen kann.
+const measTimeLabelY = measValuesBottom + MEAS_TIME_GAP + 11;
+const measBlockBottom = measValuesBottom + MEAS_TIME_GAP + MEAS_TIME_ROW_H;
+// Prognose-Block (ICON-CH1, rot), direkt unter dem Messwert-Block: zwei
+// Zahlenzeilen (Mittelwind, Böe), mit dem Richtungspfeil links daneben statt
+// in einer eigenen Reihe darüber — der Pfeil steht auf Höhe der
+// Quadrat-Mitte. Auch die Prognosezahlen sitzen in Quadraten mit der Farbe
+// ihres Werts.
+const forecastSpeedBoxY = measBlockBottom + FORECAST_ROW_GAP;
+const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
+const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
+
+// --- Farbverlauf aus der Windskala (bis yMax gekappt) ---
+// Ein <linearGradient>-Stop pro Stützpunkt aus WIND_COLOR_SCALE, statt
+// getrennter Farbbänder — dieselben Stützpunkte, aber dazwischen wird
+// gemischt statt hart geschnitten. offset 0 = 0 km/h (unten im Diagramm),
+// offset 1 = yMax (oben).
+const GRADIENT_STOPS: { offset: number; color: string; opacity: number }[] = [];
+for (const stop of WIND_COLOR_SCALE) {
+  if (stop.at > yMax) break;
+  GRADIENT_STOPS.push({
+    offset: stop.at / yMax,
+    color: stop.color,
+    // Standard-Deckkraft 0.55; der oberste Stützpunkt "zu stark" (Schwarz)
+    // bekommt über bandOpacity einen kleineren Wert, sonst verschwindet
+    // die schwarze Messkurve im fast schwarzen Bandbereich.
+    opacity: stop.bandOpacity ?? 0.55,
+  });
+}
+if (GRADIENT_STOPS.length === 0 || GRADIENT_STOPS[GRADIENT_STOPS.length - 1].offset < 1) {
+  const last = WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1];
+  GRADIENT_STOPS.push({ offset: 1, color: last.color, opacity: last.bandOpacity ?? 0.55 });
+}
+
+// Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
+// exakt an den Stützpunkten der Windskala (0 / 5 / 15 / 20 / 25 / 30 / 35,
+// aus WIND_COLOR_SCALE.label), damit man Verlauf und Zahl direkt
+// zusammenlesen kann. Sie folgen der Skala automatisch, falls sie jemals
+// bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
+// Achse, bei der die Kurve gekappt wird.
+const Y_TICKS: { at: number; label: string }[] = [];
+for (const stop of WIND_COLOR_SCALE) {
+  if (stop.at > yMax) break;
+  Y_TICKS.push({ at: stop.at, label: stop.label });
+}
+if (Y_TICKS.length === 0 || Y_TICKS[Y_TICKS.length - 1].at !== yMax) {
+  Y_TICKS.push({ at: yMax, label: String(yMax) });
+}
 
 interface Point {
   t: number; // Zeitstempel (ms) — bei Messwerten der Raster-Zeitpunkt (s.u.)
@@ -497,256 +572,240 @@ export default function WindHistoryPanel({
     }
   }, [entries]);
 
-  // Messpunkte, eingerastet auf das 10-Minuten-Anzeige-Raster (siehe
-  // snapPointsToGrid): dadurch stehen die Pfeile und Wert-Quadrate bei ALLEN
-  // Stationen zur vollen Stunde und alle 10 Minuten — auch bei den
-  // OpenWindMap-Stationen, die zu krummen Zeiten senden.
-  const points: Point[] = snapPointsToGrid(
-    (entries ?? [])
+  // --- Das eigentliche Diagramm ---
+  // Alles ab hier (Punkte einrasten, Pfade bauen, Pfeile/Zahlen auswählen und
+  // das fertige SVG) hängt NUR von den geladenen Daten, dem Bezugszeitpunkt
+  // "jetzt" und der Fensterbreite ab. Mit useMemo wird es deshalb nur dann neu
+  // berechnet, wenn sich eines davon ändert.
+  // Wichtig, weil die Karte im Hintergrund alle 90 Sekunden neue Winddaten
+  // holt: dabei bekommt dieses Panel ein neues station-Objekt (für die
+  // "Stand:"-Zeile) und wurde bisher jedes Mal komplett neu gezeichnet — mit
+  // rund 400 SVG-Elementen. Jetzt wird nur noch die Kopfzeile aktualisiert.
+  const chart = useMemo(() => {
+    // Messpunkte, eingerastet auf das 10-Minuten-Anzeige-Raster (siehe
+    // snapPointsToGrid): dadurch stehen die Pfeile und Wert-Quadrate bei ALLEN
+    // Stationen zur vollen Stunde und alle 10 Minuten — auch bei den
+    // OpenWindMap-Stationen, die zu krummen Zeiten senden.
+    const points: Point[] = snapPointsToGrid(
+      (entries ?? [])
+        .map((e) => ({
+          t: Date.parse(e.measured_at),
+          speed: e.speed_kmh,
+          gust: e.gust_kmh,
+          direction: e.direction,
+        }))
+        .filter((p) => !Number.isNaN(p.t)),
+    );
+
+    // Prognose-Punkte genau wie die Messpunkte aufbereiten (nur andere Quelle).
+    const forecastPoints: Point[] = (forecast ?? [])
       .map((e) => ({
-        t: Date.parse(e.measured_at),
+        t: Date.parse(e.forecast_time),
         speed: e.speed_kmh,
         gust: e.gust_kmh,
         direction: e.direction,
       }))
-      .filter((p) => !Number.isNaN(p.t)),
-  );
+      .filter((p) => !Number.isNaN(p.t));
 
-  // Prognose-Punkte genau wie die Messpunkte aufbereiten (nur andere Quelle).
-  const forecastPoints: Point[] = (forecast ?? [])
-    .map((e) => ({
-      t: Date.parse(e.forecast_time),
-      speed: e.speed_kmh,
-      gust: e.gust_kmh,
-      direction: e.direction,
-    }))
-    .filter((p) => !Number.isNaN(p.t));
+    // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
+    // werden — nicht fälschlich "Keine Daten verfügbar".
+    const hasData =
+      points.some((p) => p.speed !== null || p.gust !== null) ||
+      forecastPoints.some((p) => p.speed !== null || p.gust !== null);
 
-  // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
-  // werden — nicht fälschlich "Keine Daten verfügbar".
-  const hasData =
-    points.some((p) => p.speed !== null || p.gust !== null) ||
-    forecastPoints.some((p) => p.speed !== null || p.gust !== null);
+    // --- Skalen ---
+    // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
+    // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
+    // richtigen Stelle der Achse, fehlende Zeiträume bleiben als Lücke sichtbar
+    // (statt die wenigen Punkte über die ganze Breite zu strecken), und die
+    // aktuelle Uhrzeit steht dank der Prognose-Reserve stets nahe dem rechten Rand.
+    const minT = now - HISTORY_HOURS * 3_600_000;
+    const maxT = now + FUTURE_MARGIN_HOURS * 3_600_000;
 
-  // --- Skalen ---
-  // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
-  // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
-  // richtigen Stelle der Achse, fehlende Zeiträume bleiben als Lücke sichtbar
-  // (statt die wenigen Punkte über die ganze Breite zu strecken), und die
-  // aktuelle Uhrzeit steht dank der Prognose-Reserve stets nahe dem rechten Rand.
-  const minT = now - HISTORY_HOURS * 3_600_000;
-  const maxT = now + FUTURE_MARGIN_HOURS * 3_600_000;
+    // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / Prognose-Reserve).
+    // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
+    const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
+    const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
+    const contentWidth0 = historyWidth0 + futureWidth0;
 
-  // Nominale Breite der beiden Achsen-Abschnitte (Geschichte / Prognose-Reserve).
-  // Die Reserve ist bewusst nur halb so breit pro Stunde wie die Geschichte.
-  const historyWidth0 = HISTORY_HOURS * HISTORY_PX_PER_HOUR;
-  const futureWidth0 = FUTURE_MARGIN_HOURS * FUTURE_PX_PER_HOUR;
-  const contentWidth0 = historyWidth0 + futureWidth0;
+    const svgWidth = Math.max(
+      containerW,
+      Math.ceil(contentWidth0) + 2 * AXIS_PAD,
+    );
+    // Zeichenbreite der Zeitachse (endet vor dem beidseitigen Zuschlag für die
+    // äußersten Prognose-Pfeile) …
+    const innerW = svgWidth - 2 * AXIS_PAD;
+    // … die Farbbänder reichen dagegen bis zum kleineren PAD_X-Innenrand, damit
+    // links/rechts kein unbemalter Streifen im Kurvenbereich entsteht (der
+    // größere AXIS_PAD ist nur für den Prognose-Block unten nötig).
+    const bandWidth = svgWidth - 2 * PAD_X;
+    // Auf breiten Bildschirmen füllt das Diagramm die volle Breite; beide
+    // Abschnitte werden dabei im gleichen Verhältnis gestreckt.
+    const stretch = innerW / contentWidth0;
+    const historyWidth = historyWidth0 * stretch;
+    const futureWidth = futureWidth0 * stretch;
 
-  const svgWidth = Math.max(
-    containerW,
-    Math.ceil(contentWidth0) + 2 * AXIS_PAD,
-  );
-  // Zeichenbreite der Zeitachse (endet vor dem beidseitigen Zuschlag für die
-  // äußersten Prognose-Pfeile) …
-  const innerW = svgWidth - 2 * AXIS_PAD;
-  // … die Farbbänder reichen dagegen bis zum kleineren PAD_X-Innenrand, damit
-  // links/rechts kein unbemalter Streifen im Kurvenbereich entsteht (der
-  // größere AXIS_PAD ist nur für den Prognose-Block unten nötig).
-  const bandWidth = svgWidth - 2 * PAD_X;
-  // Auf breiten Bildschirmen füllt das Diagramm die volle Breite; beide
-  // Abschnitte werden dabei im gleichen Verhältnis gestreckt.
-  const stretch = innerW / contentWidth0;
-  const historyWidth = historyWidth0 * stretch;
-  const futureWidth = futureWidth0 * stretch;
+    const x = (t: number) =>
+      t <= now
+        ? AXIS_PAD + ((t - minT) / (now - minT)) * historyWidth
+        : AXIS_PAD + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
 
-  // Die y-Achse ist fest (Y_MAX_KMH) und hängt nicht mehr von den Daten ab.
-  const yMax = Y_MAX_KMH;
+    // --- Stunden-Raster ---
+    const hourTicks: Date[] = [];
+    {
+      const first = new Date(minT);
+      first.setMinutes(0, 0, 0);
+      if (first.getTime() < minT) first.setHours(first.getHours() + 1);
+      for (let d = first; d.getTime() <= maxT; d = new Date(d.getTime() + 3_600_000)) {
+        hourTicks.push(d);
+      }
+    }
+    // --- 10-Minuten-Raster ---
+    // Ganz dünne, sehr blasse Senkrechte auf jedem 10-Minuten-Rasterpunkt
+    // (also dort, wo auch die Messwert-Spalten sitzen). Sie ersetzen die früher
+    // gezeichneten Messpunkte auf den Kurven: das Zeitraster bleibt ablesbar,
+    // ohne dass Punkte die Kurven zerstückeln. Die vollen Stunden werden
+    // ausgelassen, dort steht bereits die kräftigere Stundenlinie.
+    const minuteTicks: number[] = [];
+    {
+      const first = snapToGrid(minT);
+      for (let t = first < minT ? first + GRID_MS : first; t <= maxT; t += GRID_MS) {
+        if (new Date(t).getMinutes() !== 0) minuteTicks.push(t);
+      }
+    }
+    // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
+    // Prognose-Reserve keine überlappenden Beschriftungen bekommt.
+    const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
+    // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
+    const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
-  const x = (t: number) =>
-    t <= now
-      ? AXIS_PAD + ((t - minT) / (now - minT)) * historyWidth
-      : AXIS_PAD + historyWidth + ((t - now) / (maxT - now)) * futureWidth;
-  const chartTop = TIME_LABEL_H;
-  const chartBottom = TIME_LABEL_H + CHART_H;
-  // Werte über der festen Obergrenze werden gekappt: die Kurve läuft dann
-  // am oberen Rand entlang, statt aus dem Diagramm heraus in die Uhrzeiten-
-  // Zeile zu ragen. So bleibt sichtbar, DASS es dort sehr windig war; der
-  // genaue Wert steht in den Zahlen-Zeilen unter den Pfeilen.
-  const y = (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
-  const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
-  const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
-  // Obere Kante der beiden Messwert-Reihen (Rechtecke): oben Mittelwind,
-  // darunter Böe. Die Zahl sitzt jeweils mittig im Rechteck.
-  const speedBoxY = arrowRowBottom + VALUES_GAP;
-  const gustBoxY = speedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
-  const measValuesBottom = gustBoxY + MEAS_BOX_H;
-  // Uhrzeiten unter dem Messwert-Block noch einmal wiederholen, damit man die
-  // Zahlenreihen ohne Blick nach ganz oben zeitlich einordnen kann.
-  const measTimeLabelY = measValuesBottom + MEAS_TIME_GAP + 11;
-  const measBlockBottom = measValuesBottom + MEAS_TIME_GAP + MEAS_TIME_ROW_H;
-
-  // Prognose-Block (ICON-CH1, rot), direkt unter dem Messwert-Block: zwei
-  // Zahlenzeilen (Mittelwind, Böe), mit dem Richtungspfeil links daneben statt
-  // in einer eigenen Reihe darüber — der Pfeil steht auf Höhe der
-  // Quadrat-Mitte. Auch die Prognosezahlen sitzen in Quadraten mit der Farbe
-  // ihres Werts.
-  const forecastSpeedBoxY = measBlockBottom + FORECAST_ROW_GAP;
-  const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
-  const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
-
-  // --- Farbverlauf aus der Windskala (bis yMax gekappt) ---
-  // Ein <linearGradient>-Stop pro Stützpunkt aus WIND_COLOR_SCALE, statt
-  // getrennter Farbbänder — dieselben Stützpunkte, aber dazwischen wird
-  // gemischt statt hart geschnitten. offset 0 = 0 km/h (unten im Diagramm),
-  // offset 1 = yMax (oben).
-  const gradientStops: { offset: number; color: string; opacity: number }[] = [];
-  for (const stop of WIND_COLOR_SCALE) {
-    if (stop.at > yMax) break;
-    gradientStops.push({
-      offset: stop.at / yMax,
-      color: stop.color,
-      // Standard-Deckkraft 0.55; der oberste Stützpunkt "zu stark" (Schwarz)
-      // bekommt über bandOpacity einen kleineren Wert, sonst verschwindet
-      // die schwarze Messkurve im fast schwarzen Bandbereich.
-      opacity: stop.bandOpacity ?? 0.55,
+    // --- "Stündliche" Messpunkte bestimmen ---
+    // Alle Messpunkte liegen seit dem Einrasten (snapPointsToGrid) exakt auf dem
+    // 10-Minuten-Raster; "stündlich" heißt deshalb schlicht: Minute 00. Eine
+    // Suche nach dem "nächstgelegenen" Punkt ist nicht mehr nötig.
+    // Diese Punkte werden gebraucht für
+    //  - die beiden Messkurven, die NUR diese Punkte verbinden (wie die
+    //    stündliche Prognose) — siehe hourlyPoints unten,
+    //  - die fette Schrift der stündlichen Werte im Zahlenblock,
+    //  - den Vorrang bei der Ausdünnung der Pfeil-/Wertespalten.
+    // Fehlt die Messung zur vollen Stunde, gibt es dort schlicht keinen
+    // stündlichen Punkt: die Kurve bricht ab und keine Zahl wird fett gesetzt.
+    const hourlyPointIndices = new Set<number>();
+    points.forEach((p, idx) => {
+      if (p.speed === null && p.gust === null) return;
+      if (new Date(p.t).getMinutes() === 0) hourlyPointIndices.add(idx);
     });
-  }
-  if (gradientStops.length === 0 || gradientStops[gradientStops.length - 1].offset < 1) {
-    const last = WIND_COLOR_SCALE[WIND_COLOR_SCALE.length - 1];
-    gradientStops.push({ offset: 1, color: last.color, opacity: last.bandOpacity ?? 0.55 });
-  }
+    // Nur die stündlichen Messpunkte, in zeitlicher Reihenfolge — Grundlage der
+    // beiden Messkurven.
+    const hourlyPoints = points.filter((_, idx) => hourlyPointIndices.has(idx));
 
-  // --- Stunden-Raster ---
-  const hourTicks: Date[] = [];
-  {
-    const first = new Date(minT);
-    first.setMinutes(0, 0, 0);
-    if (first.getTime() < minT) first.setHours(first.getHours() + 1);
-    for (let d = first; d.getTime() <= maxT; d = new Date(d.getTime() + 3_600_000)) {
-      hourTicks.push(d);
+    // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
+    // Die Achse ist fest so breit, dass 6 Messungen/Stunde (alle 10 min) passen.
+    // Bei genau dieser Dichte wird nichts ausgedünnt; nur wenn eine Station noch
+    // dichter misst, dünnt der Mindestabstand (MIN_LABEL_SPACING) auf ~10 min aus.
+    // Auswahl: zuerst die stündlichen Punkte (Pflicht, damit der Vergleich mit
+    // der Prognose immer sichtbar ist), danach weitere Punkte als Lückenfüller —
+    // aber nur, solange sie den Mindestabstand zu allen bereits gewählten Punkten
+    // einhalten. Die stündlichen Punkte liegen mindestens eine Stunde (also klar
+    // mehr als MIN_LABEL_SPACING) auseinander und passen daher immer alle rein.
+    const arrowIndices: number[] = [];
+    const selectedX: number[] = [];
+    const tryAdd = (i: number) => {
+      const px = x(points[i].t);
+      if (selectedX.some((sx) => Math.abs(px - sx) < MIN_LABEL_SPACING)) return;
+      selectedX.push(px);
+      arrowIndices.push(i);
+    };
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (hourlyPointIndices.has(i)) tryAdd(i);
     }
-  }
-  // --- 10-Minuten-Raster ---
-  // Ganz dünne, sehr blasse Senkrechte auf jedem 10-Minuten-Rasterpunkt
-  // (also dort, wo auch die Messwert-Spalten sitzen). Sie ersetzen die früher
-  // gezeichneten Messpunkte auf den Kurven: das Zeitraster bleibt ablesbar,
-  // ohne dass Punkte die Kurven zerstückeln. Die vollen Stunden werden
-  // ausgelassen, dort steht bereits die kräftigere Stundenlinie.
-  const minuteTicks: number[] = [];
-  {
-    const first = snapToGrid(minT);
-    for (let t = first < minT ? first + GRID_MS : first; t <= maxT; t += GRID_MS) {
-      if (new Date(t).getMinutes() !== 0) minuteTicks.push(t);
+    for (let i = points.length - 1; i >= 0; i--) {
+      if (!hourlyPointIndices.has(i)) tryAdd(i);
     }
-  }
-  // Kleinster Wert der beiden Abschnitte, damit auch die enger gepackte
-  // Prognose-Reserve keine überlappenden Beschriftungen bekommt.
-  const pxPerHour = Math.min(HISTORY_PX_PER_HOUR, FUTURE_PX_PER_HOUR) * stretch;
-  // Uhrzeiten nur so dicht beschriften, dass sie sich nicht überlappen.
-  const labelEveryHours = pxPerHour >= 44 ? 1 : pxPerHour >= 22 ? 2 : 4;
 
-  // --- "Stündliche" Messpunkte bestimmen ---
-  // Alle Messpunkte liegen seit dem Einrasten (snapPointsToGrid) exakt auf dem
-  // 10-Minuten-Raster; "stündlich" heißt deshalb schlicht: Minute 00. Eine
-  // Suche nach dem "nächstgelegenen" Punkt ist nicht mehr nötig.
-  // Diese Punkte werden gebraucht für
-  //  - die beiden Messkurven, die NUR diese Punkte verbinden (wie die
-  //    stündliche Prognose) — siehe hourlyPoints unten,
-  //  - die fette Schrift der stündlichen Werte im Zahlenblock,
-  //  - den Vorrang bei der Ausdünnung der Pfeil-/Wertespalten.
-  // Fehlt die Messung zur vollen Stunde, gibt es dort schlicht keinen
-  // stündlichen Punkt: die Kurve bricht ab und keine Zahl wird fett gesetzt.
-  const hourlyPointIndices = new Set<number>();
-  points.forEach((p, idx) => {
-    if (p.speed === null && p.gust === null) return;
-    if (new Date(p.t).getMinutes() === 0) hourlyPointIndices.add(idx);
-  });
-  // Nur die stündlichen Messpunkte, in zeitlicher Reihenfolge — Grundlage der
-  // beiden Messkurven.
-  const hourlyPoints = points.filter((_, idx) => hourlyPointIndices.has(idx));
+    // Ausdünnung des Prognose-Blocks: Stunden nur so dicht zeigen, dass Pfeil
+    // und Wert-Quadrate nebeneinander Platz haben (FORECAST_COLUMN_W).
+    const forecastTimes = forecastPoints.map((p) => p.t).sort((a, b) => a - b);
+    const forecastPxPerPoint =
+      forecastTimes.length > 1
+        ? (x(forecastTimes[forecastTimes.length - 1]) - x(forecastTimes[0])) /
+          (forecastTimes.length - 1)
+        : historyWidth;
+    const forecastStep = Math.max(
+      1,
+      Math.ceil(Math.max(FORECAST_COLUMN_W, MIN_LABEL_SPACING) / forecastPxPerPoint),
+    );
+    const forecastTimeSelection: number[] = [];
+    for (let i = forecastTimes.length - 1; i >= 0; i -= forecastStep) {
+      forecastTimeSelection.push(forecastTimes[i]);
+    }
+    const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
 
-  // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
-  // Die Achse ist fest so breit, dass 6 Messungen/Stunde (alle 10 min) passen.
-  // Bei genau dieser Dichte wird nichts ausgedünnt; nur wenn eine Station noch
-  // dichter misst, dünnt der Mindestabstand (MIN_LABEL_SPACING) auf ~10 min aus.
-  // Auswahl: zuerst die stündlichen Punkte (Pflicht, damit der Vergleich mit
-  // der Prognose immer sichtbar ist), danach weitere Punkte als Lückenfüller —
-  // aber nur, solange sie den Mindestabstand zu allen bereits gewählten Punkten
-  // einhalten. Die stündlichen Punkte liegen mindestens eine Stunde (also klar
-  // mehr als MIN_LABEL_SPACING) auseinander und passen daher immer alle rein.
-  const arrowIndices: number[] = [];
-  const selectedX: number[] = [];
-  const tryAdd = (i: number) => {
-    const px = x(points[i].t);
-    if (selectedX.some((sx) => Math.abs(px - sx) < MIN_LABEL_SPACING)) return;
-    selectedX.push(px);
-    arrowIndices.push(i);
-  };
-  for (let i = points.length - 1; i >= 0; i--) {
-    if (hourlyPointIndices.has(i)) tryAdd(i);
-  }
-  for (let i = points.length - 1; i >= 0; i--) {
-    if (!hourlyPointIndices.has(i)) tryAdd(i);
-  }
+    // Die beiden Messkurven verbinden NUR die Messpunkte zur vollen Stunde —
+    // genau wie die stündlichen Prognosekurven, damit sich Messung und Prognose
+    // im selben Raster vergleichen lassen und die Kurve nicht vom
+    // 10-Minuten-Zappeln überlagert wird. Die Detailwerte dazwischen bleiben
+    // sichtbar: als Punkte und über die 50%-Fläche zwischen den Kurven.
+    const speedPath = buildLinePath(hourlyPoints, (p) => p.speed, x, y);
+    const gustPath = buildLinePath(hourlyPoints, (p) => p.gust, x, y);
+    const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
+    const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
+    // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
+    // unten). Anders als die Kurven benutzt sie ALLE Messwerte im
+    // 10-Minuten-Takt und bricht schon bei einem einzigen fehlenden Wert ab
+    // (BAND_GAP_MS).
+    const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
+    // Fläche zwischen den beiden Prognosekurven (Böe oben, Mittelwind unten),
+    // das rote Gegenstück zur weißen Messfläche. Die Prognose liefert einen Wert
+    // pro voller Stunde, deshalb darf die Fläche einen vollen Stundenschritt
+    // überbrücken (LINE_GAP_MS) — genau wie die Prognosekurven selbst; fehlt eine
+    // Stunde ganz, reißt auch die Fläche dort auf.
+    const forecastBandPath = buildBandPath(forecastPoints, x, y, LINE_GAP_MS);
 
-  // Ausdünnung des Prognose-Blocks: Stunden nur so dicht zeigen, dass Pfeil
-  // und Wert-Quadrate nebeneinander Platz haben (FORECAST_COLUMN_W).
-  const forecastTimes = forecastPoints.map((p) => p.t).sort((a, b) => a - b);
-  const forecastPxPerPoint =
-    forecastTimes.length > 1
-      ? (x(forecastTimes[forecastTimes.length - 1]) - x(forecastTimes[0])) /
-        (forecastTimes.length - 1)
-      : historyWidth;
-  const forecastStep = Math.max(
-    1,
-    Math.ceil(Math.max(FORECAST_COLUMN_W, MIN_LABEL_SPACING) / forecastPxPerPoint),
-  );
-  const forecastTimeSelection: number[] = [];
-  for (let i = forecastTimes.length - 1; i >= 0; i -= forecastStep) {
-    forecastTimeSelection.push(forecastTimes[i]);
-  }
-  const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
+    return {
+      points,
+      hourlyPointIndices,
+      arrowIndices,
+      x,
+      hasData,
+      svgWidth,
+      bandWidth,
+      hourTicks,
+      minuteTicks,
+      labelEveryHours,
+      speedPath,
+      gustPath,
+      forecastSpeedPath,
+      forecastGustPath,
+      measurementBandPath,
+      forecastBandPath,
+      forecastTimeSelection,
+      forecastByT,
+    };
+  }, [entries, forecast, now, containerW]);
 
-  // Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern
-  // exakt an den Stützpunkten der Windskala (0 / 7 / 15 / 20 / 25 / 30 / 35,
-  // aus WIND_COLOR_SCALE.label), damit man Verlauf und Zahl direkt
-  // zusammenlesen kann. Sie folgen der Skala automatisch, falls sie jemals
-  // bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
-  // Achse, bei der die Kurve gekappt wird.
-  const yTicks: { at: number; label: string }[] = [];
-  for (const stop of WIND_COLOR_SCALE) {
-    if (stop.at > yMax) break;
-    yTicks.push({ at: stop.at, label: stop.label });
-  }
-  if (yTicks.length === 0 || yTicks[yTicks.length - 1].at !== yMax) {
-    yTicks.push({ at: yMax, label: String(yMax) });
-  }
-
-  // Die beiden Messkurven verbinden NUR die Messpunkte zur vollen Stunde —
-  // genau wie die stündlichen Prognosekurven, damit sich Messung und Prognose
-  // im selben Raster vergleichen lassen und die Kurve nicht vom
-  // 10-Minuten-Zappeln überlagert wird. Die Detailwerte dazwischen bleiben
-  // sichtbar: als Punkte und über die 50%-Fläche zwischen den Kurven.
-  const speedPath = buildLinePath(hourlyPoints, (p) => p.speed, x, y);
-  const gustPath = buildLinePath(hourlyPoints, (p) => p.gust, x, y);
-  const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
-  const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
-  // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
-  // unten). Anders als die Kurven benutzt sie ALLE Messwerte im
-  // 10-Minuten-Takt und bricht schon bei einem einzigen fehlenden Wert ab
-  // (BAND_GAP_MS).
-  const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
-  // Fläche zwischen den beiden Prognosekurven (Böe oben, Mittelwind unten),
-  // das rote Gegenstück zur weißen Messfläche. Die Prognose liefert einen Wert
-  // pro voller Stunde, deshalb darf die Fläche einen vollen Stundenschritt
-  // überbrücken (LINE_GAP_MS) — genau wie die Prognosekurven selbst; fehlt eine
-  // Stunde ganz, reißt auch die Fläche dort auf.
-  const forecastBandPath = buildBandPath(forecastPoints, x, y, LINE_GAP_MS);
-  // Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
-  // dicker gezeichnet, damit sie sich von der Mittelwind-Kurve abhebt.
-  const LINE_WIDTH = 1.8;
-  const GUST_LINE_WIDTH = LINE_WIDTH * 1.15;
+  // Namen der berechneten Werte unverändert übernehmen, damit die
+  // Zeichen-Anweisungen weiter unten unverändert bleiben können.
+  const {
+    points,
+    hourlyPointIndices,
+    arrowIndices,
+    x,
+    hasData,
+    svgWidth,
+    bandWidth,
+    hourTicks,
+    minuteTicks,
+    labelEveryHours,
+    speedPath,
+    gustPath,
+    forecastSpeedPath,
+    forecastGustPath,
+    measurementBandPath,
+    forecastBandPath,
+    forecastTimeSelection,
+    forecastByT,
+  } = chart;
 
   return (
     <section
@@ -831,7 +890,7 @@ export default function WindHistoryPanel({
                   x2={0}
                   y2={chartTop}
                 >
-                  {gradientStops.map((stop) => (
+                  {GRADIENT_STOPS.map((stop) => (
                     <stop
                       key={stop.offset}
                       offset={stop.offset}
@@ -1125,7 +1184,7 @@ export default function WindHistoryPanel({
             className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
             style={{ height: SVG_H }}
           >
-            {yTicks.map((tick) => (
+            {Y_TICKS.map((tick) => (
               <span
                 key={tick.at}
                 className="absolute left-1.5 -translate-y-1/2 tabular-nums"

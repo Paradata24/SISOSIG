@@ -80,12 +80,16 @@ function normalizeStationName(name: string): string {
     .replace(/[\s/-]+/g, "");
 }
 
+// Die Suchbegriffe werden EINMAL beim Laden vereinheitlicht statt bei jedem
+// Vergleich neu. Vorher lief die (nicht ganz billige) Unicode-Normalisierung
+// bei jedem Neuzeichnen der Karte für jede Station mal jeden Suchbegriff —
+// also gut tausend Mal pro Bildaufbau, immer mit demselben Ergebnis.
+const WINDANZEIGER_NEEDLES = WINDANZEIGER_STATION_NAMES.map(normalizeStationName);
+
 /** true, wenn die Station Teil des kuratierten "Windanzeiger"-Filters ist. */
 export function isWindanzeigerStation(station: WindStation): boolean {
   const name = normalizeStationName(station.stationName);
-  return WINDANZEIGER_STATION_NAMES.some((needle) =>
-    name.includes(normalizeStationName(needle)),
-  );
+  return WINDANZEIGER_NEEDLES.some((needle) => name.includes(needle));
 }
 
 // Gemeinsame Typen/Konstanten für das Menü im Titel-Balken (WindApp.tsx) und

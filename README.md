@@ -64,6 +64,18 @@ zusammenbaut. Fehlerantworten (z. B. wenn der Bozner Dienst nicht
 erreichbar ist) werden bewusst **nicht** gecacht, damit sich ein kurzer
 Ausfall nicht festsetzt.
 
+Nach demselben Muster arbeiten auch die beiden Verlaufsbalken-Routen:
+`/api/history` wird 60 Sekunden vom CDN geteilt (neue Messwerte kommen nur
+alle 10 Minuten dazu), `/api/forecast` 120 Sekunden (die Prognose wird nur
+stündlich neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
+und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
+jedes Mal aus der Datenbank.
+
+Die drei fremden Dienste, die `/api/wind` braucht (`/sensors`, `/stations`,
+Pioupiou), werden außerdem **gleichzeitig** abgefragt statt nacheinander:
+muss die Route wirklich einmal laufen (Cache-Miss), dauert sie damit nur so
+lange wie der langsamste einzelne Abruf.
+
 Praktische Folgen:
 
 - Angezeigte Werte können bis zu ~1–2 Minuten „alt" sein — bei
