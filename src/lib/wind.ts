@@ -63,7 +63,8 @@ export const WINDANZEIGER_STATION_NAMES: string[] = [
   "raujoch", // Pfelders Raujoch (Schreibweise ohne "h")
   "rauhjoch", // Pfelders Rauhjoch (Schreibweise mit "h" – je nach Datenquelle)
   "elferspitze", // Graun Elferspitze
-  "regelspitze", // Gsies Regelspitze
+  "dannelspitz", // Pfunders Dannelspitz (ohne End-"e", damit auch
+  // "Dannelspitze" gefunden wird)
 ];
 
 /**
