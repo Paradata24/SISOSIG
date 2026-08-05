@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   CircleMarker,
   GeoJSON,
@@ -21,14 +22,41 @@ import {
   type StationFilter,
   type WindStation,
 } from "@/lib/wind";
-import WindHistoryPanel from "@/components/WindHistoryPanel";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
+
+// Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
+// ersten Klick auf eine Station) und steckt deshalb in einem eigenen
+// JavaScript-Paket. Vorher lag er im selben Paket wie die Kartenbibliothek und
+// musste mitgeladen werden, bevor überhaupt die erste Kachel zu sehen war —
+// obwohl ihn viele Besucher nie öffnen.
+// Damit sich der erste Klick trotzdem nicht zäh anfühlt, wird das Paket im
+// Leerlauf nach dem Kartenaufbau schon im Voraus geholt (siehe useEffect mit
+// prefetchHistoryPanel weiter unten). In der Praxis ist es also da, bevor
+// jemand klickt, und die "Verlauf wird geladen…"-Leiste unten erscheint gar
+// nicht erst.
+const loadHistoryPanel = () => import("@/components/WindHistoryPanel");
+
+const WindHistoryPanel = dynamic(loadHistoryPanel, {
+  ssr: false,
+  loading: () => (
+    <div className="fixed inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+      Verlauf wird geladen…
+    </div>
+  ),
+});
 
 const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
+// Wie oft im Hintergrund neue Winddaten geholt werden. Die Stationen messen
+// nur alle 5-10 Minuten, ein kürzerer Takt holt also meistens nur dieselben
+// Werte noch einmal und kostet auf dem Handy unnötig Datenvolumen. Der Wert
+// stand früher auf 90 s und wurde auf Wunsch des Projektbesitzers auf
+// 3 Minuten erhöht. Wichtig dabei: die Anzeige wird dadurch NICHT träger,
+// wenn man zur Seite zurückkehrt — der visibilitychange-Zuhörer weiter unten
+// holt dann sofort frische Werte, unabhängig vom Takt.
+const POLL_INTERVAL_MS = 180_000; // 3 Minuten
 
 const ARROW_BASE_SIZE = 22;
 const LABEL_BASE_HEIGHT = 10;
@@ -127,7 +155,8 @@ function createStaleIcon(scale: number) {
 // Leaflet baut das komplette DOM eines Markers neu auf, sobald er ein NEUES
 // Icon-Objekt bekommt (react-leaflet ruft dann marker.setIcon auf) — und zwar
 // auch dann, wenn das neue Icon exakt gleich aussieht. Ohne Zwischenspeicher
-// passierte genau das bei JEDER Hintergrund-Aktualisierung (alle 90 s): für
+// passierte genau das bei JEDER Hintergrund-Aktualisierung (siehe
+// POLL_INTERVAL_MS): für
 // alle ~130 Stationen wurde ein neues Icon gebaut und die ganze Markerschicht
 // neu aufgebaut, obwohl sich meist nur eine Handvoll Messwerte geändert hat.
 // Deshalb merken wir uns hier ein Icon pro sichtbarem Zustand (Werte + Größe):
@@ -286,6 +315,24 @@ export default function WindMap({
   // Aktualisierung neu angemeldet werden müssen (siehe WindMarkers).
   const handleSelect = useCallback((stationCode: string) => {
     setSelectedStationCode(stationCode);
+  }, []);
+
+  // Das Verlaufsbalken-Paket im Leerlauf vorab holen (siehe loadHistoryPanel
+  // oben): Karte und Marker haben Vorrang, sobald der Browser aber nichts
+  // Wichtigeres zu tun hat, lädt er den Verlaufsbalken im Hintergrund nach.
+  // Klickt jemand dann auf eine Station, ist er sofort da.
+  // requestIdleCallback kennen nicht alle Browser (ältere Versionen von Safari
+  // auf iPhone/iPad), deshalb ersatzweise ein einfacher Zeitgeber.
+  useEffect(() => {
+    const prefetchHistoryPanel = () => {
+      void loadHistoryPanel();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetchHistoryPanel, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(prefetchHistoryPanel, 2500);
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {

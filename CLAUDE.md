@@ -146,7 +146,10 @@ Supabase.
    **Marker rendering is memoized and must stay that way**: react-leaflet
    calls `marker.setIcon()` whenever the `icon` prop is a new object, which
    makes Leaflet rebuild that marker's whole DOM node. Since `/api/wind` is
-   polled every 90s, naively building icons inline rebuilt all ~130 markers
+   polled on `POLL_INTERVAL_MS` (3 min — raised from 90s at the owner's
+   request, since stations only measure every 5-10 min; the
+   `visibilitychange` refresh below is what keeps it feeling live, so don't
+   lower it again to "fix" freshness), naively building icons inline rebuilt all ~130 markers
    every poll. `getMarkerIcon()` therefore hands back the *same* `L.DivIcon`
    instance for an unchanged (direction, speed, gust, scale) tuple, from a
    module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT`. The click
@@ -202,6 +205,13 @@ Supabase.
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
    the screen, opened by clicking a station marker in `WindMap.tsx` (the
    marker's `click` handler calls `onSelect`, which sets `selectedStation`).
+   It is **code-split into its own chunk** (`next/dynamic` via
+   `loadHistoryPanel` in `WindMap.tsx`) so it isn't part of the Leaflet chunk
+   that gates the first map paint — many visitors never open it. `WindMap`
+   then prefetches that chunk on `requestIdleCallback` (with a `setTimeout`
+   fallback for older Safari), so it is in practice already loaded by the time
+   anyone clicks and the `loading` bar never shows. Don't turn this back into
+   a plain static import.
    It fetches `/api/history?station=<SCODE>` **and** `/api/forecast` (additive:
    a failed forecast never blocks the measurements) and draws an SVG chart of
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
@@ -329,7 +339,7 @@ Supabase.
    paths) sits in one `useMemo` keyed on `[entries, forecast, now, containerW]`
    and is destructured back into the original variable names so the JSX below
    stays untouched. This matters because the map re-renders this panel every
-   90s (the `station` prop is a fresh object each poll, which is intentional —
+   poll (the `station` prop is a fresh object each poll, which is intentional —
    it keeps the "Stand:" timestamp live); without the memo the whole ~400-node
    chart was recomputed each time.
 

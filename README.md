@@ -80,6 +80,11 @@ Praktische Folgen:
 
 - Angezeigte Werte können bis zu ~1–2 Minuten „alt" sein — bei
   Messintervallen von 5–10 Minuten ist das ohne Bedeutung.
+- Die Karte fragt im Hintergrund alle **3 Minuten** neue Werte ab
+  (`POLL_INTERVAL_MS` in `src/components/WindMap.tsx`) und im Hintergrund
+  laufender Tabs gar nicht. Kehrt man zur Seite zurück, wird sofort
+  aktualisiert — der Takt macht die Anzeige also nicht träger, spart auf
+  dem Handy aber deutlich Datenvolumen.
 - Die Sammel-Route `/api/collect` (läuft alle 10 Minuten) ist davon
   nicht betroffen: gespeichert wird immer der Mess-Zeitstempel der
   Station, Duplikate fängt der Upsert in Supabase ab.

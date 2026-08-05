@@ -577,7 +577,7 @@ export default function WindHistoryPanel({
   // das fertige SVG) hängt NUR von den geladenen Daten, dem Bezugszeitpunkt
   // "jetzt" und der Fensterbreite ab. Mit useMemo wird es deshalb nur dann neu
   // berechnet, wenn sich eines davon ändert.
-  // Wichtig, weil die Karte im Hintergrund alle 90 Sekunden neue Winddaten
+  // Wichtig, weil die Karte im Hintergrund regelmäßig neue Winddaten
   // holt: dabei bekommt dieses Panel ein neues station-Objekt (für die
   // "Stand:"-Zeile) und wurde bisher jedes Mal komplett neu gezeichnet — mit
   // rund 400 SVG-Elementen. Jetzt wird nur noch die Kopfzeile aktualisiert.
