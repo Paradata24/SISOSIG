@@ -82,6 +82,14 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+// Koordinaten auf 5 Nachkommastellen kürzen (≈ 1 m genau — für einen
+// Kartenmarker mehr als ausreichend), genau wie bei den Bozner Stationen in
+// /api/wind. Nebenbei verschwinden dabei die typischen Fließkomma-Reste wie
+// "11.350000000000001", die die JSON-Antwort nur unnötig aufblähen.
+function round5(value: number): number {
+  return Math.round(value * 1e5) / 1e5;
+}
+
 /**
  * Ruft alle Pioupiou/OpenWindMap-Stationen ab und gibt nur jene innerhalb
  * der Südtirol-Bounding-Box mit gültigen Koordinaten zurück, im selben
@@ -132,8 +140,8 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
     result.push({
       stationCode: `${CODE_PREFIX}${s.id}`,
       stationName: s.meta?.name ?? `Pioupiou ${s.id}`,
-      lat: loc.latitude,
-      lng: loc.longitude,
+      lat: round5(loc.latitude),
+      lng: round5(loc.longitude),
       altitude: null,
       direction,
       speedKmh,

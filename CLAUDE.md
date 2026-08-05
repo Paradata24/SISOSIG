@@ -105,7 +105,13 @@ Supabase.
    irrelevant against the 2h staleness threshold. See README section
    "Zwischenspeicherung (Caching)". The response is sorted by station name;
    an optional `?station=CODE1,CODE2` narrows it down (for testing/debugging,
-   works with `pioupiou-…` codes too).
+   works with `pioupiou-…` codes too). The three upstream fetches (`/sensors`,
+   `/stations`, Pioupiou) are independent and run **in parallel** via one
+   `Promise.all` over three small helpers that never reject (`fetchSensors`,
+   `fetchStationMeta`, `fetchOpenWindMapSafely`) — don't serialize them back
+   into sequential `await`s, that made a cache-miss run cost the sum of all
+   three. Output `lat`/`lng` are rounded to 5 decimals (~1 m) by `round5()`
+   (same in `src/lib/pioupiou.ts`).
 2. `src/app/page.tsx` → `src/components/WindApp.tsx` → `WindMapLoader.tsx` →
    `src/components/WindMap.tsx` — the client UI, in that order.
    `page.tsx` is a thin Server Component: page shell (`h-dvh` flex column),
@@ -131,9 +137,14 @@ Supabase.
    Freiger, Lengspitze, Piz Pisciadù, Plose, Pfelders Rau(h)joch (both
    spellings are listed because the "h" is not normalized away), Graun
    Elferspitze, Pfunders Dannelspitz. Add a station there.
-   **`WindMap.tsx`** (client component) polls `/api/wind` every **90 seconds**
-   (`POLL_INTERVAL_MS`) and additionally refetches as soon as the tab becomes
-   visible again (`visibilitychange`, e.g. phone unlocked). A failed
+   **`WindMap.tsx`** (client component) polls `/api/wind` every **3 minutes**
+   (`POLL_INTERVAL_MS`, raised from 90s at the owner's request since stations
+   only measure every 5-10 min) and additionally refetches as soon as the tab
+   becomes visible again (`visibilitychange`, e.g. phone unlocked) — that
+   refresh, not the interval, is what makes it feel live, so don't lower the
+   interval again to "fix" freshness. The interval also **skips fetching
+   entirely while `document.visibilityState === "hidden"`**, so a
+   backgrounded tab costs no mobile data. A failed
    *background* refresh keeps the last known markers on the map — only the very
    first load may replace them with an error banner. It renders one marker per
    station: a rotating SVG arrow whose **fill = mean wind** and **stroke =
@@ -150,6 +161,16 @@ Supabase.
    updating with each background refresh. A GeoJSON overlay of the national
    borders (`src/data/staatsgrenzen.json`, `STAATSGRENZE_STYLE`) and the
    "Zuletzt aktualisiert" badge (bottom left) complete the map.
+   **Marker rendering is memoized and must stay that way**: react-leaflet
+   calls `marker.setIcon()` whenever the `icon` prop is a new object, and
+   Leaflet's `DivIcon` then re-parses that marker's `innerHTML`. Building
+   icons inline meant doing that for all ~130 markers on *every* poll.
+   `getMarkerIcon()` therefore hands back the *same* `L.DivIcon` instance for
+   an unchanged (stale | direction, speed, gust, scale) tuple, from a
+   module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT`. The click
+   handlers are memoized the same way (`handlersByCode`, keyed on the joined
+   station codes), which is why `WindMarkers`' `onSelect` takes a plain
+   `stationCode: string` rather than the whole station object.
    The arrow color comes from a **continuous gradient** (originally a 6-step scale
    agreed with the project owner via a legend screenshot, later turned into a
    smooth per-km/h blend at the owner's request — see `WIND_COLOR_SCALE`/
@@ -177,7 +198,11 @@ Supabase.
    that just passes the two props through. Switching the base layer swaps the
    `<TileLayer>`s (each with a `key`, so the old tiles and their attribution
    are fully removed); the markers are rendered outside that switch and stay
-   visible on both.
+   visible on both. Tile URLs deliberately carry **no `{s}.` subdomain
+   sharding** — that's an HTTP/1 workaround that under HTTP/2 only buys extra
+   TLS handshakes, and OSM's tile policy now advises against it; don't add it
+   back. `layout.tsx` carries `preconnect`/`dns-prefetch` hints for the tile
+   hosts so the handshake happens while the JS is still downloading.
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
    configured for **every 10 minutes** and covering both sources (Bozen +
@@ -206,7 +231,11 @@ Supabase.
    owner's request — don't reintroduce it without asking. **Both window
    constants live in one place**, `HISTORY_HOURS` /
    `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` — the two API routes and the panel
-   import them from there; don't reintroduce local copies.
+   import them from there; don't reintroduce local copies. Both successful
+   responses carry a CDN `Cache-Control` (`s-maxage=60` for history,
+   `s-maxage=120` for the hourly-refreshed forecast) so clicking back and
+   forth between stations doesn't re-query Supabase every time; error
+   responses deliberately get no header, same convention as `/api/wind`.
 5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
    project owner's reference name for this feature; use it when they ask to
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
@@ -216,6 +245,13 @@ Supabase.
    name, altitude, "Stand: <measurement time>" and the color legend ("weiss:
    Messung · rot: Prognose (ICON-CH1)"), the footer the "Quelle:" link
    (`SOURCE_INFO`).
+   It is **code-split into its own chunk** (`next/dynamic` via
+   `loadHistoryPanel` in `WindMap.tsx`) so it isn't part of the Leaflet chunk
+   that gates the first map paint — many visitors never open it. `WindMap`
+   then prefetches that chunk on `requestIdleCallback` (with a `setTimeout`
+   fallback for older Safari), so it is in practice already loaded by the time
+   anyone clicks and the `loading` bar never shows. Don't turn this back into
+   a plain static import.
    It fetches `/api/history?station=<SCODE>` **and** `/api/forecast` (additive:
    a failed forecast never blocks the measurements) and draws an SVG chart of
    the last 12h: a **fixed** time axis from `now − 12h` to `now + 4h` (dashed
@@ -344,6 +380,16 @@ Supabase.
    shows the **real** measurement time (`Point.tActual`). With that grid the
    `MIN_LABEL_SPACING` thinning never actually triggers for measurements; it
    stays as a safety net.
+   **Render structure:** everything that depends only on the constants above
+   (`chartTop`/`chartBottom`/`y()`/the box rows/`GRADIENT_STOPS`/`Y_TICKS`/
+   `LINE_WIDTH`) lives at module scope and is computed once at import. The
+   data-dependent half (grid snapping, tick arrays, thinning, all six SVG
+   paths) sits in one `useMemo` keyed on `[entries, forecast, now, containerW]`
+   and is destructured back into the original variable names so the JSX below
+   stays untouched. This matters because the map re-renders this panel every
+   poll (the `station` prop is a fresh object each poll, which is intentional —
+   it keeps the "Stand:" timestamp live); without the memo the whole ~400-node
+   chart was recomputed each time.
 
 6. `supabase/functions/fetch-wind-forecasts/index.ts` — a **Supabase Edge
    Function** (Deno, not Next.js!) for phase 3: fetches ground-wind

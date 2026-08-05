@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   CircleMarker,
   GeoJSON,
@@ -21,14 +22,41 @@ import {
   type StationFilter,
   type WindStation,
 } from "@/lib/wind";
-import WindHistoryPanel from "@/components/WindHistoryPanel";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
+
+// Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
+// ersten Klick auf eine Station) und steckt deshalb in einem eigenen
+// JavaScript-Paket. Vorher lag er im selben Paket wie die Kartenbibliothek und
+// musste mitgeladen werden, bevor überhaupt die erste Kachel zu sehen war —
+// obwohl ihn viele Besucher nie öffnen.
+// Damit sich der erste Klick trotzdem nicht zäh anfühlt, wird das Paket im
+// Leerlauf nach dem Kartenaufbau schon im Voraus geholt (siehe useEffect mit
+// prefetchHistoryPanel weiter unten). In der Praxis ist es also da, bevor
+// jemand klickt, und die "Verlauf wird geladen…"-Leiste unten erscheint gar
+// nicht erst.
+const loadHistoryPanel = () => import("@/components/WindHistoryPanel");
+
+const WindHistoryPanel = dynamic(loadHistoryPanel, {
+  ssr: false,
+  loading: () => (
+    <div className="fixed inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+      Verlauf wird geladen…
+    </div>
+  ),
+});
 
 const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
-const POLL_INTERVAL_MS = 90_000; // 90 Sekunden
+// Wie oft im Hintergrund neue Winddaten geholt werden. Die Stationen messen
+// nur alle 5-10 Minuten, ein kürzerer Takt holt also meistens nur dieselben
+// Werte noch einmal und kostet auf dem Handy unnötig Datenvolumen. Der Wert
+// stand früher auf 90 s und wurde auf Wunsch des Projektbesitzers auf
+// 3 Minuten erhöht. Wichtig dabei: die Anzeige wird dadurch NICHT träger,
+// wenn man zur Seite zurückkehrt — der visibilitychange-Zuhörer weiter unten
+// holt dann sofort frische Werte, unabhängig vom Takt.
+const POLL_INTERVAL_MS = 180_000; // 3 Minuten
 
 const ARROW_BASE_SIZE = 22;
 const LABEL_BASE_HEIGHT = 10;
@@ -123,6 +151,52 @@ function createStaleIcon(scale: number) {
   });
 }
 
+// --- Zwischenspeicher für Marker-Icons ---
+// Leaflet baut das komplette DOM eines Markers neu auf, sobald er ein NEUES
+// Icon-Objekt bekommt (react-leaflet ruft dann marker.setIcon auf) — und zwar
+// auch dann, wenn das neue Icon exakt gleich aussieht. Ohne Zwischenspeicher
+// passierte genau das bei JEDER Hintergrund-Aktualisierung (siehe
+// POLL_INTERVAL_MS): für
+// alle ~130 Stationen wurde ein neues Icon gebaut und die ganze Markerschicht
+// neu aufgebaut, obwohl sich meist nur eine Handvoll Messwerte geändert hat.
+// Deshalb merken wir uns hier ein Icon pro sichtbarem Zustand (Werte + Größe):
+// unveränderte Stationen bekommen dasselbe Icon-Objekt zurück, und Leaflet
+// fasst ihren Marker gar nicht erst an.
+// Damit der Speicher nicht unbegrenzt wächst, merken wir uns höchstens so
+// viele Icons. Das reicht bequem für ~150 Stationen auf mehreren Zoomstufen;
+// darüber hinaus fliegt jeweils das am längsten nicht benutzte Icon raus
+// (Map behält die Einfügereihenfolge, deshalb ist der erste Eintrag der
+// älteste).
+const ICON_CACHE_LIMIT = 400;
+const iconCache = new Map<string, L.DivIcon>();
+
+function iconCacheKey(station: WindStation, scale: number): string {
+  if (station.stale) return `stale|${scale}`;
+  return `wind|${station.direction}|${station.speedKmh}|${station.gustKmh}|${scale}`;
+}
+
+function getMarkerIcon(station: WindStation, scale: number): L.DivIcon {
+  const key = iconCacheKey(station, scale);
+  const cached = iconCache.get(key);
+  if (cached) {
+    // Neu einsortieren = "zuletzt benutzt", damit der Deckel unten die
+    // richtigen Icons wegwirft.
+    iconCache.delete(key);
+    iconCache.set(key, cached);
+    return cached;
+  }
+  const icon = station.stale
+    ? createStaleIcon(scale)
+    : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale);
+  iconCache.set(key, icon);
+  while (iconCache.size > ICON_CACHE_LIMIT) {
+    const oldest = iconCache.keys().next().value;
+    if (oldest === undefined) break;
+    iconCache.delete(oldest);
+  }
+  return icon;
+}
+
 // Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
 // synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
 // da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
@@ -135,7 +209,10 @@ function WindMarkers({
   selectedStationCode,
 }: {
   stations: WindStation[];
-  onSelect: (station: WindStation) => void;
+  // Bewusst nur der Stationscode (nicht das ganze Stations-Objekt): so bleibt
+  // der Klick-Handler eines Markers über alle Aktualisierungen hinweg
+  // derselbe — siehe handlersByCode unten.
+  onSelect: (stationCode: string) => void;
   selectedStationCode: string | null;
 }) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
@@ -152,22 +229,36 @@ function WindMarkers({
     scale * (ARROW_BASE_SIZE / 2 + LABEL_BASE_HEIGHT) + 4,
   );
 
+  const positionedStations = useMemo(
+    () => stations.filter((s) => s.lat !== null && s.lng !== null),
+    [stations],
+  );
+
+  // Auch die Klick-Handler werden festgehalten: bekommt ein Marker ein NEUES
+  // Handler-Objekt, meldet react-leaflet den alten Leaflet-Listener ab und den
+  // neuen an — bisher also für alle ~130 Marker bei jeder Aktualisierung. Da
+  // sich nur die MESSWERTE ändern und nie die Stationsliste selbst, hängen die
+  // Handler hier an der reinen Liste der Stationscodes und bleiben damit über
+  // alle Aktualisierungen hinweg dieselben.
+  const stationCodesKey = positionedStations.map((s) => s.stationCode).join(",");
+  const handlersByCode = useMemo(() => {
+    const map = new Map<string, { click: () => void }>();
+    for (const code of stationCodesKey.split(",")) {
+      if (code) map.set(code, { click: () => onSelect(code) });
+    }
+    return map;
+  }, [stationCodesKey, onSelect]);
+
   return (
     <>
-      {stations
-        .filter((s) => s.lat !== null && s.lng !== null)
-        .map((station) => (
-          <Marker
-            key={station.stationCode}
-            position={[station.lat!, station.lng!]}
-            icon={
-              station.stale
-                ? createStaleIcon(scale)
-                : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale)
-            }
-            eventHandlers={{ click: () => onSelect(station) }}
-          />
-        ))}
+      {positionedStations.map((station) => (
+        <Marker
+          key={station.stationCode}
+          position={[station.lat!, station.lng!]}
+          icon={getMarkerIcon(station, scale)}
+          eventHandlers={handlersByCode.get(station.stationCode)}
+        />
+      ))}
       {selectedStation && (
         <CircleMarker
           center={[selectedStation.lat!, selectedStation.lng!]}
@@ -200,23 +291,49 @@ export default function WindMap({
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const altitudeThreshold =
-    stationFilter === "veryHigh"
-      ? VERY_HIGH_ALTITUDE_THRESHOLD_M
-      : stationFilter === "high"
-        ? HIGH_ALTITUDE_THRESHOLD_M
-        : null;
-  const visibleStations =
-    stationFilter === "windanzeiger"
-      ? stations.filter(isWindanzeigerStation)
-      : altitudeThreshold === null
-        ? stations
-        : stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
+  // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
+  // useMemo verhindert, dass sie bei jedem Neuzeichnen (z. B. beim Zoomen)
+  // erneut über alle ~130 Stationen läuft.
+  const visibleStations = useMemo(() => {
+    const altitudeThreshold =
+      stationFilter === "veryHigh"
+        ? VERY_HIGH_ALTITUDE_THRESHOLD_M
+        : stationFilter === "high"
+          ? HIGH_ALTITUDE_THRESHOLD_M
+          : null;
+    if (stationFilter === "windanzeiger") return stations.filter(isWindanzeigerStation);
+    if (altitudeThreshold === null) return stations;
+    return stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
+  }, [stations, stationFilter]);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
   // jeder Hintergrund-Aktualisierung von /api/wind mit aktualisiert wird.
   const selectedStation = stations.find((s) => s.stationCode === selectedStationCode) ?? null;
+
+  // Feste Referenz, damit die Marker-Klick-Handler nicht bei jeder
+  // Aktualisierung neu angemeldet werden müssen (siehe WindMarkers).
+  const handleSelect = useCallback((stationCode: string) => {
+    setSelectedStationCode(stationCode);
+  }, []);
+
+  // Das Verlaufsbalken-Paket im Leerlauf vorab holen (siehe loadHistoryPanel
+  // oben): Karte und Marker haben Vorrang, sobald der Browser aber nichts
+  // Wichtigeres zu tun hat, lädt er den Verlaufsbalken im Hintergrund nach.
+  // Klickt jemand dann auf eine Station, ist er sofort da.
+  // requestIdleCallback kennen nicht alle Browser (ältere Versionen von Safari
+  // auf iPhone/iPad), deshalb ersatzweise ein einfacher Zeitgeber.
+  useEffect(() => {
+    const prefetchHistoryPanel = () => {
+      void loadHistoryPanel();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetchHistoryPanel, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(prefetchHistoryPanel, 2500);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -248,7 +365,15 @@ export default function WindMap({
     }
 
     loadWind(true);
-    const interval = setInterval(() => loadWind(false), POLL_INTERVAL_MS);
+    // Im Hintergrund (Tab nicht sichtbar, Handy gesperrt, andere App im
+    // Vordergrund) wird NICHT abgefragt: Werte, die gerade niemand sieht,
+    // müssen auch nicht geladen werden. Das spart auf dem Handy Datenvolumen
+    // und Akku. Beim Zurückkommen holt handleVisibility unten sofort frische
+    // Werte, die Anzeige ist also trotzdem nie veraltet.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      loadWind(false);
+    }, POLL_INTERVAL_MS);
 
     // Sobald der Tab wieder in den Vordergrund kommt (z. B. Handy entsperrt),
     // sofort frische Werte holen statt bis zum nächsten Intervall zu warten.
@@ -274,12 +399,20 @@ export default function WindMap({
       >
         {/* Die key-Attribute sorgen dafür, dass beim Umschalten die alten
             Kachel-Ebenen komplett entfernt und neue angelegt werden (inkl.
-            korrekter Quellenangabe unten rechts). */}
+            korrekter Quellenangabe unten rechts).
+
+            Die Kachel-Adressen stehen bewusst OHNE das früher übliche
+            "{s}."-Kürzel (a./b./c.-Unterdomains). Das stammt noch aus der
+            HTTP/1-Zeit, als Browser pro Server nur wenige Downloads
+            gleichzeitig erlaubten. Mit HTTP/2 lädt EINE Verbindung alle
+            Kacheln parallel — drei Unterdomains bedeuten dann nur drei
+            getrennte Verbindungsaufbauten (langsamer, vor allem im
+            Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
         {baseLayer === "standard" ? (
           <TileLayer
             key="osm"
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         ) : (
           <>
@@ -291,7 +424,7 @@ export default function WindMap({
             <TileLayer
               key="carto-labels"
               attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+              url="https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
             />
           </>
         )}
@@ -302,7 +435,7 @@ export default function WindMap({
         />
         <WindMarkers
           stations={visibleStations}
-          onSelect={(station) => setSelectedStationCode(station.stationCode)}
+          onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
         />
       </MapContainer>

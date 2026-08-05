@@ -64,10 +64,27 @@ zusammenbaut. Fehlerantworten (z. B. wenn der Bozner Dienst nicht
 erreichbar ist) werden bewusst **nicht** gecacht, damit sich ein kurzer
 Ausfall nicht festsetzt.
 
+Nach demselben Muster arbeiten auch die beiden Verlaufsbalken-Routen:
+`/api/history` wird 60 Sekunden vom CDN geteilt (neue Messwerte kommen nur
+alle 10 Minuten dazu), `/api/forecast` 120 Sekunden (die Prognose wird nur
+stündlich neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
+und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
+jedes Mal aus der Datenbank.
+
+Die drei fremden Dienste, die `/api/wind` braucht (`/sensors`, `/stations`,
+Pioupiou), werden außerdem **gleichzeitig** abgefragt statt nacheinander:
+muss die Route wirklich einmal laufen (Cache-Miss), dauert sie damit nur so
+lange wie der langsamste einzelne Abruf.
+
 Praktische Folgen:
 
 - Angezeigte Werte können bis zu ~1–2 Minuten „alt" sein — bei
   Messintervallen von 5–10 Minuten ist das ohne Bedeutung.
+- Die Karte fragt im Hintergrund alle **3 Minuten** neue Werte ab
+  (`POLL_INTERVAL_MS` in `src/components/WindMap.tsx`) und im Hintergrund
+  laufender Tabs gar nicht. Kehrt man zur Seite zurück, wird sofort
+  aktualisiert — der Takt macht die Anzeige also nicht träger, spart auf
+  dem Handy aber deutlich Datenvolumen.
 - Die Sammel-Route `/api/collect` (läuft alle 10 Minuten) ist davon
   nicht betroffen: gespeichert wird immer der Mess-Zeitstempel der
   Station, Duplikate fängt der Upsert in Supabase ab.

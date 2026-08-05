@@ -28,6 +28,13 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // Das stale-Flag wird trotzdem bei jedem echten Routen-Lauf frisch gegen
 // die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
 // alte Cache-Daten dafür bedeutungslos.
+//
+// --- Gleichzeitige Abrufe ---
+// Die drei Upstream-Abrufe (/sensors, /stations, Pioupiou) hängen NICHT
+// voneinander ab und werden deshalb mit einem einzigen Promise.all parallel
+// gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
+// die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
+// wie alle drei zusammen.
 const SENSORS_REVALIDATE_S = 60;
 const STATIONS_REVALIDATE_S = 6 * 60 * 60;
 const RESPONSE_CACHE_CONTROL =
@@ -90,6 +97,14 @@ function toKmh(value: number, unit: string | undefined): number {
   return value;
 }
 
+// Koordinaten auf 5 Nachkommastellen kürzen (≈ 1 m genau — für einen
+// Kartenmarker mehr als ausreichend). Der Dienst liefert teils 10+ Stellen;
+// die machen die JSON-Antwort nur unnötig groß, ohne dass man auf der Karte
+// irgendetwas davon sieht.
+function round5(value: number): number {
+  return Math.round(value * 1e5) / 1e5;
+}
+
 const isDirection = (desc: string) => /windrichtung/i.test(desc);
 const isSpeed = (desc: string) =>
   /windgeschwindigkeit/i.test(desc) && !/böe/i.test(desc);
@@ -97,43 +112,78 @@ const isGust = (desc: string) => /böe/i.test(desc);
 const hasCoords = (meta: StationMeta | undefined): meta is StationMeta =>
   typeof meta?.LAT === "number" && typeof meta?.LONG === "number";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const requestedStations = searchParams.get("station");
+// --- Die drei Upstream-Abrufe als eigene Helfer ---
+// Jeder fängt seine Fehler selbst ab und liefert immer ein Ergebnis zurück
+// (statt zu werfen), damit sie unten mit einem einzigen Promise.all
+// GLEICHZEITIG laufen können. Vorher liefen sie nacheinander, die Route war
+// also so langsam wie die Summe der drei Abrufe; jetzt nur noch so langsam wie
+// der langsamste einzelne.
 
-  let sensors: SensorReading[];
+async function fetchSensors(): Promise<{
+  sensors?: SensorReading[];
+  error?: string;
+}> {
   try {
     const res = await fetch(`${API_BASE}/sensors`, {
       next: { revalidate: SENSORS_REVALIDATE_S },
     });
     if (!res.ok) {
-      return NextResponse.json(
-        { error: `Wetterdienst antwortete mit Status ${res.status}` },
-        { status: 502 },
-      );
+      return { error: `Wetterdienst antwortete mit Status ${res.status}` };
     }
-    sensors = await res.json();
+    return { sensors: await res.json() };
   } catch {
-    return NextResponse.json(
-      { error: "Wetterdienst der Provinz Bozen ist nicht erreichbar" },
-      { status: 502 },
-    );
+    return { error: "Wetterdienst der Provinz Bozen ist nicht erreichbar" };
   }
+}
 
-  let stationsByCode = new Map<string, StationMeta>();
+// Metadaten sind nicht kritisch: fehlen sie, bleibt die Karte leer statt zu
+// scheitern — deshalb hier nur protokollieren und eine leere Map liefern.
+async function fetchStationMeta(): Promise<Map<string, StationMeta>> {
   try {
     const res = await fetch(`${API_BASE}/stations`, {
       next: { revalidate: STATIONS_REVALIDATE_S },
     });
-    if (res.ok) {
-      const stations = normalizeStations(await res.json());
-      stationsByCode = new Map(stations.map((s) => [s.SCODE, s]));
-    } else {
+    if (!res.ok) {
       console.error(`Stationsmetadaten: Status ${res.status}`);
+      return new Map();
     }
+    const stations = normalizeStations(await res.json());
+    return new Map(stations.map((s) => [s.SCODE, s]));
   } catch (err) {
     console.error("Stationsmetadaten nicht abrufbar:", err);
+    return new Map();
   }
+}
+
+// OpenWindMap/Pioupiou-Stationen sind additiv: schlägt der Abruf fehl
+// (Netzfehler, Dienst nicht erreichbar), zeigt die Karte trotzdem die
+// Bozner Stationen statt komplett zu scheitern.
+async function fetchOpenWindMapSafely(): Promise<WindStation[]> {
+  try {
+    return await fetchOpenWindMapStations();
+  } catch (err) {
+    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
+    return [];
+  }
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const requestedStations = searchParams.get("station");
+
+  const [sensorsResult, stationsByCode, openWindMapStations] = await Promise.all([
+    fetchSensors(),
+    fetchStationMeta(),
+    fetchOpenWindMapSafely(),
+  ]);
+
+  if (sensorsResult.error || !sensorsResult.sensors) {
+    return NextResponse.json(
+      { error: sensorsResult.error ?? "Winddaten nicht verfügbar" },
+      { status: 502 },
+    );
+  }
+  const sensors = sensorsResult.sensors;
 
   const byStation = new Map<string, SensorReading[]>();
   for (const s of sensors) {
@@ -181,8 +231,8 @@ export async function GET(request: Request) {
     return {
       stationCode: code,
       stationName: meta.NAME_D ?? meta.NAME_I ?? code,
-      lat: meta.LAT ?? null,
-      lng: meta.LONG ?? null,
+      lat: meta.LAT != null ? round5(meta.LAT) : null,
+      lng: meta.LONG != null ? round5(meta.LONG) : null,
       altitude: meta.ALT ?? null,
       direction,
       speedKmh,
@@ -199,16 +249,6 @@ export async function GET(request: Request) {
   const bolzanoStations = [...byStation.keys()]
     .map(buildWindStation)
     .filter((s): s is WindStation => s !== null);
-
-  // OpenWindMap/Pioupiou-Stationen sind additiv: schlägt der Abruf fehl
-  // (Netzfehler, Dienst nicht erreichbar), zeigt die Karte trotzdem die
-  // Bozner Stationen statt komplett zu scheitern.
-  let openWindMapStations: WindStation[] = [];
-  try {
-    openWindMapStations = await fetchOpenWindMapStations();
-  } catch (err) {
-    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
-  }
 
   let stations = [...bolzanoStations, ...openWindMapStations].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),

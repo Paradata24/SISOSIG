@@ -30,6 +30,21 @@ export default function RootLayout({
       lang="de"
       className={`dark ${barlowSemiCondensed.variable} h-full antialiased`}
     >
+      <head>
+        {/*
+          Die Kartenkacheln sind der mit Abstand größte Teil dessen, was beim
+          Öffnen der Seite geladen wird — sie starten aber erst, wenn die
+          Karten-Bibliothek fertig geladen ist. Mit diesen Zeilen baut der
+          Browser die Verbindung zu den Kachel-Servern schon VORHER auf
+          (DNS-Auflösung + Verschlüsselungs-Handschlag), parallel zum Laden
+          des JavaScripts. Die ersten Kacheln erscheinen dadurch spürbar
+          früher, vor allem im Mobilfunknetz.
+          Reihenfolge = Reliefkarte (Standardansicht) zuerst.
+        */}
+        <link rel="preconnect" href="https://server.arcgisonline.com" />
+        <link rel="preconnect" href="https://basemaps.cartocdn.com" />
+        <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
