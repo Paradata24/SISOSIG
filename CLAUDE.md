@@ -63,7 +63,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev          # dev server (Turbopack), http://localhost:3000
+npm run dev          # dev server (Next 16 → Turbopack), http://localhost:3000
 npm run build         # production build (also type-checks)
 npm run lint          # eslint
 npx tsc --noEmit       # type-check only, faster than a full build
@@ -103,15 +103,75 @@ Supabase.
    outage can't stick for 60s. The `stale` flag is still computed against
    the current time on every actual route run; ≤60s-old cached readings are
    irrelevant against the 2h staleness threshold. See README section
-   "Zwischenspeicherung (Caching)". The three upstream fetches (`/sensors`,
+   "Zwischenspeicherung (Caching)". The response is sorted by station name;
+   an optional `?station=CODE1,CODE2` narrows it down (for testing/debugging,
+   works with `pioupiou-…` codes too). The three upstream fetches (`/sensors`,
    `/stations`, Pioupiou) are independent and run **in parallel** via one
    `Promise.all` over three small helpers that never reject (`fetchSensors`,
    `fetchStationMeta`, `fetchOpenWindMapSafely`) — don't serialize them back
    into sequential `await`s, that made a cache-miss run cost the sum of all
-   three. Output `lat`/`lng` are rounded to 5 decimals (~1 m) by `round5()`.
-2. `src/components/WindMap.tsx` (client component) polls `/api/wind` every
-   5 minutes and renders one marker per station: a rotating SVG arrow
-   colored by speed on a **continuous gradient** (originally a 6-step scale
+   three. Output `lat`/`lng` are rounded to 5 decimals (~1 m) by `round5()`
+   (same in `src/lib/pioupiou.ts`).
+2. `src/app/page.tsx` → `src/components/WindApp.tsx` → `WindMapLoader.tsx` →
+   `src/components/WindMap.tsx` — the client UI, in that order.
+   `page.tsx` is a thin Server Component: page shell (`h-dvh` flex column),
+   `<WindApp />` and the OpenWindMap credit footer.
+   **`WindApp.tsx`** draws the title bar ("Should I stay or should I go") and,
+   at its right edge, a square hamburger button that opens a popover menu
+   holding **both** settings: **"Karte"** (base layer — `Relief (Grau)` = Esri
+   hillshade + CARTO place-name overlay, the default, vs. `Standard` OSM tiles)
+   and **"Stationen"** (station filter — `Alle`, `>2000 m`, `>3000 m`,
+   `Windanzeiger`, mutually exclusive). Both values live as state here, not
+   inside `WindMap`, and are handed down as props (`BaseLayer` /
+   `StationFilter`, typed in `src/lib/wind.ts` together with the altitude
+   thresholds so menu labels and filter logic can't drift apart). Leaflet's own
+   `LayersControl` and the former top-left `StationFilterToggle` are gone —
+   everything is that one menu now, and the map runs with
+   `zoomControl={false}`. The popover closes on a `pointerdown` outside it
+   (covers mouse and touch); its buttons are deliberately square (no rounded
+   corners), matching the menu button.
+   The **"Windanzeiger"** filter shows only the curated list of stations the
+   owner picked — `WINDANZEIGER_STATION_NAMES`/`isWindanzeigerStation` in
+   `src/lib/wind.ts`, matched by name, accent/umlaut- and whitespace-insensitive
+   via `normalizeStationName`; currently Rittner Horn, Schöntaufspitze, Wilder
+   Freiger, Lengspitze, Piz Pisciadù, Plose, Pfelders Rau(h)joch (both
+   spellings are listed because the "h" is not normalized away), Graun
+   Elferspitze, Pfunders Dannelspitz. Add a station there.
+   **`WindMap.tsx`** (client component) polls `/api/wind` every **3 minutes**
+   (`POLL_INTERVAL_MS`, raised from 90s at the owner's request since stations
+   only measure every 5-10 min) and additionally refetches as soon as the tab
+   becomes visible again (`visibilitychange`, e.g. phone unlocked) — that
+   refresh, not the interval, is what makes it feel live, so don't lower the
+   interval again to "fix" freshness. The interval also **skips fetching
+   entirely while `document.visibilityState === "hidden"`**, so a
+   backgrounded tab costs no mobile data. A failed
+   *background* refresh keeps the last known markers on the map — only the very
+   first load may replace them with an error banner. It renders one marker per
+   station: a rotating SVG arrow whose **fill = mean wind** and **stroke =
+   gust** (both through the same color scale), with the rounded
+   "mean / gust" numbers underneath (white text halo so they stay legible on any
+   tile). The arrow direction is snapped to the 8 main compass points
+   (`snapDirectionTo8`) and turned by +180°, so it points where the wind blows
+   *to*. Marker size scales continuously with the zoom level (`getIconScale`,
+   with `MIN_ICON_SCALE` as floor so the map doesn't drown in arrows when zoomed
+   out) instead of using a fixed pixel size. Clicking a marker opens the
+   Verlaufsbalken and draws a black `CircleMarker` ring around that station
+   (radius covers arrow *and* its number label); the panel reads its station
+   from `stations` by code on every render, so the "Stand" timestamp keeps
+   updating with each background refresh. A GeoJSON overlay of the national
+   borders (`src/data/staatsgrenzen.json`, `STAATSGRENZE_STYLE`) and the
+   "Zuletzt aktualisiert" badge (bottom left) complete the map.
+   **Marker rendering is memoized and must stay that way**: react-leaflet
+   calls `marker.setIcon()` whenever the `icon` prop is a new object, and
+   Leaflet's `DivIcon` then re-parses that marker's `innerHTML`. Building
+   icons inline meant doing that for all ~130 markers on *every* poll.
+   `getMarkerIcon()` therefore hands back the *same* `L.DivIcon` instance for
+   an unchanged (stale | direction, speed, gust, scale) tuple, from a
+   module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT`. The click
+   handlers are memoized the same way (`handlersByCode`, keyed on the joined
+   station codes), which is why `WindMarkers`' `onSelect` takes a plain
+   `stationCode: string` rather than the whole station object.
+   The arrow color comes from a **continuous gradient** (originally a 6-step scale
    agreed with the project owner via a legend screenshot, later turned into a
    smooth per-km/h blend at the owner's request — see `WIND_COLOR_SCALE`/
    `getWindColor` in `src/lib/wind.ts`). The scale's anchor points: flat light
@@ -131,42 +191,18 @@ Supabase.
    Stations
    whose `stale` flag is set (missing reading or measurement older than 2h)
    get a gray dot instead. There is no on-map legend overlay any more (the
-   former `WindLegend.tsx` was removed). It's loaded via `WindMapLoader.tsx`
-   (`next/dynamic`, `ssr: false`) because Leaflet needs `window` — Next 16
-   no longer allows `ssr: false` directly inside a Server Component, so the
-   dynamic import must live in its own `"use client"` wrapper. The map
-   itself offers two base layers via Leaflet's `LayersControl` (Standard
-   OSM tiles vs. an Esri hillshade + CARTO place-name overlay); markers are
-   rendered outside the base-layer group so they stay visible on both. Tile
-   URLs deliberately carry **no `{s}.` subdomain sharding** — that's an
-   HTTP/1 workaround that under HTTP/2 only buys extra TLS handshakes, and
-   OSM's tile policy now advises against it; don't add it back. `layout.tsx`
-   carries `preconnect`/`dns-prefetch` hints for the tile hosts so the
-   handshake happens while the JS is still downloading.
-   **Marker rendering is memoized and must stay that way**: react-leaflet
-   calls `marker.setIcon()` whenever the `icon` prop is a new object, which
-   makes Leaflet rebuild that marker's whole DOM node. Since `/api/wind` is
-   polled on `POLL_INTERVAL_MS` (3 min — raised from 90s at the owner's
-   request, since stations only measure every 5-10 min; the
-   `visibilitychange` refresh below is what keeps it feeling live, so don't
-   lower it again to "fix" freshness), naively building icons inline rebuilt all ~130 markers
-   every poll. `getMarkerIcon()` therefore hands back the *same* `L.DivIcon`
-   instance for an unchanged (direction, speed, gust, scale) tuple, from a
-   module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT`. The click
-   handlers are memoized the same way (`handlersByCode`, keyed on the joined
-   station codes), which is why `WindMarkers`' `onSelect` takes a plain
-   `stationCode: string` rather than the whole station object. The poll also
-   skips fetching entirely while `document.visibilityState === "hidden"` —
-   the existing `visibilitychange` listener refreshes on return, so nothing
-   is ever shown stale.
-   Top-left `StationFilterToggle` offers three mutually-exclusive station
-   filters: **"Windanzeiger"** (shows only the curated list of stations the
-   owner picked — `WINDANZEIGER_STATION_NAMES`/`isWindanzeigerStation` in
-   `src/lib/wind.ts`, matched by name — accent/umlaut- and whitespace-insensitive
-   via `normalizeStationName`; currently Rittner Horn, Schöntaufspitze, Wilder
-   Freiger, Lengspitze, Piz Pisciadù, Plose, Pfelders Rau(h)joch — both
-   spellings are listed because the "h" is not normalized away —, Graun
-   Elferspitze, Pfunders Dannelspitz; add a station there) and the two altitude thresholds (>2000 m / >3000 m).
+   former `WindLegend.tsx` was removed). `WindMap` is loaded through
+   `WindMapLoader.tsx` (`next/dynamic`, `ssr: false`) because Leaflet needs
+   `window` — Next 16 no longer allows `ssr: false` directly inside a Server
+   Component, so the dynamic import lives in its own `"use client"` wrapper
+   that just passes the two props through. Switching the base layer swaps the
+   `<TileLayer>`s (each with a `key`, so the old tiles and their attribution
+   are fully removed); the markers are rendered outside that switch and stay
+   visible on both. Tile URLs deliberately carry **no `{s}.` subdomain
+   sharding** — that's an HTTP/1 workaround that under HTTP/2 only buys extra
+   TLS handshakes, and OSM's tile policy now advises against it; don't add it
+   back. `layout.tsx` carries `preconnect`/`dns-prefetch` hints for the tile
+   hosts so the handshake happens while the JS is still downloading.
 3. `src/app/api/collect/route.ts` — a **POST** API route triggered by
    **Supabase Cron** (formerly a GitHub Actions workflow, now removed),
    configured for **every 10 minutes** and covering both sources (Bozen +
@@ -204,7 +240,11 @@ Supabase.
    project owner's reference name for this feature; use it when they ask to
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
    the screen, opened by clicking a station marker in `WindMap.tsx` (the
-   marker's `click` handler calls `onSelect`, which sets `selectedStation`).
+   marker's `click` handler calls `onSelect`, which sets `selectedStationCode`);
+   closed via the X button or the Escape key. Its header line carries station
+   name, altitude, "Stand: <measurement time>" and the color legend ("weiss:
+   Messung · rot: Prognose (ICON-CH1)"), the footer the "Quelle:" link
+   (`SOURCE_INFO`).
    It is **code-split into its own chunk** (`next/dynamic` via
    `loadHistoryPanel` in `WindMap.tsx`) so it isn't part of the Leaflet chunk
    that gates the first map paint — many visitors never open it. `WindMap`
@@ -256,7 +296,9 @@ Supabase.
    decision, don't reintroduce `rx`) filled with its own `getWindColor(value)`**
    (`MEAS_BOX_*` constants; `contrastTextColor()` switches the digits to white
    on the dark red/black steps), and below those two rows the hour labels are
-   repeated. **The forecast numbers sit in exactly the same squares** — one
+   repeated. Measured numbers **on the full hour are bold**, so they stand out
+   from the 10-minute in-between values and line up visually with the (hourly)
+   forecast row. **The forecast numbers sit in exactly the same squares** — one
    shared `ValueBox` component draws measurement and forecast cells, so the two
    rows can't drift apart. Unlike the measurement row, the forecast row has
    **no arrow row of its own above it** — the direction arrow sits directly to
@@ -295,15 +337,21 @@ Supabase.
    Its labels are the wind-scale gradient's anchor points (`WIND_COLOR_SCALE[].label`
    — 0/5/15/20/25/30/35, plus `Y_MAX_KMH` on top), not round 10-steps, so each
    number sits exactly where the gradient is pinned to one of the agreed
-   colors; they follow the scale automatically if it's ever edited.
+   colors; they follow the scale automatically if it's ever edited. That axis
+   is **not** part of the SVG: it's a narrow HTML column to the right of the
+   scroll container, so the numbers stay put while the chart scrolls
+   horizontally. The gradient itself uses 55% opacity per anchor, except the
+   top black anchor, which carries a lower `bandOpacity` (0.3) in
+   `WIND_COLOR_SCALE` — otherwise the dark measurement curve would vanish in
+   the near-black top of the chart.
    Dashed **horizontal threshold lines** (`THRESHOLD_LINES_KMH` in the panel,
    currently 5/15/25 km/h) cross the chart so it's obvious at a glance when a
    curve passes those speeds; they're drawn above the gradient but below every
    curve, and carry no label of their own since the same numbers already sit on
    the y-axis. Add or remove a threshold by editing that one array.
    The
-   chart is wider than the viewport (horizontally scrollable, auto-scrolled
-   to "now" on open) — its horizontal density has **one knob**,
+   chart is wider than the viewport (horizontally scrollable; on open it jumps
+   to the right end, i.e. to "now") — its horizontal density has **one knob**,
    `MEAS_BOX_GAP_X` (the gap between two neighbouring value squares);
    `COLUMN_SPACING`, `MIN_LABEL_SPACING` and `HISTORY_PX_PER_HOUR` /
    `FUTURE_PX_PER_HOUR` all derive from it, so widening or tightening the whole
@@ -440,6 +488,11 @@ Two things are deliberately **excluded** from dark mode and must stay light
   arrows and value boxes are hard to see inside the dark Verlaufsbalken.
 The Verlaufsbalken legend therefore says "**weiss**: Messung" (not "schwarz"),
 because the measurement curve is drawn `dark:stroke-zinc-100`.
+
+**Font:** the whole site uses **Barlow Semi Condensed** (weights 400/700),
+loaded via `next/font/google` in `src/app/layout.tsx` and wired into Tailwind
+as `--font-sans` *and* `--font-mono` in `src/app/globals.css` — the narrow
+letterforms are what keep the Verlaufsbalken's value squares readable at 11 px.
 
 **Upstream API quirks worth knowing before touching `/api/wind` or
 `/api/collect`:**

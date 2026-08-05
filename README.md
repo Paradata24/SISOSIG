@@ -186,19 +186,23 @@ klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
 
 - eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
   „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
-- zwei Kurven — Mittelwind (dünn) und Böen (dick) — vor den Farbbändern
-  der Windstärke-Skala (dieselbe Skala wie die Windpfeile auf der Karte);
-  zwischen den beiden Kurven wird bewusst **keine** Fläche mehr gefüllt
-  (weder bei den Messwerten noch bei den Prognosen), damit die Farbbänder
-  im Hintergrund gut lesbar bleiben,
+- zwei weisse Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
+  dem Farbverlauf der Windstärke-Skala (dieselbe Skala wie die Windpfeile
+  auf der Karte); die Fläche **zwischen** den beiden Kurven ist
+  halbtransparent weiss gefüllt, damit man den Abstand zwischen Mittelwind
+  und Böen auf einen Blick sieht,
+- dasselbe Kurvenpaar noch einmal in **rot** für die ICON-CH1-Prognose,
+  inklusive roter Fläche dazwischen,
 - darunter eine Reihe Windrichtungs-Pfeile, einer je Messpunkt, jeweils in
   die Windrichtung gedreht und nach Windstärke eingefärbt,
 - darunter die Messwerte als Zahlen (oben Mittelwind, unten Böe), jede Zahl
-  in einem **eingefärbten Rechteck**: die Farbe entspricht der Windskala des
+  in einem **eingefärbten Quadrat**: die Farbe entspricht der Windskala des
   jeweiligen Werts, sodass sich die Windstärke schon an der Zahlenreihe
   ablesen lässt (Zahlen zu vollen Stunden sind fett),
-- ganz darunter noch einmal die Uhrzeiten, damit man die Zahlenreihen ohne
-  Blick nach ganz oben zeitlich einordnen kann.
+- darunter noch einmal die Uhrzeiten, damit man die Zahlenreihen ohne
+  Blick nach ganz oben zeitlich einordnen kann,
+- ganz unten die Prognosewerte (ICON-CH1) in denselben Quadraten, mit dem
+  Richtungspfeil links daneben.
 
 Das Diagramm ist breiter als der Bildschirm und lässt sich horizontal
 scrollen (Desktop und Handy); beim Öffnen steht es am rechten Rand
