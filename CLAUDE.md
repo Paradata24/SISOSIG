@@ -137,6 +137,21 @@ Supabase.
    Freiger, Lengspitze, Piz Pisciadù, Plose, Pfelders Rau(h)joch (both
    spellings are listed because the "h" is not normalized away), Graun
    Elferspitze, Pfunders Dannelspitz. Add a station there.
+   `WindApp` also owns the **Zeitbalken** state (see `TimeSlider.tsx` below):
+   `slots` (the 10-min grid from `buildTimelineSlots`, refreshed by a 60s
+   interval that idles while the tab is hidden), `selectedTime` (**the time,
+   not the slider index** — the slot list scrolls forward every 10 min, so an
+   index would silently drift; `null` = live), the lazily fetched
+   `TimelinePayload` and `ensureTimeline()`. The frame handed down to the map
+   is `buildTimelineFrame(timeline, useDeferredValue(clampedTime))` — the
+   `useDeferredValue` is what keeps the time label snappy while ~130 markers
+   redraw during a fast drag; don't remove it. `ensureTimeline` guards with two
+   **refs** (`timelineLoading`, `timelineFetchedAt`) rather than state on
+   purpose: during a drag it is called many times before React re-renders, and
+   a state value would still be the old one there (that bug caused three
+   parallel `/api/timeline` fetches). The out-of-range clamp
+   (`clampedTime`) is derived during render, not set in an effect — the
+   `react-hooks/set-state-in-effect` lint rule rejects the effect version.
    **`WindMap.tsx`** (client component) polls `/api/wind` every **3 minutes**
    (`POLL_INTERVAL_MS`, raised from 90s at the owner's request since stations
    only measure every 5-10 min) and additionally refetches as soon as the tab
@@ -166,14 +181,33 @@ Supabase.
    from `stations` by code on every render, so the "Stand" timestamp keeps
    updating with each background refresh. A GeoJSON overlay of the national
    borders (`src/data/staatsgrenzen.json`, `STAATSGRENZE_STYLE`) and the
-   "Zuletzt aktualisiert" badge (bottom left) complete the map.
+   "Zuletzt aktualisiert" badge (bottom left) complete the map. When the
+   Zeitbalken is off "jetzt" that badge is replaced by an **amber** "Verlauf:
+   HH:MM Uhr" one — the only on-map signal that the arrows aren't live, so
+   keep it visually distinct.
+   The `historyFrame` prop (from `WindApp` via `WindMapLoader`) is applied in
+   `displayStations`, a `useMemo` that runs **after** `visibleStations` (filter
+   first, then replace — a few dozen objects per step instead of ~130). It
+   swaps only `direction`/`speedKmh`/`gustKmh`/`timestamp` and recomputes
+   `stale` with the same rule as `/api/wind` (`direction === null ||
+   speedKmh === null`). **It must never add, drop or reorder stations**: a
+   station with no measurement at that slot becomes a gray dot, it is *not*
+   filtered out, because `handlersByCode` below is keyed on the joined station
+   codes and would otherwise rebuild all ~130 Leaflet listeners on every
+   10-minute step. `selectedStation` (for the Verlaufsbalken) deliberately
+   still comes from the live `stations` list, so the panel's "Stand:" stays
+   real and scrubbing triggers no refetch there.
    **Marker rendering is memoized and must stay that way**: react-leaflet
    calls `marker.setIcon()` whenever the `icon` prop is a new object, and
    Leaflet's `DivIcon` then re-parses that marker's `innerHTML`. Building
    icons inline meant doing that for all ~130 markers on *every* poll.
    `getMarkerIcon()` therefore hands back the *same* `L.DivIcon` instance for
    an unchanged (stale | direction, speed, gust, scale) tuple, from a
-   module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT`. The click
+   module-level LRU `iconCache` capped at `ICON_CACHE_LIMIT` (800). The key
+   uses the **displayed** values — `snapDirectionTo8(direction)` and rounded
+   speed/gust — not the raw ones: the icon depends on nothing else, and with
+   raw values like `137.4°` scrubbing the Zeitbalken would practically never
+   hit the cache. The click
    handlers are memoized the same way (`handlersByCode`, keyed on the joined
    station codes), which is why `WindMarkers`' `onSelect` takes a plain
    `stationCode: string` rather than the whole station object.
@@ -224,7 +258,9 @@ Supabase.
    *writes* to Supabase rather than serving the map. Existing databases
    created before the `source` column existed need
    `supabase/add-source-column.sql` run once (non-destructive `alter table
-   ... add column if not exists`).
+   ... add column if not exists`), and `supabase/add-measured-at-index.sql`
+   for the index `/api/timeline` needs (also non-destructive; both are already
+   in `schema.sql` for fresh installs).
 4. `src/app/api/history/route.ts` — reads the last `HISTORY_HOURS` (12h) for one
    station (`?station=<SCODE>`) straight from Supabase via the REST API (no
    `@supabase/supabase-js` dependency, just `fetch`). `/api/forecast` mirrors it
@@ -241,10 +277,41 @@ Supabase.
    `s-maxage=120` for the hourly-refreshed forecast) so clicking back and
    forth between stations doesn't re-query Supabase every time; error
    responses deliberately get no header, same convention as `/api/wind`.
+4b. `src/app/api/timeline/route.ts` — the same 12h window but for **all**
+   stations at once, feeding the Zeitbalken. Returns a compact **columnar**
+   `TimelinePayload` (typed in `src/lib/wind.ts`): one shared `times` array
+   plus, per station code, three parallel arrays `d`/`s`/`g` with `null` for
+   missing slots. Row-shaped JSON for ~130 stations × 73 slots would be several
+   hundred KB; this is ~95 KB raw / ~15–25 KB compressed. Values are rounded to
+   whole numbers — lossless for the map, which rounds anyway.
+   Three things here are load-bearing and easy to break:
+   (a) `export const dynamic = "force-dynamic"` — the route reads *nothing*
+   from the request but its output depends on `Date.now()`, so without it Next
+   is free to prerender it at build time and serve a frozen window;
+   (b) the paging loop advances by the **actual** `page.length` and stops only
+   on an **empty** page. Checking "page shorter than PAGE_SIZE" silently
+   truncates the history as soon as Supabase's "Max rows" setting is below
+   `PAGE_SIZE` (verified: with a 500-row cap the loop still returns all 9392
+   rows). `MAX_PAGES` (30) is the runaway guard and sets `truncated` in the
+   payload;
+   (c) sorting is `measured_at.asc,station_code.asc`, which makes offset paging
+   safe against concurrent writes — `/api/collect` inserts always carry the
+   largest `measured_at` and append at the end, and its retention delete only
+   touches rows outside the `gte` filter. Sorting `desc` would break that.
+   Slot assignment reuses `snapToGrid` and the same "values beat empties, then
+   nearest wins" rule as `snapPointsToGrid`. Same `Cache-Control` convention as
+   `/api/history` (success only). Needs the `measured_at` index, see 3.
 5. `src/components/WindHistoryPanel.tsx` — the **"Verlaufsbalken"** (the
    project owner's reference name for this feature; use it when they ask to
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
-   the screen, opened by clicking a station marker in `WindMap.tsx` (the
+   the **map area** — `absolute`, not `fixed`, because it lives inside
+   `WindMap`'s `relative h-full w-full` wrapper and must leave the Zeitbalken
+   and the OpenWindMap credit footer visible below it (the footer is a licence
+   requirement, so don't turn this back into `fixed`; the dynamic loading
+   skeleton in `WindMap.tsx` carries the same class, and the former
+   `pb-[env(safe-area-inset-bottom)]` was dropped with the switch since the
+   panel no longer touches the screen edge).
+   Opened by clicking a station marker in `WindMap.tsx` (the
    marker's `click` handler calls `onSelect`, which sets `selectedStationCode`);
    closed via the X button or the Escape key. Its header line carries station
    name, altitude, "Stand: <measurement time>" and the color legend ("weiss:
@@ -465,6 +532,39 @@ Supabase.
    sensors fetch in `/api/wind`); this is harmless for `/api/collect` too —
    it runs every 10 min and stores the station's own measurement timestamp,
    with the upsert absorbing duplicates.
+8. `src/components/TimeSlider.tsx` — the **"Zeitbalken"** (the owner's
+   reference name; use it when they ask to change "den Zeitbalken"). Its own
+   fixed-height row in the page flex column, between `<main>` (the map) and the
+   footer — deliberately **not** an overlay on the map: it must not cover the
+   OpenWindMap credit, and sitting outside the Leaflet container means Leaflet's
+   drag/touch handlers can't swallow the slider gesture. Dragging it left makes
+   the map show the recorded measurements of that moment instead of the live
+   ones, in 10-minute steps over `HISTORY_HOURS`.
+   It is a plain `<input type="range">` on purpose (reliable touch dragging,
+   arrow keys = exactly one 10-min step, Home/End, no custom pointer math),
+   styled via `.time-slider` in `globals.css`; `THUMB_PX` (22) is duplicated
+   there and in the component because the hour ticks are inset by half a thumb
+   to line up with it. The far-right position **is** "jetzt", so dragging back
+   to the end returns to live with no extra tap; the "Jetzt" button does the
+   same from anywhere. Hour labels are the bare padded hour — `de-DE`
+   `toLocaleTimeString({hour:"2-digit"})` yields "08 Uhr", far too wide for the
+   spacing on a phone. The slot list comes from the browser clock alone, so the
+   bar renders at first paint, before any data exists.
+9. Shared 10-minute grid helpers in `src/lib/wind.ts`: `TIMELINE_STEP_MINUTES`,
+   `GRID_MS`, `TIMELINE_SLOT_COUNT`, `snapToGrid`, `buildTimelineSlots`,
+   `buildTimelineFrame` and the `Timeline*` types. `GRID_MS`/`snapToGrid` used
+   to be module-private in `WindHistoryPanel.tsx` and moved here so panel,
+   `/api/timeline` and the Zeitbalken share one grid; the panel's
+   `LABEL_INTERVAL_MIN` now derives from `TIMELINE_STEP_MINUTES` (same value,
+   so its column spacing is unchanged) instead of the other way round.
+   `snapPointsToGrid` stayed in the panel on purpose — it produces *display*
+   points with `tActual` for tooltips, while the route writes straight into
+   columnar arrays and would only allocate ~9400 throwaway objects for nothing.
+   `snapToGrid` anchors on the full **local** hour; server (UTC on Vercel) and
+   visitors (CET/CEST) differ by whole hours, so both land on the identical
+   lattice — and `buildTimelineFrame` looks slots up by nearest absolute time
+   within half a step anyway, so the payload's `times` are authoritative rather
+   than the browser's clock.
 
 **Dunkelmodus (dark mode):** the site runs permanently in dark mode, on the
 owner's request — never depending on the visitor's OS setting. Two pieces make

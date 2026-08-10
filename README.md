@@ -114,6 +114,21 @@ einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
 bei einer komplett neuen Installation über `schema.sql` ist das nicht
 nötig, die Spalte ist dort schon enthalten).
 
+**Ebenfalls einmalig bei einer bestehenden Datenbank:**
+`supabase/add-measured-at-index.sql` ausführen. Das legt nur einen
+zusätzlichen Index an (nichts wird gelöscht oder verändert) und macht die
+Abfrage des Zeitbalkens deutlich schneller. Schritt für Schritt:
+
+1. [supabase.com](https://supabase.com) öffnen und beim Projekt anmelden.
+2. In der linken Leiste auf **SQL Editor** klicken.
+3. Oben auf **New query** klicken.
+4. Den kompletten Inhalt der Datei `supabase/add-measured-at-index.sql`
+   hineinkopieren.
+5. Rechts unten auf **Run** klicken. Es sollte
+   *„Success. No rows returned"* erscheinen.
+
+Ein zweites Ausführen schadet nicht (`if not exists`).
+
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
 wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
@@ -130,6 +145,8 @@ mitschicken.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
 letzten 12 Stunden einer Station (für den Verlaufsbalken).
+`/api/timeline` liefert dieselben 12 Stunden für **alle** Stationen
+gemeinsam (für den Zeitbalken unter der Karte, siehe unten).
 
 ### Benötigte Zugangsdaten
 
@@ -138,8 +155,8 @@ Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
 
 | Variable | Wert | Wofür |
 | --- | --- | --- |
-| `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect` und `/api/history` |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect` und `/api/history` |
+| `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 
 Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
@@ -246,6 +263,39 @@ Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
 
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
+
+## Zeitbalken (Windhistorie auf der Karte)
+
+Unter der Karte, über der Fußzeile, sitzt ein **Zeitbalken**. Schiebt man ihn
+nach links, zeigen die Pfeile **aller** Stationen nicht mehr die aktuellen
+Werte, sondern die aufgezeichneten Messwerte zu diesem Zeitpunkt — man kann
+also durch den Windverlauf der ganzen Karte blättern und z. B. sehen, wie der
+Talwind über den Vormittag aufgezogen ist.
+
+- **Schrittweite 10 Minuten**, genau der Takt, in dem `/api/collect` die Werte
+  sammelt. Ein Druck auf die Pfeiltasten links/rechts entspricht einem Schritt.
+- **Zeitraum: die letzten 12 Stunden** (dieselben `HISTORY_HOURS` wie beim
+  Verlaufsbalken). Weiter zurück geht es bewusst nicht, auch wenn die Datenbank
+  2 Tage aufbewahrt.
+- Ganz rechts steht **„jetzt"** — dort zeigt die Karte wieder die Live-Werte.
+  Der Knopf **„Jetzt"** springt von überall dorthin zurück.
+- Zeigt die Karte einen vergangenen Zeitpunkt, wird die Plakette unten links
+  **bernsteinfarben** („Verlauf: 14:40 Uhr"), damit man das nicht verwechselt.
+- Stationen, für die zu diesem Zeitpunkt keine Messung gespeichert ist,
+  erscheinen als **grauer Punkt** — genauso wie eine Station, die gerade
+  ausgefallen ist. Es wird nichts dazugerechnet oder geschätzt.
+- Ist der Verlaufsbalken einer Station geöffnet, bleibt der Zeitbalken
+  bedienbar; eine **senkrechte bernsteinfarbene Linie** im Diagramm zeigt, wo
+  man gerade steht.
+
+**Datenquelle:** `src/app/api/timeline/route.ts` (Komponente:
+`src/components/TimeSlider.tsx`). Die Route liest die Tabelle
+`wind_measurements` seitenweise und liefert ein kompaktes Spaltenformat — eine
+gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund
+15–25 KB. Diese Daten werden **erst geholt, wenn der Balken das erste Mal
+angefasst wird**: wer nur die Live-Karte anschaut, lädt sie gar nicht.
+
+> **Bezugsname für Änderungswünsche: „Zeitbalken".**
 
 ## Windprognosen ICON-CH1 & ICON-D2 (Supabase Edge Function)
 

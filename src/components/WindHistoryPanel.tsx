@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   FUTURE_MARGIN_HOURS,
   getWindColor,
+  GRID_MS,
   HISTORY_HOURS,
   snapDirectionTo8,
+  snapToGrid,
   SOURCE_INFO,
+  TIMELINE_STEP_MINUTES,
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
@@ -94,8 +97,10 @@ const COLUMN_SPACING = MEAS_BOX_W + MEAS_BOX_GAP_X;
 // 10 min auseinanderliegende Werte sicher darüber liegen.
 const MIN_LABEL_SPACING = COLUMN_SPACING - 2;
 // Gewünschte Anzeige-Dichte: zu jeder vollen Stunde eine Messung, dazwischen
-// alle 10 Minuten eine — also 6 Werte pro Stunde.
-const LABEL_INTERVAL_MIN = 10;
+// alle 10 Minuten eine — also 6 Werte pro Stunde. Kommt aus src/lib/wind.ts,
+// damit die Spaltenbreite hier und das Raster des Zeitbalkens unter der Karte
+// (gleiche Konstante) nicht auseinanderlaufen können.
+const LABEL_INTERVAL_MIN = TIMELINE_STEP_MINUTES;
 // Breite pro Stunde für den Geschichts-Teil (jetzt − 12h bis jetzt). FEST (nicht
 // datenabhängig) so gewählt, dass die 6 Messungen pro Stunde (alle 10 min) mit
 // genau dem Spaltenabstand nebeneinander Platz haben.
@@ -239,7 +244,8 @@ interface Point {
 // Fenster eine Messung, bleibt die Lücke sichtbar — es wird nichts erfunden.
 // Rasterweite = die ohnehin gewünschte Anzeige-Dichte (LABEL_INTERVAL_MIN,
 // 10 min), damit Raster und Spaltenbreite nicht auseinanderlaufen können.
-const GRID_MS = LABEL_INTERVAL_MIN * 60 * 1000;
+// GRID_MS und snapToGrid stehen seit dem Zeitbalken in src/lib/wind.ts, weil
+// die Karte dasselbe Raster braucht.
 // Größter Abstand, über den die 50%-Fläche zwischen den Messkurven noch
 // durchgezogen wird: genau EIN Rasterschritt. Fehlt ein 10-Minuten-Wert,
 // entsteht dort also eine echte Lücke in der Fläche (Wunsch des
@@ -247,16 +253,6 @@ const GRID_MS = LABEL_INTERVAL_MIN * 60 * 1000;
 // Nebeneffekt: auch ein einzelner ausgefallener Sammel-Lauf (/api/collect)
 // wird jetzt als schmale Lücke sichtbar.
 const BAND_GAP_MS = GRID_MS;
-
-function snapToGrid(t: number): number {
-  // Bezugspunkt ist die volle LOKALE Stunde (nicht die Epoche), damit das
-  // Raster auch in Zeitzonen mit halbstündigem Versatz exakt auf :00/:10/:20
-  // fällt.
-  const hourStart = new Date(t);
-  hourStart.setMinutes(0, 0, 0);
-  const base = hourStart.getTime();
-  return base + Math.round((t - base) / GRID_MS) * GRID_MS;
-}
 
 function snapPointsToGrid(points: Point[]): Point[] {
   const bySlot = new Map<number, { point: Point; dist: number; hasData: boolean }>();
@@ -458,9 +454,15 @@ function ValueBox({
 export default function WindHistoryPanel({
   station,
   onClose,
+  markerTime = null,
 }: {
   station: WindStation;
   onClose: () => void;
+  /**
+   * Im Zeitbalken unter der Karte gewählter Zeitpunkt. Ist er gesetzt, zeigt
+   * eine senkrechte Linie im Diagramm, wo man gerade steht. null = live.
+   */
+  markerTime?: number | null;
 }) {
   // Ergebnis des letzten Ladevorgangs, inklusive Stationscode. Solange der
   // Code nicht zur aktuell gewählten Station passt, gilt das Panel als
@@ -478,6 +480,10 @@ export default function WindHistoryPanel({
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
   // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
   const [now, setNow] = useState(() => Date.now());
+  // Beim Ziehen am Zeitbalken kommen sehr viele Zwischenwerte an. Das Diagramm
+  // darf dabei ruhig etwas hinterherhinken — Hauptsache, der Balken selbst
+  // bleibt flüssig.
+  const deferredMarkerTime = useDeferredValue(markerTime);
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
@@ -755,6 +761,7 @@ export default function WindHistoryPanel({
       hourlyPointIndices,
       arrowIndices,
       x,
+      minT,
       hasData,
       svgWidth,
       bandWidth,
@@ -779,6 +786,7 @@ export default function WindHistoryPanel({
     hourlyPointIndices,
     arrowIndices,
     x,
+    minT,
     hasData,
     svgWidth,
     bandWidth,
@@ -795,10 +803,14 @@ export default function WindHistoryPanel({
     forecastByT,
   } = chart;
 
+  // absolute (nicht fixed): Das Panel sitzt am unteren Rand des KARTENbereichs,
+  // also über dem Zeitbalken und der Fußzeile — beide bleiben sichtbar und
+  // bedienbar. (Der frühere Innenabstand für den iPhone-Balken ganz unten
+  // entfällt damit, weil das Panel den Bildschirmrand nicht mehr berührt.)
   return (
     <section
       aria-label={`Windverlauf ${station.stationName}`}
-      className="fixed inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900"
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -950,6 +962,20 @@ export default function WindHistoryPanel({
               >
                 jetzt
               </text>
+
+              {/* Zeitmarke: Steht der Zeitbalken unter der Karte nicht auf
+                  "jetzt", zeigt diese Linie, welchen Zeitpunkt die Karte
+                  gerade darstellt. */}
+              {deferredMarkerTime !== null && deferredMarkerTime >= minT && (
+                <line
+                  x1={x(deferredMarkerTime)}
+                  y1={chartTop}
+                  x2={x(deferredMarkerTime)}
+                  y2={chartBottom}
+                  className="stroke-amber-500"
+                  strokeWidth={2}
+                />
+              )}
 
               {/* Reihenfolge (Wunsch des Projektbesitzers): erst die beiden
                   Flächen, dann die beiden Kurvenpaare. Dadurch liegen die

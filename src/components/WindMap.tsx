@@ -20,6 +20,7 @@ import {
   VERY_HIGH_ALTITUDE_THRESHOLD_M,
   type BaseLayer,
   type StationFilter,
+  type TimelineFrame,
   type WindStation,
 } from "@/lib/wind";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
@@ -39,7 +40,7 @@ const loadHistoryPanel = () => import("@/components/WindHistoryPanel");
 const WindHistoryPanel = dynamic(loadHistoryPanel, {
   ssr: false,
   loading: () => (
-    <div className="fixed inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+    <div className="absolute inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
       Verlauf wird geladen…
     </div>
   ),
@@ -179,12 +180,23 @@ function createStaleIcon(scale: number) {
 // darüber hinaus fliegt jeweils das am längsten nicht benutzte Icon raus
 // (Map behält die Einfügereihenfolge, deshalb ist der erste Eintrag der
 // älteste).
-const ICON_CACHE_LIMIT = 400;
+// Beim Schieben des Zeitbalkens laufen deutlich mehr Zustände durch als beim
+// reinen Live-Betrieb (jeder 10-Minuten-Schritt bringt neue Werte), deshalb
+// etwas mehr Platz als früher (400).
+const ICON_CACHE_LIMIT = 800;
 const iconCache = new Map<string, L.DivIcon>();
 
+// Der Schlüssel benutzt bewusst die ANGEZEIGTEN Werte, nicht die rohen: das
+// Icon hängt nur von der auf 8 Himmelsrichtungen eingerasteten Richtung und
+// den gerundeten Zahlen ab (die Farben runden intern ebenfalls). Rohwerte wie
+// 137.4° oder 12.3 km/h wären dagegen fast immer verschieden — beim Schieben
+// des Zeitbalkens hätte der Zwischenspeicher dann praktisch nie einen Treffer.
 function iconCacheKey(station: WindStation, scale: number): string {
   if (station.stale) return `stale|${scale}`;
-  return `wind|${station.direction}|${station.speedKmh}|${station.gustKmh}|${scale}`;
+  const dir = station.direction === null ? "x" : snapDirectionTo8(station.direction);
+  const speed = station.speedKmh === null ? "x" : Math.round(station.speedKmh);
+  const gust = station.gustKmh === null ? "x" : Math.round(station.gustKmh);
+  return `wind|${dir}|${speed}|${gust}|${scale}`;
 }
 
 function getMarkerIcon(station: WindStation, scale: number): L.DivIcon {
@@ -298,9 +310,12 @@ function WindMarkers({
 export default function WindMap({
   baseLayer,
   stationFilter,
+  historyFrame,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
+  /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
+  historyFrame: TimelineFrame | null;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -321,6 +336,39 @@ export default function WindMap({
     if (altitudeThreshold === null) return stations;
     return stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
   }, [stations, stationFilter]);
+
+  // Zeitbalken: Steht er nicht auf "jetzt", werden bei den sichtbaren
+  // Stationen die MESSWERTE durch die des gewählten Zeitpunkts ersetzt —
+  // Name, Koordinaten und Reihenfolge bleiben unangetastet.
+  //
+  // Das ist wichtig und kein Zufall: Die Klick-Handler der Marker hängen an
+  // der reinen Liste der Stationscodes (siehe handlersByCode in WindMarkers).
+  // Würde man Stationen ohne Messwert einfach weglassen, müssten bei jedem
+  // Schritt alle ~130 Handler neu angemeldet werden. Stationen ohne Wert
+  // werden deshalb grau (stale) statt entfernt — genau wie im Live-Betrieb bei
+  // einem Sensorausfall.
+  //
+  // Erst filtern, dann ersetzen: bei aktivem Filter sind das ein paar Dutzend
+  // statt ~130 Objekte pro Schritt.
+  const displayStations = useMemo(() => {
+    if (!historyFrame) return visibleStations;
+    const timestamp = new Date(historyFrame.time).toISOString();
+    return visibleStations.map((station) => {
+      const value = historyFrame.values.get(station.stationCode);
+      const direction = value?.direction ?? null;
+      const speedKmh = value?.speedKmh ?? null;
+      const gustKmh = value?.gustKmh ?? null;
+      return {
+        ...station,
+        direction,
+        speedKmh,
+        gustKmh,
+        timestamp,
+        // Gleiche Regel wie bei den Live-Werten in /api/wind.
+        stale: direction === null || speedKmh === null,
+      };
+    });
+  }, [visibleStations, historyFrame]);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
@@ -450,13 +498,25 @@ export default function WindMap({
           interactive={false}
         />
         <WindMarkers
-          stations={visibleStations}
+          stations={displayStations}
           onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
           stationFilter={stationFilter}
         />
       </MapContainer>
-      {lastUpdated && (
+      {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, wird die
+          Plakette bernsteinfarben — damit auf einen Blick klar ist, dass hier
+          NICHT die aktuellen Werte stehen. */}
+      {historyFrame ? (
+        <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-amber-100/95 px-2 py-1 text-xs font-semibold text-amber-900 shadow-md dark:bg-amber-900/85 dark:text-amber-50">
+          Verlauf:{" "}
+          {new Date(historyFrame.time).toLocaleTimeString("de-DE", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}{" "}
+          Uhr
+        </div>
+      ) : lastUpdated ? (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
           Zuletzt aktualisiert:{" "}
           {lastUpdated.toLocaleTimeString("de-DE", {
@@ -464,7 +524,7 @@ export default function WindMap({
             minute: "2-digit",
           })}
         </div>
-      )}
+      ) : null}
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}
@@ -474,6 +534,7 @@ export default function WindMap({
         <WindHistoryPanel
           station={selectedStation}
           onClose={() => setSelectedStationCode(null)}
+          markerTime={historyFrame?.time ?? null}
         />
       )}
     </div>
