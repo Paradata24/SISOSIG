@@ -43,6 +43,121 @@ export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
+ * Takt der Messwert-Aufzeichnung (/api/collect läuft alle 10 Minuten) und
+ * damit auch die Schrittweite des Zeitbalkens unter der Karte sowie die
+ * Spaltendichte im Verlaufsbalken. Steht hier zentral, damit Zeitbalken,
+ * /api/timeline und der Verlaufsbalken dasselbe Raster benutzen.
+ */
+export const TIMELINE_STEP_MINUTES = 10;
+export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
+/** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
+export const TIMELINE_SLOT_COUNT =
+  HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
+
+/**
+ * Rastet einen Zeitpunkt auf das 10-Minuten-Raster ein.
+ * Bezugspunkt ist die volle LOKALE Stunde (nicht die Epoche), damit das
+ * Raster auch in Zeitzonen mit halbstündigem Versatz exakt auf :00/:10/:20
+ * fällt.
+ */
+export function snapToGrid(t: number): number {
+  const hourStart = new Date(t);
+  hourStart.setMinutes(0, 0, 0);
+  const base = hourStart.getTime();
+  return base + Math.round((t - base) / GRID_MS) * GRID_MS;
+}
+
+/**
+ * Die Rasterzeitpunkte des Zeitbalkens: aufsteigend, der LETZTE Eintrag ist
+ * "jetzt" (auf das Raster eingerastet), der erste liegt HISTORY_HOURS davor.
+ * Hängt nur an der Uhr — der Balken kann also gezeichnet werden, bevor
+ * irgendwelche Daten geladen sind.
+ */
+export function buildTimelineSlots(now: number): number[] {
+  const end = snapToGrid(now);
+  return Array.from(
+    { length: TIMELINE_SLOT_COUNT },
+    (_, i) => end - (TIMELINE_SLOT_COUNT - 1 - i) * GRID_MS,
+  );
+}
+
+/** Messwerte EINER Station zu EINEM Rasterzeitpunkt (siehe TimelinePayload). */
+export interface TimelineValue {
+  direction: number | null;
+  speedKmh: number | null;
+  gustKmh: number | null;
+}
+
+/**
+ * Drei gleich lange Spalten, parallel zu TimelinePayload.times:
+ * d = Richtung (Grad), s = Mittelwind (km/h), g = Böe (km/h).
+ * null bedeutet: zu diesem Zeitpunkt keine Messung.
+ * Bewusst so kurz benannt — bei ~130 Stationen × 73 Zeitpunkten macht das
+ * im JSON einen spürbaren Unterschied.
+ */
+export interface TimelineSeries {
+  d: (number | null)[];
+  s: (number | null)[];
+  g: (number | null)[];
+}
+
+/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 12 h. */
+export interface TimelinePayload {
+  hours: number;
+  stepMinutes: number;
+  /** Jüngster Rasterzeitpunkt (= letzter Eintrag in times), Epoch-ms. */
+  generatedAt: number;
+  /** Rasterzeitpunkte (Epoch-ms), aufsteigend. */
+  times: number[];
+  /** Anzahl gelesener Datenbankzeilen — nur zur Fehlersuche. */
+  rows: number;
+  /** true, wenn die Seiten-Obergrenze griff (siehe /api/timeline). */
+  truncated: boolean;
+  stations: Record<string, TimelineSeries>;
+}
+
+/** Die Messwerte aller Stationen zu EINEM gewählten Zeitpunkt. */
+export interface TimelineFrame {
+  time: number;
+  values: Map<string, TimelineValue>;
+}
+
+/**
+ * Schneidet aus dem Spalten-Payload die Werte eines Zeitpunkts heraus.
+ * `time === null` bedeutet "live" — dann gibt es keinen Verlaufs-Ausschnitt.
+ *
+ * Maßgeblich ist die Zeitliste des SERVERS, nicht die des Browsers: gesucht
+ * wird der Rasterpunkt, der dem gewünschten Zeitpunkt am nächsten liegt
+ * (höchstens einen halben Schritt daneben). Weil die Zeiten ein gleichmäßiges
+ * Raster bilden, geht das ohne Suche direkt per Rechnung.
+ */
+export function buildTimelineFrame(
+  payload: TimelinePayload | null,
+  time: number | null,
+): TimelineFrame | null {
+  if (time === null) return null;
+  const values = new Map<string, TimelineValue>();
+  if (!payload || payload.times.length === 0) return { time, values };
+
+  const start = payload.times[0];
+  const idx = Math.round((time - start) / GRID_MS);
+  // Kein passender Rasterpunkt (z. B. Daten veraltet): bewusst ein LEERER
+  // Ausschnitt statt gar keiner — dann werden alle Stationen grau, statt
+  // heimlich wieder Live-Werte zu zeigen.
+  if (idx < 0 || idx >= payload.times.length) return { time, values };
+  if (Math.abs(payload.times[idx] - time) > GRID_MS / 2) return { time, values };
+
+  for (const [code, series] of Object.entries(payload.stations)) {
+    const direction = series.d[idx] ?? null;
+    const speedKmh = series.s[idx] ?? null;
+    const gustKmh = series.g[idx] ?? null;
+    if (direction === null && speedKmh === null && gustKmh === null) continue;
+    values.set(code, { direction, speedKmh, gustKmh });
+  }
+  return { time: payload.times[idx], values };
+}
+
+/**
  * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
  * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
  * diese Stationen an. Jeder Eintrag wird (klein geschrieben, ohne

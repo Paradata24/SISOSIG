@@ -1,23 +1,123 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  buildTimelineFrame,
+  buildTimelineSlots,
+  GRID_MS,
   HIGH_ALTITUDE_THRESHOLD_M,
   VERY_HIGH_ALTITUDE_THRESHOLD_M,
   type BaseLayer,
   type StationFilter,
+  type TimelinePayload,
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
+import TimeSlider, { type TimelineStatus } from "@/components/TimeSlider";
 
-// Titel-Balken + Karte. Der Menü-Button (3 Linien) sitzt ganz rechts im
-// Balken und öffnet ein Popup, in dem Kartenhintergrund und Stationsfilter
-// umgeschaltet werden. Der Zustand lebt hier (und nicht in WindMap), weil der
-// Balken und die Karte getrennte Bereiche der Seite sind.
+// Titel-Balken + Karte + Zeitbalken. Der Menü-Button (3 Linien) sitzt ganz
+// rechts im Titel-Balken und öffnet ein Popup, in dem Kartenhintergrund und
+// Stationsfilter umgeschaltet werden. Der Zustand lebt hier (und nicht in
+// WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
+// Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
+// gehört sein Zustand hierher.
 export default function WindApp() {
   const [baseLayer, setBaseLayer] = useState<BaseLayer>("relief");
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // --- Zeitbalken ---
+  // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
+  // Balken schon beim ersten Bildaufbau steht.
+  const [slots, setSlots] = useState<number[]>(() => buildTimelineSlots(Date.now()));
+  // Gespeichert wird der ZEITPUNKT, nicht die Position im Balken: die Slot-
+  // Liste wandert alle 10 Minuten weiter, über die Position würde ein einmal
+  // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
+  const [selectedTime, setSelectedTime] = useState<number | null>(null);
+  const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
+  const [timelineStatus, setTimelineStatus] = useState<TimelineStatus>("idle");
+  // Beide bewusst als ref und nicht als state: ensureTimeline wird beim
+  // schnellen Ziehen sehr oft hintereinander aufgerufen, teils noch bevor React
+  // ein Neuzeichnen hinter sich hat. Ein state-Wert wäre in diesen Aufrufen
+  // noch der alte — die Daten würden mehrfach geladen.
+  const timelineLoading = useRef(false);
+  const timelineFetchedAt = useRef(0);
+
+  // Die Slot-Liste alle 60 s nachziehen, damit "jetzt" auch bei einem lange
+  // offenen Tab wirklich jetzt ist. Neu gesetzt wird nur, wenn sich der
+  // jüngste Rasterpunkt geändert hat — sonst würde die Karte im Leerlauf
+  // ständig neu zeichnen. Im Hintergrund (Tab nicht sichtbar) passiert nichts,
+  // gleiche Regel wie beim Abrufen der Live-Werte in WindMap.
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === "hidden") return;
+      const next = buildTimelineSlots(Date.now());
+      setSlots((prev) =>
+        prev[prev.length - 1] === next[next.length - 1] ? prev : next,
+      );
+    };
+    const interval = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+
+  // Wandert der älteste Rasterpunkt über den gewählten Zeitpunkt hinweg, rückt
+  // die Auswahl mit — sonst stünde der Griff außerhalb des Balkens. Bewusst
+  // beim Rendern abgeleitet statt in einem Effekt nachgesetzt: das spart einen
+  // zusätzlichen Renderdurchlauf und kann nicht "hinterherhinken".
+  const clampedTime =
+    selectedTime !== null && selectedTime < slots[0] ? slots[0] : selectedTime;
+
+  // Die Verlaufsdaten werden BEWUSST erst beim ersten Anfassen des Balkens
+  // geholt, nicht schon beim Seitenaufruf: die meisten Besucher wollen nur die
+  // Live-Karte, und die rund 20 KB sollen sie nicht kosten. Danach wird nur
+  // nachgeladen, wenn der Datenstand älter als ein Rasterschritt ist.
+  const ensureTimeline = useCallback(async () => {
+    if (timelineLoading.current) return;
+    // Bereits geholt und noch keinen Rasterschritt alt: nichts zu tun.
+    if (timelineFetchedAt.current && Date.now() - timelineFetchedAt.current <= GRID_MS) {
+      return;
+    }
+    timelineLoading.current = true;
+    setTimelineStatus("loading");
+    try {
+      const res = await fetch("/api/timeline");
+      const data = await res.json();
+      if (!res.ok) {
+        setTimelineStatus("error");
+        return;
+      }
+      setTimeline(data as TimelinePayload);
+      setTimelineStatus("ready");
+      timelineFetchedAt.current = Date.now();
+    } catch {
+      setTimelineStatus("error");
+    } finally {
+      // Auch nach einem Fehlschlag wieder freigeben, damit ein zweites
+      // Anfassen des Balkens es erneut versucht (timelineFetchedAt bleibt in
+      // dem Fall auf 0, die Sperre oben greift also nicht).
+      timelineLoading.current = false;
+    }
+  }, []);
+
+  // Beim schnellen Ziehen feuert der Regler viele Male pro Sekunde. Mit
+  // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
+  // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
+  const deferredTime = useDeferredValue(clampedTime);
+  const historyFrame = useMemo(
+    () => buildTimelineFrame(timeline, deferredTime),
+    [timeline, deferredTime],
+  );
 
   // Popup schließen, sobald außerhalb von Button/Popup geklickt (oder auf dem
   // Handy getippt) wird. "pointerdown" deckt Maus und Touch gemeinsam ab.
@@ -136,9 +236,22 @@ export default function WindApp() {
           )}
         </div>
       </header>
-      <main className="flex-1">
-        <WindMapLoader baseLayer={baseLayer} stationFilter={stationFilter} />
+      <main className="min-h-0 flex-1">
+        <WindMapLoader
+          baseLayer={baseLayer}
+          stationFilter={stationFilter}
+          historyFrame={historyFrame}
+        />
       </main>
+      {/* Eigene Zeile UNTER der Karte und ÜBER der Fußzeile — die Fußzeile mit
+          dem OpenWindMap-Hinweis muss sichtbar bleiben (Lizenzbedingung). */}
+      <TimeSlider
+        slots={slots}
+        selectedTime={clampedTime}
+        onChange={setSelectedTime}
+        onEngage={ensureTimeline}
+        status={timelineStatus}
+      />
     </>
   );
 }

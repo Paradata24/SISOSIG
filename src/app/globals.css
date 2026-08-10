@@ -27,3 +27,71 @@ body {
   color: var(--foreground);
   font-family: var(--font-barlow-semi-condensed), Arial, Helvetica, sans-serif;
 }
+
+/* Schieberegler des Zeitbalkens unter der Karte (TimeSlider.tsx).
+   Browser bringen für <input type="range"> sehr unterschiedliche Standard-
+   Optiken mit, deshalb hier eine eigene: flache Schiene, großer runder Griff
+   (22 px — groß genug, um ihn am Handy sicher mit dem Finger zu treffen).
+   Die 22 px stehen als THUMB_PX auch in TimeSlider.tsx, damit die
+   Stundenstriche darunter genau unter dem Griff sitzen. */
+.time-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+  /* Beim Ziehen soll der Regler den Wert ändern und nicht die Seite scrollen. */
+  touch-action: none;
+}
+
+.time-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #d4d4d8; /* zinc-300 */
+}
+.dark .time-slider::-webkit-slider-runnable-track {
+  background: #3f3f46; /* zinc-700 */
+}
+.time-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #d4d4d8;
+}
+.dark .time-slider::-moz-range-track {
+  background: #3f3f46;
+}
+
+.time-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background: #059669; /* emerald-600, wie die aktiven Menüpunkte */
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  /* (22 px Griff − 6 px Schiene) / 2 = 8 px nach oben versetzen */
+  margin-top: -8px;
+}
+.time-slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background: #059669;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+/* Beim Bedienen mit der Tastatur muss sichtbar sein, dass der Regler
+   "dran" ist. Der Standard-Rahmen des Browsers legt sich als breiter weißer
+   Kasten um die ganze Schiene — deshalb hier ein eigener, schmaler Rahmen in
+   der Farbe des Griffs. Nur bei :focus-visible, also nicht nach einem
+   Mausklick oder einer Berührung. */
+.time-slider:focus {
+  outline: none;
+}
+.time-slider:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 1px;
+  border-radius: 4px;
+}
