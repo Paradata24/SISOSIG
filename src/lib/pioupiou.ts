@@ -60,6 +60,59 @@ interface PioupiouStation {
   };
 }
 
+// --- Stationshöhe aus dem Namen ---
+//
+// Die Pioupiou-API liefert KEINE Höhenangabe (anders als der Bozner Dienst mit
+// seinem Feld ALT). Die Betreiber schreiben die Höhe aber üblicherweise in den
+// Stationsnamen, z. B. "Kronplatz 2275m", "Vöran (1.200 m)" oder
+// "Meran 2000 - 1900 m ü. M.". Ohne diese Auswertung hätten alle Pioupiou-
+// Stationen die Höhe "unbekannt" und würden aus JEDEM Höhenfilter der Karte
+// herausfallen (siehe matchesStationFilter in wind.ts).
+//
+// Bewusst nur mit Einheit ("m", "mt", "meter", "metri", "m ü. M."): Eine blanke
+// Zahl im Namen wird NICHT als Höhe gelesen. Sonst würde z. B. der Ortsname
+// "Meran 2000" oder der Ersatzname "Pioupiou 1234" (bei Stationen ohne
+// hinterlegten Namen) als Höhenangabe missverstanden.
+const ALTITUDE_IN_NAME =
+  /(\d{1,4}(?:[.,]\d{3})?)\s*(?:m(?:t|eter|etri)?|m\s*ü\.?\s*m\.?)(?![\p{L}\d])/giu;
+
+// Plausibilitätsgrenzen für Südtirol: unter dem Etschtal (~200 m) und über dem
+// Ortler (3.905 m) liegt sicher keine Wetterstation. Was außerhalb liegt, ist
+// eher eine andere Zahl im Namen (z. B. eine Hausnummer) als eine Höhe.
+const MIN_PLAUSIBLE_ALTITUDE_M = 100;
+const MAX_PLAUSIBLE_ALTITUDE_M = 4000;
+
+/**
+ * Liest die Stationshöhe in Metern aus dem Stationsnamen, oder null, wenn dort
+ * keine (plausible) Höhenangabe steht.
+ *
+ * Erkannt werden u. a. "2275m", "2.275 m", "1200 mt", "1900 m ü. M.".
+ * Stehen mehrere Angaben im Namen, gilt die LETZTE — die Höhe steht
+ * erfahrungsgemäß am Ende, während vorne eher etwas wie "Sender 5m" o. ä.
+ * stehen kann.
+ */
+export function parseAltitudeFromName(name: string): number | null {
+  // lastIndex zurücksetzen: Der reguläre Ausdruck ist global (/g) und merkt
+  // sich sonst zwischen zwei Aufrufen, wo er stehen geblieben ist.
+  ALTITUDE_IN_NAME.lastIndex = 0;
+  let altitude: number | null = null;
+  let match: RegExpExecArray | null;
+  while ((match = ALTITUDE_IN_NAME.exec(name)) !== null) {
+    // Tausendertrennzeichen entfernen: "2.275"/"2,275" -> "2275". Es steht per
+    // regulärem Ausdruck immer vor genau drei Ziffern, kann also kein
+    // Dezimalkomma sein.
+    const value = Number(match[1].replace(/[.,]/g, ""));
+    if (
+      Number.isFinite(value) &&
+      value >= MIN_PLAUSIBLE_ALTITUDE_M &&
+      value <= MAX_PLAUSIBLE_ALTITUDE_M
+    ) {
+      altitude = value;
+    }
+  }
+  return altitude;
+}
+
 function inSouthTyrolBbox(lat: number, lng: number): boolean {
   return (
     lat >= SOUTH_TYROL_BBOX.latMin &&
@@ -137,12 +190,17 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
       Number.isNaN(measuredAt) ||
       now - measuredAt > STALE_AFTER_MS;
 
+    // Der Name bleibt unverändert stehen (die Höhe wird also nicht
+    // "herausgeschnitten") — so ist die Station auf der Karte und im
+    // Verlaufsbalken genauso beschriftet wie bei OpenWindMap selbst.
+    const stationName = s.meta?.name ?? `Pioupiou ${s.id}`;
+
     result.push({
       stationCode: `${CODE_PREFIX}${s.id}`,
-      stationName: s.meta?.name ?? `Pioupiou ${s.id}`,
+      stationName,
       lat: round5(loc.latitude),
       lng: round5(loc.longitude),
-      altitude: null,
+      altitude: parseAltitudeFromName(stationName),
       direction,
       speedKmh,
       gustKmh,

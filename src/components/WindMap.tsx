@@ -14,10 +14,8 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   getWindColor,
-  HIGH_ALTITUDE_THRESHOLD_M,
-  isWindanzeigerStation,
+  matchesStationFilter,
   snapDirectionTo8,
-  VERY_HIGH_ALTITUDE_THRESHOLD_M,
   type BaseLayer,
   type StationFilter,
   type TimelineFrame,
@@ -326,15 +324,11 @@ export default function WindMap({
   // useMemo verhindert, dass sie bei jedem Neuzeichnen (z. B. beim Zoomen)
   // erneut über alle ~130 Stationen läuft.
   const visibleStations = useMemo(() => {
-    const altitudeThreshold =
-      stationFilter === "veryHigh"
-        ? VERY_HIGH_ALTITUDE_THRESHOLD_M
-        : stationFilter === "high"
-          ? HIGH_ALTITUDE_THRESHOLD_M
-          : null;
-    if (stationFilter === "windanzeiger") return stations.filter(isWindanzeigerStation);
-    if (altitudeThreshold === null) return stations;
-    return stations.filter((s) => s.altitude !== null && s.altitude > altitudeThreshold);
+    // "Alle" braucht gar nicht erst durchlaufen zu werden — so bleibt auch die
+    // Liste selbst unverändert (gleiche Referenz), was ein unnötiges
+    // Neuzeichnen der Karte spart.
+    if (stationFilter === "all") return stations;
+    return stations.filter((s) => matchesStationFilter(s, stationFilter));
   }, [stations, stationFilter]);
 
   // Zeitbalken: Steht er nicht auf "jetzt", werden bei den sichtbaren

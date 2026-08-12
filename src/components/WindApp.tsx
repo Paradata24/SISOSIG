@@ -11,9 +11,9 @@ import {
 import {
   buildTimelineFrame,
   buildTimelineSlots,
+  getStationFilterLabel,
   GRID_MS,
-  HIGH_ALTITUDE_THRESHOLD_M,
-  VERY_HIGH_ALTITUDE_THRESHOLD_M,
+  STATION_FILTER_ORDER,
   type BaseLayer,
   type StationFilter,
   type TimelinePayload,
@@ -198,39 +198,22 @@ export default function WindApp() {
               <p className="mt-3 mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 Stationen
               </p>
+              {/* Die Schaltflächen werden aus der Filterliste in wind.ts
+                  erzeugt statt einzeln hingeschrieben: So bleiben Reihenfolge,
+                  Beschriftung ("Stationen <1.000m") und Filterlogik der Karte
+                  automatisch beisammen, wenn eine Höhenstufe dazukommt. */}
               <div className="flex flex-col gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setStationFilter("all")}
-                  aria-pressed={stationFilter === "all"}
-                  className={optionClass(stationFilter === "all")}
-                >
-                  Alle
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStationFilter("high")}
-                  aria-pressed={stationFilter === "high"}
-                  className={optionClass(stationFilter === "high")}
-                >
-                  Stationen &gt;{HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStationFilter("veryHigh")}
-                  aria-pressed={stationFilter === "veryHigh"}
-                  className={optionClass(stationFilter === "veryHigh")}
-                >
-                  Stationen &gt;{VERY_HIGH_ALTITUDE_THRESHOLD_M.toLocaleString("de-DE")}m
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStationFilter("windanzeiger")}
-                  aria-pressed={stationFilter === "windanzeiger"}
-                  className={optionClass(stationFilter === "windanzeiger")}
-                >
-                  Windanzeiger
-                </button>
+                {STATION_FILTER_ORDER.map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setStationFilter(filter)}
+                    aria-pressed={stationFilter === filter}
+                    className={optionClass(stationFilter === filter)}
+                  >
+                    {getStationFilterLabel(filter)}
+                  </button>
+                ))}
               </div>
             </div>
           )}

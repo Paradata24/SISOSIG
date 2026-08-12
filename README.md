@@ -446,6 +446,17 @@ Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert
   nachjustieren).
 - **Stationscodes:** `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie
   nicht mit den Bozner SCODEs kollidieren.
+- **Stationshöhe aus dem Namen:** Die Pioupiou-API liefert keine
+  Höhenangabe (der Bozner Dienst hat dafür das Feld `ALT`). Die Betreiber
+  schreiben die Höhe aber meist in den Stationsnamen, deshalb liest
+  `parseAltitudeFromName()` in `src/lib/pioupiou.ts` sie dort heraus —
+  erkannt werden z. B. „2275m", „2.275 m", „1200 mt", „1900 m ü. M.".
+  Ohne das fielen die Pioupiou-Stationen aus jedem Höhenfilter der Karte
+  heraus. **Nur mit Einheit:** eine blanke Zahl im Namen gilt nicht als
+  Höhe, sonst würde „Meran 2000" (Ortsname) oder „Pioupiou 1234"
+  (Ersatzname ohne hinterlegten Stationsnamen) falsch gelesen. Zusätzlich
+  muss der Wert zwischen 100 m und 4.000 m liegen. Der angezeigte Name
+  bleibt unverändert, die Höhe wird also nicht herausgeschnitten.
 - **Einheit:** Intern gilt für alle Quellen einheitlich **km/h** (wie bei
   den Bozner Stationen). Laut Pioupiou-API-Dokumentation liefert die API
   `wind_speed_avg`/`wind_speed_max` bereits in km/h, es findet also keine
