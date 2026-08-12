@@ -23,9 +23,10 @@ export type TimelineStatus = "idle" | "loading" | "ready" | "error";
 // Griff an den Enden genau um dieses Maß nach innen wandert — sonst stehen
 // die Striche nicht über "ihrem" Zeitpunkt.
 const THUMB_PX = 22;
-// Alle 3 Stunden eine Uhrzeit unter dem Balken. Auf einem Handy (~340 px
-// breit) würden 12 Beschriftungen ineinanderlaufen.
-const LABEL_EVERY_HOURS = 3;
+// Alle 2 Stunden eine Stundenzahl unter dem Balken, dazwischen nur ein Punkt.
+// Alle 12 zu beschriften würde selbst über die volle Breite eines Handys noch
+// ineinanderlaufen.
+const LABEL_EVERY_HOURS = 2;
 
 /** "jetzt" bzw. "14:40 Uhr"; über Mitternacht hinweg zusätzlich der Wochentag. */
 function formatSlotLabel(time: number | null, now: number): string {
@@ -100,73 +101,73 @@ export default function TimeSlider({
     }));
 
   return (
-    <div className="shrink-0 border-t border-zinc-200 bg-white px-3 pt-2 pb-1 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-3">
-        <div className="w-28 shrink-0">
-          <div className="text-base leading-tight font-semibold text-zinc-900 tabular-nums dark:text-zinc-50">
-            {formatSlotLabel(selectedTime, now)}
-          </div>
-          {/* Feste Höhe, damit die Karte beim Schieben nicht springt. */}
-          <div className="h-4 text-[11px] leading-tight text-zinc-500 dark:text-zinc-400">
-            {status === "loading"
-              ? "Verlauf wird geladen…"
-              : status === "error"
-                ? <span className="text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
-                : live
-                  ? "Live-Werte"
-                  : formatAgo(selectedTime, now)}
-          </div>
+    // px-2 statt eines breiten Innenabstands: der Regler soll auf dem Handy
+    // praktisch die ganze Bildschirmbreite ausnutzen. Die 8 px links/rechts
+    // bleiben, damit der runde Griff an den Enden nicht am Bildschirmrand
+    // klebt.
+    <div className="shrink-0 border-t border-zinc-200 bg-white px-2 pt-1 pb-1 dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Kopfzeile: Uhrzeit MITTIG über dem Regler. Sie ist absolut zentriert
+          (nicht per flex), damit sie exakt in der Mitte steht und nicht davon
+          abhängt, wie breit der Hinweis links oder der Knopf rechts gerade
+          sind. Feste Höhe, damit beim Schieben nichts springt. */}
+      <div className="relative flex h-7 items-center">
+        <div className="min-w-0 flex-1 truncate pr-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+          {status === "loading"
+            ? "Verlauf wird geladen…"
+            : status === "error"
+              ? <span className="text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
+              : live
+                ? null
+                : formatAgo(selectedTime, now)}
         </div>
 
-        {/* Regler und Stundenstriche stehen in DERSELBEN Spalte, damit die
-            Striche automatisch unter dem Regler sitzen — egal wie breit die
-            Beschriftung links oder der Knopf rechts gerade sind. */}
-        <div className="min-w-0 flex-1">
-          <input
-            type="range"
-            className="time-slider block w-full"
-            min={0}
-            max={lastIndex}
-            step={1}
-            value={index}
-            onChange={handleChange}
-            onPointerDown={onEngage}
-            onFocus={onEngage}
-            aria-label="Zeitpunkt"
-            aria-valuetext={formatSlotLabel(selectedTime, now)}
-          />
-          {/* Um einen halben Griff eingerückt: der Griff wandert an den Enden
-              genau um dieses Maß nach innen, sonst stünden die Striche nicht
-              über "ihrem" Zeitpunkt. */}
-          <div
-            className="relative mt-0.5 h-3.5"
-            style={{ marginLeft: THUMB_PX / 2, marginRight: THUMB_PX / 2 }}
-          >
-            {ticks.map(({ time, percent, labelled }) => (
-              <span
-                key={time}
-                className="absolute top-0 -translate-x-1/2 text-[10px] leading-none text-zinc-400 dark:text-zinc-500"
-                style={{ left: `${percent}%` }}
-              >
-                {/* Bewusst nur die nackte Stundenzahl: toLocaleTimeString
-                    würde in Deutsch "08 Uhr" liefern, das ist für den schmalen
-                    Abstand auf dem Handy viel zu breit. */}
-                {labelled
-                  ? String(new Date(time).getHours()).padStart(2, "0")
-                  : "·"}
-              </span>
-            ))}
-          </div>
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base leading-tight font-semibold text-zinc-900 tabular-nums dark:text-zinc-50">
+          {formatSlotLabel(selectedTime, now)}
         </div>
 
         <button
           type="button"
           onClick={() => onChange(null)}
           disabled={live}
-          className="shrink-0 border border-black/10 bg-white px-2 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-40 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+          className="shrink-0 border border-black/10 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-40 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
         >
           Jetzt
         </button>
+      </div>
+
+      <input
+        type="range"
+        className="time-slider block w-full"
+        min={0}
+        max={lastIndex}
+        step={1}
+        value={index}
+        onChange={handleChange}
+        onPointerDown={onEngage}
+        onFocus={onEngage}
+        aria-label="Zeitpunkt"
+        aria-valuetext={formatSlotLabel(selectedTime, now)}
+      />
+
+      {/* Um einen halben Griff eingerückt: der Griff wandert an den Enden
+          genau um dieses Maß nach innen, sonst stünden die Striche nicht
+          über "ihrem" Zeitpunkt. */}
+      <div
+        className="relative h-3.5"
+        style={{ marginLeft: THUMB_PX / 2, marginRight: THUMB_PX / 2 }}
+      >
+        {ticks.map(({ time, percent, labelled }) => (
+          <span
+            key={time}
+            className="absolute top-0 -translate-x-1/2 text-[10px] leading-none text-zinc-400 dark:text-zinc-500"
+            style={{ left: `${percent}%` }}
+          >
+            {/* Bewusst nur die nackte Stundenzahl: toLocaleTimeString
+                würde in Deutsch "08 Uhr" liefern, das ist für den schmalen
+                Abstand auf dem Handy viel zu breit. */}
+            {labelled ? String(new Date(time).getHours()).padStart(2, "0") : "·"}
+          </span>
+        ))}
       </div>
     </div>
   );
