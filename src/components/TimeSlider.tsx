@@ -105,8 +105,51 @@ export default function TimeSlider({
     // praktisch die ganze Bildschirmbreite ausnutzen. Die 8 px links/rechts
     // bleiben, damit der runde Griff an den Enden nicht am Bildschirmrand
     // klebt.
-    <div className="shrink-0 border-t border-zinc-200 bg-white px-2 pt-1 pb-1 dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Kopfzeile: Uhrzeit MITTIG über dem Regler. Sie ist absolut zentriert
+    // Reihenfolge von oben nach unten (Wunsch des Projektbesitzers):
+    // Regler → Stundenzahlen → Uhrzeit/Knopf. Der Regler sitzt also direkt
+    // unter der Karte, die Beschriftung darunter.
+    // Der Balken ist seit dem Entfernen der Fußzeile das unterste Element der
+    // Seite. Der zusätzliche untere Innenabstand hält die Uhrzeit-Zeile und den
+    // "Jetzt"-Knopf über dem Bedienbalken, den iPhones unten einblenden. Auf
+    // Geräten ohne so einen Balken ist env(...) gleich 0, dort ändert sich also
+    // nichts.
+    <div className="shrink-0 border-t border-zinc-200 bg-white px-2 pt-1.5 pb-[calc(0.125rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+      <input
+        type="range"
+        className="time-slider block w-full"
+        min={0}
+        max={lastIndex}
+        step={1}
+        value={index}
+        onChange={handleChange}
+        onPointerDown={onEngage}
+        onFocus={onEngage}
+        aria-label="Zeitpunkt"
+        aria-valuetext={formatSlotLabel(selectedTime, now)}
+      />
+
+      {/* Um einen halben Griff eingerückt: der Griff wandert an den Enden
+          genau um dieses Maß nach innen, sonst stünden die Striche nicht
+          unter "ihrem" Zeitpunkt. */}
+      <div
+        className="relative h-3.5"
+        style={{ marginLeft: THUMB_PX / 2, marginRight: THUMB_PX / 2 }}
+      >
+        {ticks.map(({ time, percent, labelled }) => (
+          <span
+            key={time}
+            className="absolute top-0 -translate-x-1/2 text-[10px] leading-none text-zinc-400 dark:text-zinc-500"
+            style={{ left: `${percent}%` }}
+          >
+            {/* Bewusst nur die nackte Stundenzahl: toLocaleTimeString
+                würde in Deutsch "08 Uhr" liefern, das ist für den schmalen
+                Abstand auf dem Handy viel zu breit. */}
+            {labelled ? String(new Date(time).getHours()).padStart(2, "0") : "·"}
+          </span>
+        ))}
+      </div>
+
+      {/* Fußzeile: Uhrzeit MITTIG unter dem Regler. Sie ist absolut zentriert
           (nicht per flex), damit sie exakt in der Mitte steht und nicht davon
           abhängt, wie breit der Hinweis links oder der Knopf rechts gerade
           sind. Feste Höhe, damit beim Schieben nichts springt. */}
@@ -133,41 +176,6 @@ export default function TimeSlider({
         >
           Jetzt
         </button>
-      </div>
-
-      <input
-        type="range"
-        className="time-slider block w-full"
-        min={0}
-        max={lastIndex}
-        step={1}
-        value={index}
-        onChange={handleChange}
-        onPointerDown={onEngage}
-        onFocus={onEngage}
-        aria-label="Zeitpunkt"
-        aria-valuetext={formatSlotLabel(selectedTime, now)}
-      />
-
-      {/* Um einen halben Griff eingerückt: der Griff wandert an den Enden
-          genau um dieses Maß nach innen, sonst stünden die Striche nicht
-          über "ihrem" Zeitpunkt. */}
-      <div
-        className="relative h-3.5"
-        style={{ marginLeft: THUMB_PX / 2, marginRight: THUMB_PX / 2 }}
-      >
-        {ticks.map(({ time, percent, labelled }) => (
-          <span
-            key={time}
-            className="absolute top-0 -translate-x-1/2 text-[10px] leading-none text-zinc-400 dark:text-zinc-500"
-            style={{ left: `${percent}%` }}
-          >
-            {/* Bewusst nur die nackte Stundenzahl: toLocaleTimeString
-                würde in Deutsch "08 Uhr" liefern, das ist für den schmalen
-                Abstand auf dem Handy viel zu breit. */}
-            {labelled ? String(new Date(time).getHours()).padStart(2, "0") : "·"}
-          </span>
-        ))}
       </div>
     </div>
   );
