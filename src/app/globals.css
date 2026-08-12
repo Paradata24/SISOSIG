@@ -31,13 +31,14 @@ body {
 /* Schieberegler des Zeitbalkens unter der Karte (TimeSlider.tsx).
    Browser bringen für <input type="range"> sehr unterschiedliche Standard-
    Optiken mit, deshalb hier eine eigene: flache Schiene, großer runder Griff
-   (22 px — groß genug, um ihn am Handy sicher mit dem Finger zu treffen).
-   Die 22 px stehen als THUMB_PX auch in TimeSlider.tsx, damit die
-   Stundenstriche darunter genau unter dem Griff sitzen. */
+   (26 px — groß genug, um ihn am Handy sicher mit dem Finger zu treffen;
+   auf Wunsch des Projektbesitzers zusammen mit dem ganzen Balken um rund
+   20 % vergrößert). Die 26 px stehen als THUMB_PX auch in TimeSlider.tsx,
+   damit die Stundenstriche darunter genau unter dem Griff sitzen. */
 .time-slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 22px;
+  height: 26px;
   background: transparent;
   cursor: pointer;
   /* Beim Ziehen soll der Regler den Wert ändern und nicht die Seite scrollen. */
@@ -45,16 +46,16 @@ body {
 }
 
 .time-slider::-webkit-slider-runnable-track {
-  height: 6px;
-  border-radius: 3px;
+  height: 7px;
+  border-radius: 3.5px;
   background: #d4d4d8; /* zinc-300 */
 }
 .dark .time-slider::-webkit-slider-runnable-track {
   background: #3f3f46; /* zinc-700 */
 }
 .time-slider::-moz-range-track {
-  height: 6px;
-  border-radius: 3px;
+  height: 7px;
+  border-radius: 3.5px;
   background: #d4d4d8;
 }
 .dark .time-slider::-moz-range-track {
@@ -64,18 +65,18 @@ body {
 .time-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 2px solid #ffffff;
   background: #059669; /* emerald-600, wie die aktiven Menüpunkte */
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
-  /* (22 px Griff − 6 px Schiene) / 2 = 8 px nach oben versetzen */
-  margin-top: -8px;
+  /* (26 px Griff − 7 px Schiene) / 2 = 9,5 px nach oben versetzen */
+  margin-top: -9.5px;
 }
 .time-slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 2px solid #ffffff;
   background: #059669;

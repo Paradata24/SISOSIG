@@ -21,8 +21,8 @@ export type TimelineStatus = "idle" | "loading" | "ready" | "error";
 // Breite des Schiebe-Griffs (siehe .time-slider in globals.css). Die
 // Stundenmarken darunter werden um einen halben Griff eingerückt, weil der
 // Griff an den Enden genau um dieses Maß nach innen wandert — sonst stehen
-// die Striche nicht über "ihrem" Zeitpunkt.
-const THUMB_PX = 22;
+// die Striche nicht unter "ihrem" Zeitpunkt.
+const THUMB_PX = 26;
 // Alle 2 Stunden eine Stundenzahl unter dem Balken, dazwischen nur ein Punkt.
 // Alle 12 zu beschriften würde selbst über die volle Breite eines Handys noch
 // ineinanderlaufen.
@@ -111,9 +111,12 @@ export default function TimeSlider({
     // Der Balken ist seit dem Entfernen der Fußzeile das unterste Element der
     // Seite. Der zusätzliche untere Innenabstand hält die Uhrzeit-Zeile und den
     // "Jetzt"-Knopf über dem Bedienbalken, den iPhones unten einblenden. Auf
-    // Geräten ohne so einen Balken ist env(...) gleich 0, dort ändert sich also
-    // nichts.
-    <div className="shrink-0 border-t border-zinc-200 bg-white px-2 pt-1.5 pb-[calc(0.125rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+    // Geräten ohne so einen Balken ist env(...) gleich 0, dort bleibt der
+    // Grundabstand von 0,375rem übrig.
+    // Die Innenabstände sind bewusst großzügig (Wunsch des Projektbesitzers:
+    // der Balken wirkte nach unten gedrängt) — zusammen mit den größeren
+    // Zeilenhöhen ist der Balken rund 20 % höher als vorher.
+    <div className="shrink-0 border-t border-zinc-200 bg-white px-2 pt-2 pb-[calc(0.375rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
       <input
         type="range"
         className="time-slider block w-full"
@@ -132,13 +135,13 @@ export default function TimeSlider({
           genau um dieses Maß nach innen, sonst stünden die Striche nicht
           unter "ihrem" Zeitpunkt. */}
       <div
-        className="relative h-3.5"
+        className="relative h-4"
         style={{ marginLeft: THUMB_PX / 2, marginRight: THUMB_PX / 2 }}
       >
         {ticks.map(({ time, percent, labelled }) => (
           <span
             key={time}
-            className="absolute top-0 -translate-x-1/2 text-[10px] leading-none text-zinc-400 dark:text-zinc-500"
+            className="absolute top-0 -translate-x-1/2 text-[11px] leading-none text-zinc-400 dark:text-zinc-500"
             style={{ left: `${percent}%` }}
           >
             {/* Bewusst nur die nackte Stundenzahl: toLocaleTimeString
@@ -153,8 +156,8 @@ export default function TimeSlider({
           (nicht per flex), damit sie exakt in der Mitte steht und nicht davon
           abhängt, wie breit der Hinweis links oder der Knopf rechts gerade
           sind. Feste Höhe, damit beim Schieben nichts springt. */}
-      <div className="relative flex h-7 items-center">
-        <div className="min-w-0 flex-1 truncate pr-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+      <div className="relative flex h-8 items-center">
+        <div className="min-w-0 flex-1 truncate pr-2 text-xs text-zinc-500 dark:text-zinc-400">
           {status === "loading"
             ? "Verlauf wird geladen…"
             : status === "error"
@@ -164,7 +167,7 @@ export default function TimeSlider({
                 : formatAgo(selectedTime, now)}
         </div>
 
-        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base leading-tight font-semibold text-zinc-900 tabular-nums dark:text-zinc-50">
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-lg leading-tight font-semibold text-zinc-900 tabular-nums dark:text-zinc-50">
           {formatSlotLabel(selectedTime, now)}
         </div>
 
@@ -172,7 +175,7 @@ export default function TimeSlider({
           type="button"
           onClick={() => onChange(null)}
           disabled={live}
-          className="shrink-0 border border-black/10 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-40 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+          className="shrink-0 border border-black/10 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-40 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
         >
           Jetzt
         </button>
