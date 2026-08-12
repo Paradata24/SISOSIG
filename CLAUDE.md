@@ -550,6 +550,15 @@ Supabase.
    `toLocaleTimeString({hour:"2-digit"})` yields "08 Uhr", far too wide for the
    spacing on a phone. The slot list comes from the browser clock alone, so the
    bar renders at first paint, before any data exists.
+   **Layout** (owner's request): the range input spans the **full width**
+   (container `px-2`, the 8 px only keeping the round thumb off the screen
+   edge), with a header row above it and the hour ticks below. In that header
+   the time is **absolutely centred** (`absolute left-1/2 -translate-x-1/2`),
+   not a flex item — so it stays exactly over the middle of the slider no
+   matter how wide the status hint on the left ("vor 3 h 20 min" / "Verlauf
+   wird geladen…") or the "Jetzt" button on the right happen to be. Verified at
+   320/390/1100 px: 0 px deviation. The header has a fixed `h-7` so nothing
+   jumps while scrubbing, and the whole bar is ~73 px tall.
 9. Shared 10-minute grid helpers in `src/lib/wind.ts`: `TIMELINE_STEP_MINUTES`,
    `GRID_MS`, `TIMELINE_SLOT_COUNT`, `snapToGrid`, `buildTimelineSlots`,
    `buildTimelineFrame` and the `Timeline*` types. `GRID_MS`/`snapToGrid` used
