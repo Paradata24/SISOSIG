@@ -114,8 +114,10 @@ Supabase.
    (same in `src/lib/pioupiou.ts`).
 2. `src/app/page.tsx` → `src/components/WindApp.tsx` → `WindMapLoader.tsx` →
    `src/components/WindMap.tsx` — the client UI, in that order.
-   `page.tsx` is a thin Server Component: page shell (`h-dvh` flex column),
-   `<WindApp />` and the OpenWindMap credit footer.
+   `page.tsx` is a thin Server Component: page shell (`h-dvh` flex column) and
+   `<WindApp />`. It used to carry an OpenWindMap credit footer below the
+   Zeitbalken; the owner had it removed and wants the source credit solved
+   differently later (see "Quellenangabe" below).
    **`WindApp.tsx`** draws the title bar ("Should I stay or should I go") and,
    at its right edge, a square hamburger button that opens a popover menu
    holding **both** settings: **"Karte"** (base layer — `Relief (Grau)` = Esri
@@ -182,9 +184,10 @@ Supabase.
    updating with each background refresh. A GeoJSON overlay of the national
    borders (`src/data/staatsgrenzen.json`, `STAATSGRENZE_STYLE`) and the
    "Zuletzt aktualisiert" badge (bottom left) complete the map. When the
-   Zeitbalken is off "jetzt" that badge is replaced by an **amber** "Verlauf:
-   HH:MM Uhr" one — the only on-map signal that the arrows aren't live, so
-   keep it visually distinct.
+   Zeitbalken is off "jetzt" that badge is simply **hidden** — an amber
+   "Verlauf: HH:MM Uhr" badge stood there for a while and was removed at the
+   owner's request; the Zeitbalken itself already shows the selected time.
+   Don't reintroduce it without asking.
    The `historyFrame` prop (from `WindApp` via `WindMapLoader`) is applied in
    `displayStations`, a `useMemo` that runs **after** `visibleStations` (filter
    first, then replace — a few dozen objects per step instead of ~130). It
@@ -306,8 +309,7 @@ Supabase.
    change "den Verlaufsbalken"). A full-width panel pinned to the bottom of
    the **map area** — `absolute`, not `fixed`, because it lives inside
    `WindMap`'s `relative h-full w-full` wrapper and must leave the Zeitbalken
-   and the OpenWindMap credit footer visible below it (the footer is a licence
-   requirement, so don't turn this back into `fixed`; the dynamic loading
+   visible below it (don't turn this back into `fixed`; the dynamic loading
    skeleton in `WindMap.tsx` carries the same class, and the former
    `pb-[env(safe-area-inset-bottom)]` was dropped with the switch since the
    panel no longer touches the screen edge).
@@ -534,10 +536,10 @@ Supabase.
    with the upsert absorbing duplicates.
 8. `src/components/TimeSlider.tsx` — the **"Zeitbalken"** (the owner's
    reference name; use it when they ask to change "den Zeitbalken"). Its own
-   fixed-height row in the page flex column, between `<main>` (the map) and the
-   footer — deliberately **not** an overlay on the map: it must not cover the
-   OpenWindMap credit, and sitting outside the Leaflet container means Leaflet's
-   drag/touch handlers can't swallow the slider gesture. Dragging it left makes
+   fixed-height row in the page flex column, below `<main>` (the map) —
+   deliberately **not** an overlay on the map: sitting outside the Leaflet
+   container means Leaflet's drag/touch handlers can't swallow the slider
+   gesture. Dragging it left makes
    the map show the recorded measurements of that moment instead of the live
    ones, in 10-minute steps over `HISTORY_HOURS`.
    It is a plain `<input type="range">` on purpose (reliable touch dragging,
@@ -636,8 +638,13 @@ responses (502/500) rather than throwing — this is expected there, not a
 bug. Set `WIND_API_BASE_URL` / `PIOUPIOU_API_BASE_URL` to a local mock HTTP
 server to test the route logic without live network access.
 
-**License requirement:** OpenWindMap's free Community License requires a
-visible credit with a link wherever its data is shown. That lives in the
-site footer, `src/app/page.tsx` — "Winddaten © contributors of the
-OpenWindMap wind network, openwindmap.org" — don't remove it while
-OpenWindMap stations are displayed.
+**Quellenangabe / License requirement (offen):** OpenWindMap's free Community
+License requires a visible credit with a link wherever its data is shown. That
+credit used to sit in the site footer, `src/app/page.tsx` — "Winddaten ©
+contributors of the OpenWindMap wind network, openwindmap.org". The owner had
+the footer removed and explicitly said the source credit will be solved
+differently at a later point ("die Quellenangabe für die Winddaten machen wir
+anders ein anderes mal"), so this is a known open item — mention it when
+touching the topic, but don't re-add the footer unasked. The per-station
+"Quelle:" link at the bottom of the Verlaufsbalken (`SOURCE_INFO`) is still
+there.

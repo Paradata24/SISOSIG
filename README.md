@@ -469,12 +469,15 @@ Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert
 - **Mock-Server für lokale Tests:** `PIOUPIOU_API_BASE_URL` überschreibt
   den Endpunkt, analog zu `WIND_API_BASE_URL`/`OPEN_METEO_BASE_URL`.
 
-**Pflicht-Lizenzhinweis:** Die OpenWindMap-Daten stehen unter der
-kostenlosen Community-Lizenz, die einen sichtbaren Credit mit Link
-verlangt. Dieser steht in der Fußzeile jeder Seite (`src/app/page.tsx`):
-„Winddaten © contributors of the OpenWindMap wind network,
-[openwindmap.org](https://openwindmap.org)". Dieser Hinweis darf nicht
-entfernt werden, solange OpenWindMap-Daten angezeigt werden.
+**Pflicht-Lizenzhinweis (offener Punkt):** Die OpenWindMap-Daten stehen
+unter der kostenlosen Community-Lizenz, die einen sichtbaren Credit mit
+Link verlangt. Dieser stand bis Aug. 2026 in der Fußzeile jeder Seite
+(`src/app/page.tsx`): „Winddaten © contributors of the OpenWindMap wind
+network, [openwindmap.org](https://openwindmap.org)". Die Fußzeile wurde
+auf Wunsch des Projektbesitzers entfernt; die Quellenangabe für die
+Winddaten soll später in anderer Form gelöst werden. Bis dahin gibt es
+den Hinweis nur noch stationsweise als „Quelle:"-Link unten im
+Verlaufsbalken.
 
 ## Hinweis zur Sandbox-Umgebung
 

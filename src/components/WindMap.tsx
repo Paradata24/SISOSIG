@@ -504,19 +504,9 @@ export default function WindMap({
           stationFilter={stationFilter}
         />
       </MapContainer>
-      {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, wird die
-          Plakette bernsteinfarben — damit auf einen Blick klar ist, dass hier
-          NICHT die aktuellen Werte stehen. */}
-      {historyFrame ? (
-        <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-amber-100/95 px-2 py-1 text-xs font-semibold text-amber-900 shadow-md dark:bg-amber-900/85 dark:text-amber-50">
-          Verlauf:{" "}
-          {new Date(historyFrame.time).toLocaleTimeString("de-DE", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}{" "}
-          Uhr
-        </div>
-      ) : lastUpdated ? (
+      {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, bleibt die
+          Plakette weg — die Uhrzeit steht dann ohnehin im Zeitbalken. */}
+      {!historyFrame && lastUpdated ? (
         <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
           Zuletzt aktualisiert:{" "}
           {lastUpdated.toLocaleTimeString("de-DE", {
