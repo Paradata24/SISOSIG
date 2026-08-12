@@ -214,11 +214,12 @@ export function isWindanzeigerStation(station: WindStation): boolean {
 /** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
 export type BaseLayer = "standard" | "relief";
 
-// "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen unter
-// bzw. über einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
+// "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
+// bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer
-// ausgewählten Stationen zeigt (siehe isWindanzeigerStation oben). Alle Filter
-// schließen sich gegenseitig aus.
+// ausgewählten Stationen zeigt (siehe isWindanzeigerStation oben). Es ist
+// immer genau ein Filter aktiv; die Stationslisten zweier Filter dürfen sich
+// dabei überschneiden (siehe ALTITUDE_FILTERS).
 export type AltitudeStationFilter = "below1000" | "below2000" | "high" | "veryHigh";
 export type StationFilter = "all" | AltitudeStationFilter | "windanzeiger";
 
@@ -227,16 +228,16 @@ export const HIGH_ALTITUDE_THRESHOLD_M = 2000;
 export const VERY_HIGH_ALTITUDE_THRESHOLD_M = 3000;
 
 /**
- * Die Höhenfilter an EINER Stelle: Schwelle + Richtung ("above" = nur über der
- * Schwelle, "below" = nur darunter). Menü-Beschriftung (WindApp.tsx) und
+ * Die Höhenfilter an EINER Stelle: Schwelle + Richtung ("above" = ab der
+ * Schwelle aufwärts, "below" = bis zur Schwelle abwärts). Menü-Beschriftung (WindApp.tsx) und
  * Filterlogik (WindMap.tsx) werden beide hieraus abgeleitet und können deshalb
  * nicht mehr auseinanderlaufen. Eine weitere Höhenstufe braucht nur einen
  * Eintrag hier, in AltitudeStationFilter und in STATION_FILTER_ORDER.
  *
- * Die Schwelle gehört bewusst zu KEINER der beiden Seiten: ">2.000m" heißt
- * echt über 2.000 m, "<2.000m" echt darunter. Eine Station auf exakt 2.000 m
- * taucht also in keinem der beiden Filter auf — das ist gewollt, damit sich
- * "über" und "unter" nicht überlappen.
+ * Die Schwelle gehört bewusst zu BEIDEN Seiten: "≥2.000m" schließt 2.000 m
+ * ein, "≤2.000m" ebenso. Eine Station auf exakt 2.000 m erscheint also in
+ * beiden Filtern — so wird keine Station übersehen, nur weil sie genau auf der
+ * Schwelle liegt (ausdrücklicher Wunsch des Projektbesitzers).
  */
 export const ALTITUDE_FILTERS: Record<
   AltitudeStationFilter,
@@ -258,12 +259,15 @@ export const STATION_FILTER_ORDER: StationFilter[] = [
   "windanzeiger",
 ];
 
-/** Beschriftung einer Filter-Schaltfläche im Menü, z. B. "Stationen <1.000m". */
+/**
+ * Beschriftung einer Filter-Schaltfläche im Menü, z. B. "Stationen ≤1.000m".
+ * "≥"/"≤" statt ">"/"<", weil die Schwelle selbst mit dazugehört.
+ */
 export function getStationFilterLabel(filter: StationFilter): string {
   if (filter === "all") return "Alle";
   if (filter === "windanzeiger") return "Windanzeiger";
   const { thresholdM, direction } = ALTITUDE_FILTERS[filter];
-  const sign = direction === "above" ? ">" : "<";
+  const sign = direction === "above" ? "≥" : "≤";
   return `Stationen ${sign}${thresholdM.toLocaleString("de-DE")}m`;
 }
 
@@ -277,7 +281,9 @@ export function matchesStationFilter(station: WindStation, filter: StationFilter
   if (filter === "windanzeiger") return isWindanzeigerStation(station);
   const { thresholdM, direction } = ALTITUDE_FILTERS[filter];
   if (station.altitude === null) return false;
-  return direction === "above" ? station.altitude > thresholdM : station.altitude < thresholdM;
+  // >= bzw. <=: Die Schwelle selbst zählt zu beiden Seiten (siehe Kommentar
+  // bei ALTITUDE_FILTERS).
+  return direction === "above" ? station.altitude >= thresholdM : station.altitude <= thresholdM;
 }
 
 export interface WindColorBand {
