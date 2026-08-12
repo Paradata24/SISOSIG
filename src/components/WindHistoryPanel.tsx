@@ -134,10 +134,10 @@ const FORECAST_COLUMN_W = MEAS_BOX_W + FORECAST_ARROW_GAP_X + ARROW_SIZE;
 // immer nahe dem rechten Rand steht.
 // Zwei aufeinanderfolgende Punkte werden nur dann zu einer Linie verbunden,
 // wenn sie höchstens so weit auseinanderliegen. Standardwert für die
-// STÜNDLICHEN Kurven (Prognosen und — seit dem Umbau auf Stundenlinien — auch
-// die beiden Messkurven): genau ein Stundenschritt. Fehlt eine Stunde ganz,
-// beträgt der Abstand 2 h und die Linie bricht dort sichtbar ab, statt die
-// Lücke zu überbrücken.
+// STÜNDLICHEN Kurven (die Prognosen): genau ein Stundenschritt. Fehlt eine
+// Stunde ganz, beträgt der Abstand 2 h und die Linie bricht dort sichtbar ab,
+// statt die Lücke zu überbrücken. Die beiden Messkurven benutzen stattdessen
+// BAND_GAP_MS (ein 10-Minuten-Schritt), weil sie jeder Messung folgen.
 const LINE_GAP_MS = 60 * 60 * 1000;
 
 // Farbe der ICON-CH1-Prognose als fester Hex-Wert. Kurve, Punkte und der
@@ -246,9 +246,9 @@ interface Point {
 // 10 min), damit Raster und Spaltenbreite nicht auseinanderlaufen können.
 // GRID_MS und snapToGrid stehen seit dem Zeitbalken in src/lib/wind.ts, weil
 // die Karte dasselbe Raster braucht.
-// Größter Abstand, über den die 50%-Fläche zwischen den Messkurven noch
-// durchgezogen wird: genau EIN Rasterschritt. Fehlt ein 10-Minuten-Wert,
-// entsteht dort also eine echte Lücke in der Fläche (Wunsch des
+// Größter Abstand, über den die beiden Messkurven und die 50%-Fläche
+// dazwischen noch durchgezogen werden: genau EIN Rasterschritt. Fehlt ein
+// 10-Minuten-Wert, entsteht dort also eine echte Lücke (Wunsch des
 // Projektbesitzers), statt sie stillschweigend zu überbrücken. Bewusster
 // Nebeneffekt: auch ein einzelner ausgefallener Sammel-Lauf (/api/collect)
 // wird jetzt als schmale Lücke sichtbar.
@@ -331,7 +331,7 @@ function buildLinePath(
 // Wert fehlt oder die Messlücke zu groß ist — sonst würde über eine Lücke
 // hinweg eine Fläche gemalt, die es gar nicht gibt. Die Fläche nutzt ALLE
 // Messwerte im 10-Minuten-Takt, deshalb ist ihr `maxGapMs` (BAND_GAP_MS)
-// deutlich kleiner als das der Stundenkurven.
+// deutlich kleiner als das der stündlichen Prognosekurven.
 function buildBandPath(
   points: Point[],
   x: (t: number) => number,
@@ -677,20 +677,17 @@ export default function WindHistoryPanel({
     // 10-Minuten-Raster; "stündlich" heißt deshalb schlicht: Minute 00. Eine
     // Suche nach dem "nächstgelegenen" Punkt ist nicht mehr nötig.
     // Diese Punkte werden gebraucht für
-    //  - die beiden Messkurven, die NUR diese Punkte verbinden (wie die
-    //    stündliche Prognose) — siehe hourlyPoints unten,
     //  - die fette Schrift der stündlichen Werte im Zahlenblock,
     //  - den Vorrang bei der Ausdünnung der Pfeil-/Wertespalten.
+    // Die beiden Messkurven benutzen sie NICHT — die folgen allen
+    // 10-Minuten-Werten (siehe speedPath/gustPath unten).
     // Fehlt die Messung zur vollen Stunde, gibt es dort schlicht keinen
-    // stündlichen Punkt: die Kurve bricht ab und keine Zahl wird fett gesetzt.
+    // stündlichen Punkt: dann wird dort keine Zahl fett gesetzt.
     const hourlyPointIndices = new Set<number>();
     points.forEach((p, idx) => {
       if (p.speed === null && p.gust === null) return;
       if (new Date(p.t).getMinutes() === 0) hourlyPointIndices.add(idx);
     });
-    // Nur die stündlichen Messpunkte, in zeitlicher Reihenfolge — Grundlage der
-    // beiden Messkurven.
-    const hourlyPoints = points.filter((_, idx) => hourlyPointIndices.has(idx));
 
     // --- Pfeile + Werte ggf. ausdünnen, damit sie sich nicht überlappen ---
     // Die Achse ist fest so breit, dass 6 Messungen/Stunde (alle 10 min) passen.
@@ -734,14 +731,14 @@ export default function WindHistoryPanel({
     }
     const forecastByT = new Map(forecastPoints.map((p) => [p.t, p]));
 
-    // Die beiden Messkurven verbinden NUR die Messpunkte zur vollen Stunde —
-    // genau wie die stündlichen Prognosekurven, damit sich Messung und Prognose
-    // im selben Raster vergleichen lassen und die Kurve nicht vom
-    // 10-Minuten-Zappeln überlagert wird. Die Detailwerte dazwischen bleiben
-    // sichtbar: über die 50%-Fläche zwischen den Kurven und in den Zahlenreihen
-    // unter den Pfeilen.
-    const speedPath = buildLinePath(hourlyPoints, (p) => p.speed, x, y);
-    const gustPath = buildLinePath(hourlyPoints, (p) => p.gust, x, y);
+    // Die beiden Messkurven verbinden ALLE Messpunkte im 10-Minuten-Takt
+    // (Wunsch des Projektbesitzers) — die Linien folgen also genau den
+    // Messungen und nicht nur den vollen Stunden. Sie benutzen denselben
+    // Höchstabstand wie die Fläche darunter (BAND_GAP_MS = ein Rasterschritt):
+    // fehlt ein 10-Minuten-Wert, reißen Linie und Fläche an derselben Stelle
+    // auf, statt die Lücke stillschweigend zu überbrücken.
+    const speedPath = buildLinePath(points, (p) => p.speed, x, y, BAND_GAP_MS);
+    const gustPath = buildLinePath(points, (p) => p.gust, x, y, BAND_GAP_MS);
     const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
     const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
     // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
@@ -1023,8 +1020,8 @@ export default function WindHistoryPanel({
                 className="stroke-red-600 dark:stroke-red-500"
               />
 
-              {/* 4. Mess-Kurven ganz vorne. Sie verbinden nur die Messpunkte
-                     zur vollen Stunde (wie die Prognosen); die obere Kurve
+              {/* 4. Mess-Kurven ganz vorne. Sie folgen ALLEN Messwerten im
+                     10-Minuten-Takt; die obere Kurve
                      (Böen) ist etwas dicker als die untere (Mittelwind).
                      Hier standen früher kleine Punkte auf jedem Messwert. Auf
                      Wunsch des Projektbesitzers sind sie entfernt; die
