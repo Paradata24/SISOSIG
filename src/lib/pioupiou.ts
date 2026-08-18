@@ -39,9 +39,9 @@ const CODE_PREFIX = "pioupiou-";
 
 // Der Abruf wird 60 s im Next.js-Daten-Cache gehalten (gleiche Dauer wie
 // die Bozner Messwerte in /api/wind, siehe dort). Die Pioupiou-Stationen
-// melden ohnehin nur alle paar Minuten. Auch für /api/collect (läuft nur
-// alle 10 Minuten) sind bis zu 60 s alte Werte unschädlich: gespeichert
-// wird der Mess-Zeitstempel der Station, Duplikate fängt der Upsert ab.
+// melden ohnehin nur alle paar Minuten. Auch für /api/collect (läuft alle
+// 5 Minuten) sind bis zu 60 s alte Werte unschädlich: gespeichert wird der
+// Mess-Zeitstempel der Station, Duplikate fängt der Upsert ab.
 const REVALIDATE_S = 60;
 
 interface PioupiouStation {

@@ -4,8 +4,8 @@
 //
 // Zum Schieben nach links: die Karte zeigt dann nicht mehr die Live-Werte,
 // sondern die aufgezeichneten Messwerte aller Stationen zu diesem Zeitpunkt.
-// Schrittweite = 10 Minuten, also genau der Takt, in dem die Werte gesammelt
-// werden (siehe TIMELINE_STEP_MINUTES in src/lib/wind.ts).
+// Schrittweite = 10 Minuten, also genau der Takt, in dem die Stationen messen
+// (siehe TIMELINE_STEP_MINUTES in src/lib/wind.ts).
 //
 // Bewusst ein ganz normaler <input type="range">: der lässt sich am Handy
 // zuverlässig mit dem Finger ziehen, funktioniert mit den Pfeiltasten

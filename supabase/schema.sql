@@ -14,9 +14,9 @@ create table if not exists public.wind_measurements (
   source text not null default 'bolzano',
   inserted_at timestamptz not null default now(),
   -- Pro Station und Messzeitpunkt nur ein Eintrag: die Sammel-Route
-  -- /api/collect (per Supabase Cron, z. B. alle 10 Minuten) und die
-  -- Stationen (messen alle 5-10 Minuten) können sich überschneiden —
-  -- Duplikate werden beim Einfügen einfach ignoriert (Upsert).
+  -- /api/collect (per Supabase Cron alle 5 Minuten) fragt bewusst öfter ab,
+  -- als die Stationen messen (alle 5-10 Minuten) — sie sieht denselben Wert
+  -- also mehrfach. Diese Duplikate fängt der Upsert ab.
   unique (station_code, measured_at)
 );
 

@@ -66,7 +66,8 @@ Ausfall nicht festsetzt.
 
 Nach demselben Muster arbeiten auch die beiden Verlaufsbalken-Routen:
 `/api/history` wird 60 Sekunden vom CDN geteilt (neue Messwerte kommen nur
-alle 10 Minuten dazu), `/api/forecast` 120 Sekunden (die Prognose wird nur
+alle 10 Minuten dazu, so oft messen die Stationen), `/api/forecast` 120
+Sekunden (die Prognose wird nur
 stündlich neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
 und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
 jedes Mal aus der Datenbank.
@@ -85,7 +86,7 @@ Praktische Folgen:
   laufender Tabs gar nicht. Kehrt man zur Seite zurück, wird sofort
   aktualisiert — der Takt macht die Anzeige also nicht träger, spart auf
   dem Handy aber deutlich Datenvolumen.
-- Die Sammel-Route `/api/collect` (läuft alle 10 Minuten) ist davon
+- Die Sammel-Route `/api/collect` (läuft alle 5 Minuten) ist davon
   nicht betroffen: gespeichert wird immer der Mess-Zeitstempel der
   Station, Duplikate fängt der Upsert in Supabase ab.
 - Beim lokalen Entwickeln: ein „harter" Browser-Reload
@@ -166,11 +167,20 @@ Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
 
 1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
    Jobs**) und **Create a new cron job**.
-2. Zeitplan **alle 10 Minuten** wählen (`*/10 * * * *`) — dieser Takt gilt
+2. Zeitplan **alle 5 Minuten** wählen (`*/5 * * * *`) — dieser Takt gilt
    für alle Stationen (Bozen und OpenWindMap gemeinsam). Läuft bei dir
    bereits ein Cron-Job mit einem anderen Takt (z. B. `*/20 * * * *`), den
-   bestehenden Job öffnen und den Zeitplan auf `*/10 * * * *` ändern statt
+   bestehenden Job öffnen und den Zeitplan auf `*/5 * * * *` ändern statt
    einen zweiten anzulegen.
+
+   **Warum 5 Minuten, obwohl die Stationen nur alle 10 Minuten messen?**
+   Der Bozner Dienst zeigt unter `/sensors` immer nur den **neuesten** Wert
+   und veröffentlicht ihn erst 5–10 Minuten nach der Messung. Jeder Wert ist
+   also rund 10 Minuten lang abrufbar. Mit einem 5-Minuten-Takt erwischt ihn
+   garantiert mindestens ein Abruf; bei 10 Minuten wäre es Glückssache.
+   Mehr Zeilen entstehen dadurch **nicht** — doppelt abgeholte Werte
+   verwirft die Datenbank (Upsert). Noch häufiger abzufragen bringt dagegen
+   nichts.
 3. Als Aktion **HTTP Request** wählen:
    - Methode: **POST**
    - Endpoint URL: `https://<deine-vercel-domain>/api/collect`
@@ -257,9 +267,19 @@ orange, ab 31 rot. Dieselben Farben gelten für die Pfeile auf der Karte, die
 Wert-Quadrate im Verlaufsbalken und die Flächen hinter den Kurven. Geändert
 wird das an einer Stelle: `WIND_COLOR_SCALE` in `src/lib/wind.ts`.
 
-**Hinweis zur Auflösung:** Wie fein die Kurve ist, hängt davon ab, wie oft
-Messwerte gesammelt werden, also wie eng der Supabase-Cron-Job für
-`/api/collect` getaktet ist (empfohlen alle 10 Minuten, siehe oben).
+**Hinweis zur Auflösung:** Wie fein die Kurve ist, bestimmen die Stationen
+selbst — sie messen alle 10 Minuten, und genau so dicht stehen die Spalten
+(`TIMELINE_STEP_MINUTES` in `src/lib/wind.ts`). Der Sammel-Job läuft öfter
+(alle 5 Minuten, siehe oben), damit kein Messwert durchrutscht; feiner wird
+die Kurve dadurch aber nicht.
+
+**Hinweis zu Lücken in der Kurve:** Der Bozner Dienst überspringt gelegentlich
+einen einzelnen Messzeitpunkt — dann fehlt bei **allen** Stationen gleichzeitig
+eine Spalte. Solche einzelnen Aussetzer überbrückt die Kurve (`BAND_GAP_MS` in
+`src/components/WindHistoryPanel.tsx`, 25 Minuten). Fehlen zwei oder mehr Werte
+am Stück — also bei einem echten Stationsausfall —, reißt die Kurve weiterhin
+sichtbar auf. Pfeil und Werte-Quadrat fehlen an einer übersprungenen Stelle in
+jedem Fall, es wird also nichts dazuerfunden.
 
 > **Bezugsname für Änderungswünsche: „Verlaufsbalken".** Wenn du hier etwas
 > ändern möchtest, genügt z. B. „Bitte im Verlaufsbalken die … anpassen".
@@ -272,8 +292,8 @@ Werte, sondern die aufgezeichneten Messwerte zu diesem Zeitpunkt — man kann
 also durch den Windverlauf der ganzen Karte blättern und z. B. sehen, wie der
 Talwind über den Vormittag aufgezogen ist.
 
-- **Schrittweite 10 Minuten**, genau der Takt, in dem `/api/collect` die Werte
-  sammelt. Ein Druck auf die Pfeiltasten links/rechts entspricht einem Schritt.
+- **Schrittweite 10 Minuten**, genau der Takt, in dem die Stationen messen.
+  Ein Druck auf die Pfeiltasten links/rechts entspricht einem Schritt.
 - **Zeitraum: die letzten 12 Stunden** (dieselben `HISTORY_HOURS` wie beim
   Verlaufsbalken). Weiter zurück geht es bewusst nicht, auch wenn die Datenbank
   2 Tage aufbewahrt.

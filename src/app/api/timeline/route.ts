@@ -44,8 +44,9 @@ const PAGE_SIZE = 1000;
 const MAX_PAGES = 30;
 
 // Zwischenspeicherung wie bei /api/history: Neue Messwerte kommen nur alle
-// 10 Minuten dazu. Fehlerantworten bekommen bewusst KEINEN solchen Header,
-// damit sich eine kurze Störung nicht 60 s lang festsetzt.
+// 10 Minuten dazu (Messtakt der Stationen). Fehlerantworten bekommen bewusst
+// KEINEN solchen Header, damit sich eine kurze Störung nicht 60 s lang
+// festsetzt.
 const RESPONSE_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300";
 
 interface MeasurementRow {

@@ -6,6 +6,22 @@ import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 // wind_measurements. Ersetzt den früheren GitHub-Actions-Workflow und wird
 // stattdessen von Supabase Cron per POST angestoßen.
 //
+// TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
+// doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
+// den NEUESTEN Wert je Sensor, und der Bozner Dienst veröffentlicht ihn erst
+// 5–10 Minuten nach der Messung (nachgemessen an inserted_at − measured_at:
+// über 2400 von ~2500 Zeilen liegen bei exakt 10 Minuten). Jeder Wert ist also
+// rund 10 Minuten lang der "neueste"; mit einem 5-Minuten-Takt trifft ihn
+// garantiert mindestens ein Abruf. Bei einem 10-Minuten-Takt wäre das der
+// Grenzfall — eine Verzögerung von wenigen Sekunden würde dann Werte
+// verschlucken. NICHT auf 10 Minuten zurückstellen.
+//
+// Was auch ein schnellerer Takt NICHT verhindern kann: Liefert der Bozner
+// Dienst einen Wert verspätet nach, nachdem der nächste schon da war, wird er
+// nie der "neueste" und taucht in /sensors überhaupt nicht auf. Dann fehlt eine
+// 10-Minuten-Spalte bei allen Stationen gleichzeitig. Im Verlaufsbalken wird
+// eine solche einzelne Lücke überbrückt (BAND_GAP_MS in WindHistoryPanel.tsx).
+//
 // Aufruf nur mit gültigem Token:
 //   POST /api/collect
 //   Header: Authorization: Bearer <CRON_SECRET>
