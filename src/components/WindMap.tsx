@@ -38,7 +38,7 @@ const loadHistoryPanel = () => import("@/components/WindHistoryPanel");
 const WindHistoryPanel = dynamic(loadHistoryPanel, {
   ssr: false,
   loading: () => (
-    <div className="absolute inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+    <div className="absolute inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
       Verlauf wird geladen…
     </div>
   ),
