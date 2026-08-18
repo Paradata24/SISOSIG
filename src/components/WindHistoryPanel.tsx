@@ -36,13 +36,20 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 // damit das Panel nicht mehr gedrängt wirkt.
 const TIME_LABEL_H = 20; // Zeile mit den Uhrzeiten oben
 const CHART_H = 154; // Höhe des Kurvenbereichs
-// FESTE Obergrenze der y-Achse (km/h). Bewusst nicht mehr datenabhängig:
-// eine mitwachsende Achse lässt einen ruhigen und einen stürmischen Tag
-// gleich hoch aussehen. Mit fester Skala hat dieselbe Kurvenhöhe immer
-// dieselbe Bedeutung und man kann Stationen/Tage direkt vergleichen.
-// Werte über dieser Grenze werden gekappt (siehe y()), die echten Zahlen
-// stehen weiterhin in den Werte-Zeilen unter den Pfeilen.
-const Y_MAX_KMH = 45;
+// Untergrenze der y-Achse (km/h): So hoch ist die Achse MINDESTENS, auch an
+// einem ganz ruhigen Tag. Dadurch bleiben normale Tage untereinander
+// vergleichbar (dieselbe Kurvenhöhe = dieselbe Windstärke) — genau das war
+// der Grund für die früher komplett feste Achse.
+// Reicht der Wind höher, wächst die Achse mit (siehe computeYMax), damit die
+// Spitzen nicht mehr oben abgeschnitten werden.
+const Y_MIN_MAX_KMH = 45;
+// Die Achse wächst nur in solchen Stufen (km/h). Das verhindert, dass sich die
+// Achse bei jedem neuen Messwert um ein paar Pixel verschiebt, und die
+// Beschriftung bleibt bei runden Zahlen.
+const Y_MAX_STEP_KMH = 15;
+// Luft über dem höchsten Wert, damit die Spitze nicht genau die Oberkante
+// berührt.
+const Y_MAX_HEADROOM_KMH = 3;
 const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
 const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
 // Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
@@ -164,14 +171,8 @@ const GUST_LINE_WIDTH = LINE_WIDTH * 1.15;
 // standen früher im Bauch der Komponente und wurden dadurch bei jedem
 // Neuzeichnen erneut ausgerechnet — obwohl sie sich nie ändern. Jetzt werden
 // sie einmal beim Laden der Datei berechnet.
-const yMax = Y_MAX_KMH;
 const chartTop = TIME_LABEL_H;
 const chartBottom = TIME_LABEL_H + CHART_H;
-// Werte über der festen Obergrenze werden gekappt: die Kurve läuft dann
-// am oberen Rand entlang, statt aus dem Diagramm heraus in die Uhrzeiten-
-// Zeile zu ragen. So bleibt sichtbar, DASS es dort sehr windig war; der
-// genaue Wert steht in den Zahlen-Zeilen unter den Pfeilen.
-const y = (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
 const arrowCy = chartBottom + ARROW_GAP + ARROW_ROW_H / 2;
 const arrowRowBottom = chartBottom + ARROW_GAP + ARROW_ROW_H;
 // Obere Kante der beiden Messwert-Reihen (Rechtecke): oben Mittelwind,
@@ -192,33 +193,65 @@ const forecastSpeedBoxY = measBlockBottom + FORECAST_ROW_GAP;
 const forecastGustBoxY = forecastSpeedBoxY + MEAS_BOX_H + MEAS_BOX_GAP;
 const forecastArrowCy = forecastSpeedBoxY + MEAS_VALUES_ROW_H / 2;
 
+// --- Mitwachsende y-Achse ---
+// Obergrenze der Achse aus den tatsächlich vorhandenen Werten (Messung UND
+// Prognose, Mittelwind wie Böen): mindestens Y_MIN_MAX_KMH, darüber in festen
+// Stufen von Y_MAX_STEP_KMH wachsend. Dadurch wird keine Spitze mehr oben
+// abgeschnitten, ruhige Tage sehen aber trotzdem alle gleich aus.
+function computeYMax(values: (number | null)[]): number {
+  let peak = 0;
+  for (const v of values) {
+    if (v !== null && v > peak) peak = v;
+  }
+  if (peak + Y_MAX_HEADROOM_KMH <= Y_MIN_MAX_KMH) return Y_MIN_MAX_KMH;
+  const over = peak + Y_MAX_HEADROOM_KMH - Y_MIN_MAX_KMH;
+  return Y_MIN_MAX_KMH + Math.ceil(over / Y_MAX_STEP_KMH) * Y_MAX_STEP_KMH;
+}
+
+// Umrechnung km/h → y-Position im SVG. Weil die Achse jetzt mitwächst, hängt
+// sie von yMax ab und wird pro Zeichnung einmal gebaut (statt einmalig beim
+// Laden der Datei). Die Kappung bleibt als Sicherheitsnetz drin, greift aber
+// im Normalfall nicht mehr, weil yMax über dem höchsten Wert liegt.
+function makeY(yMax: number) {
+  return (v: number) => chartBottom - (Math.min(v, yMax) / yMax) * CHART_H;
+}
+
 // --- Farbflächen aus der Windskala (bis yMax gekappt) ---
 // Pro Bereich der Windskala EIN farbiges Rechteck mit harter Kante statt
 // eines weichen Verlaufs (Wunsch des Projektbesitzers). Leicht transparent,
 // damit die Mess- und Prognosekurven darüber gut lesbar bleiben.
 const BAND_OPACITY = 0.55;
-const COLOR_BANDS: { color: string; yTop: number; yBottom: number }[] = [];
-for (let i = 0; i < WIND_COLOR_SCALE.length; i++) {
-  const band = WIND_COLOR_SCALE[i];
-  // Untergrenze = Obergrenze des vorherigen Bereichs (das erste beginnt bei 0),
-  // Obergrenze = eigene Grenze bzw. das Achsenende beim offenen obersten Band.
-  const from = i === 0 ? 0 : (WIND_COLOR_SCALE[i - 1].upTo ?? yMax);
-  const to = band.upTo === null ? yMax : Math.min(band.upTo, yMax);
-  if (to <= from) continue; // Bereich liegt komplett über der Achsen-Obergrenze
-  COLOR_BANDS.push({ color: band.color, yTop: y(to), yBottom: y(from) });
+function buildColorBands(
+  yMax: number,
+  y: (v: number) => number,
+): { color: string; yTop: number; yBottom: number }[] {
+  const bands: { color: string; yTop: number; yBottom: number }[] = [];
+  for (let i = 0; i < WIND_COLOR_SCALE.length; i++) {
+    const band = WIND_COLOR_SCALE[i];
+    // Untergrenze = Obergrenze des vorherigen Bereichs (das erste beginnt bei 0),
+    // Obergrenze = eigene Grenze bzw. das Achsenende beim offenen obersten Band.
+    const from = i === 0 ? 0 : (WIND_COLOR_SCALE[i - 1].upTo ?? yMax);
+    const to = band.upTo === null ? yMax : Math.min(band.upTo, yMax);
+    if (to <= from) continue; // Bereich liegt komplett über der Achsen-Obergrenze
+    bands.push({ color: band.color, yTop: y(to), yBottom: y(from) });
+  }
+  return bands;
 }
 
 // Beschriftung der km/h-Achse: NICHT in runden 10er-Schritten, sondern genau
 // an den Grenzen der Windskala (0 / 10 / 20 / 25 / 30), also dort, wo im
 // Diagramm die Farbe wechselt. Sie folgt der Skala automatisch, falls diese
-// jemals bearbeitet wird. Ganz oben steht zusätzlich die feste Obergrenze der
-// Achse, bei der die Kurve gekappt wird.
-const Y_TICKS: { at: number; label: string }[] = [{ at: 0, label: "0" }];
-for (const band of WIND_COLOR_SCALE) {
-  if (band.upTo === null || band.upTo >= yMax) break;
-  Y_TICKS.push({ at: band.upTo, label: String(band.upTo) });
+// jemals bearbeitet wird. Ganz oben steht zusätzlich die aktuelle Obergrenze
+// der (mitwachsenden) Achse.
+function buildYTicks(yMax: number): { at: number; label: string }[] {
+  const ticks: { at: number; label: string }[] = [{ at: 0, label: "0" }];
+  for (const band of WIND_COLOR_SCALE) {
+    if (band.upTo === null || band.upTo >= yMax) break;
+    ticks.push({ at: band.upTo, label: String(band.upTo) });
+  }
+  ticks.push({ at: yMax, label: String(yMax) });
+  return ticks;
 }
-Y_TICKS.push({ at: yMax, label: String(yMax) });
 
 interface Point {
   t: number; // Zeitstempel (ms) — bei Messwerten der Raster-Zeitpunkt (s.u.)
@@ -606,6 +639,19 @@ export default function WindHistoryPanel({
       points.some((p) => p.speed !== null || p.gust !== null) ||
       forecastPoints.some((p) => p.speed !== null || p.gust !== null);
 
+    // --- Senkrechte Skala (km/h) ---
+    // Obergrenze aus allen vorhandenen Werten bestimmen, damit hohe Böen nicht
+    // mehr oben abgeschnitten werden. Böen reichen immer mindestens so hoch wie
+    // der Mittelwind, trotzdem gehen beide Reihen in die Rechnung ein — auch
+    // Stationen ohne Böenwert sollen vollständig sichtbar sein.
+    const yMax = computeYMax([
+      ...points.flatMap((p) => [p.speed, p.gust]),
+      ...forecastPoints.flatMap((p) => [p.speed, p.gust]),
+    ]);
+    const y = makeY(yMax);
+    const colorBands = buildColorBands(yMax, y);
+    const yTicks = buildYTicks(yMax);
+
     // --- Skalen ---
     // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
     // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
@@ -758,6 +804,9 @@ export default function WindHistoryPanel({
       hourlyPointIndices,
       arrowIndices,
       x,
+      y,
+      colorBands,
+      yTicks,
       minT,
       hasData,
       svgWidth,
@@ -783,6 +832,9 @@ export default function WindHistoryPanel({
     hourlyPointIndices,
     arrowIndices,
     x,
+    y,
+    colorBands,
+    yTicks,
     minT,
     hasData,
     svgWidth,
@@ -879,7 +931,7 @@ export default function WindHistoryPanel({
                   Kartenpfeile, siehe WIND_COLOR_SCALE): eine Fläche je
                   Bereich mit harter Kante, leicht transparent, damit die
                   Kurven gut lesbar bleiben */}
-              {COLOR_BANDS.map((band) => (
+              {colorBands.map((band) => (
                 <rect
                   key={band.color}
                   x={PAD_X}
@@ -1165,7 +1217,7 @@ export default function WindHistoryPanel({
             className="relative w-10 shrink-0 text-[11px] text-zinc-500 dark:text-zinc-400"
             style={{ height: SVG_H }}
           >
-            {Y_TICKS.map((tick) => (
+            {yTicks.map((tick) => (
               <span
                 key={tick.at}
                 className="absolute left-1.5 -translate-y-1/2 tabular-nums"
