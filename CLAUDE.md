@@ -124,7 +124,12 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   Beschriftungen, Auswahlring, Grenzen) und die Farbskala `WIND_COLOR_SCALE`.
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
-- **Feste y-Achse 0–45 km/h** im Verlaufsbalken
+- **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere
+  Grenze mindestens 45 km/h und darüber in 15er-Schritten wachsend, bis der
+  höchste Wert (Messung oder Prognose) hineinpasst. So wird nichts mehr
+  abgeschnitten, ruhige Tage bleiben aber untereinander vergleichbar.
+  Stellknöpfe: `Y_MIN_MAX_KMH`, `Y_MAX_STEP_KMH`, `Y_MAX_HEADROOM_KMH` in
+  `src/components/WindHistoryPanel.tsx`
 - Zeichenreihenfolge und Flächen im Verlaufsbalken sind mehrfach abgestimmt —
   die Messung bleibt im Vordergrund (Kommentar direkt im JSX beachten)
 - **Caching nicht entfernen** (`/api/wind` und die Verlaufs-Routen): Stationen
