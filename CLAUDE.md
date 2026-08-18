@@ -99,7 +99,7 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
-| `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Dunkelmodus-Klasse |
+| `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/WindMap.tsx` | Karte, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
@@ -119,9 +119,13 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   **niemals** im Code — nur Umgebungsvariablen in Vercel/Supabase
 
 **Darstellung**
-- **Dunkelmodus dauerhaft an**, unabhängig vom Gerät des Besuchers.
-  Ausdrücklich **ausgenommen und hell**: die Karte selbst (Kacheln, Pfeile,
-  Beschriftungen, Auswahlring, Grenzen) und die Farbskala `WIND_COLOR_SCALE`.
+- **Heller Modus dauerhaft an**, unabhängig vom Gerät des Besuchers (früher
+  war es umgekehrt der Dunkelmodus). Umgesetzt dadurch, dass in
+  `src/app/layout.tsx` **keine** Klasse `dark` am `<html>` steht; die
+  `dark:`-Klassen im Code bleiben absichtlich stehen und greifen dadurch
+  nirgends — so ist der Dunkelmodus mit einer Zeile wieder herstellbar.
+  Die Karte (Kacheln, Pfeile, Beschriftungen, Auswahlring, Grenzen) und die
+  Farbskala `WIND_COLOR_SCALE` waren schon immer hell und bleiben unverändert.
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere

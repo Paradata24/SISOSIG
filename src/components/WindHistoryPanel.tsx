@@ -21,7 +21,7 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 //  - Zeitachse (Lokalzeit) oben
 //  - Liniendiagramm vor dem Farbverlauf der Windstärke-Skala: Mittelwind
 //    (unten, dünn) und Böen (oben, ca. 15% dicker), dazwischen eine
-//    halbtransparente Fläche — je einmal für die Messung (weiß) und für die
+//    halbtransparente Fläche — je einmal für die Messung (schwarz) und für die
 //    ICON-CH1-Prognose (rot)
 //  - darunter eine Reihe Windrichtungs-Pfeile, die Messwerte in eingefärbten
 //    Quadraten (Farbe = Windskala), noch einmal die Uhrzeiten und ganz unten
@@ -151,14 +151,14 @@ const LINE_GAP_MS = 60 * 60 * 1000;
 // Pfeil im Prognose-Block benutzen dafür die Tailwind-Klassen
 // stroke-red-600/dark:stroke-red-500 bzw. fill-red-600/dark:fill-red-500; für
 // die Textfarbe des "–" bei fehlendem Wert brauchen wir einen konkreten
-// Farbwert, und weil die Seite dauerhaft im Dunkelmodus läuft, ist das genau
-// red-500.
-const CH1_COLOR = "#ef4444";
+// Farbwert, und weil die Seite dauerhaft im hellen Modus läuft, ist das genau
+// red-600.
+const CH1_COLOR = "#dc2626";
 
 // Deckkraft der Fläche zwischen den beiden Prognosekurven (Böe oben,
 // Mittelwind unten) — dasselbe Rot wie die Kurven selbst, halbtransparent,
 // damit Messkurven und Farbverlauf dahinter sichtbar bleiben. Das Gegenstück
-// zur weißen 50 %-Fläche zwischen den Messkurven.
+// zur schwarzen 50 %-Fläche zwischen den Messkurven.
 const FORECAST_BAND_OPACITY = 0.5;
 
 // Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
@@ -793,7 +793,7 @@ export default function WindHistoryPanel({
     // (BAND_GAP_MS).
     const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
     // Fläche zwischen den beiden Prognosekurven (Böe oben, Mittelwind unten),
-    // das rote Gegenstück zur weißen Messfläche. Die Prognose liefert einen Wert
+    // das rote Gegenstück zur schwarzen Messfläche. Die Prognose liefert einen Wert
     // pro voller Stunde, deshalb darf die Fläche einen vollen Stundenschritt
     // überbrücken (LINE_GAP_MS) — genau wie die Prognosekurven selbst; fehlt eine
     // Stunde ganz, reißt auch die Fläche dort auf.
@@ -856,10 +856,13 @@ export default function WindHistoryPanel({
   // also über dem Zeitbalken und der Fußzeile — beide bleiben sichtbar und
   // bedienbar. (Der frühere Innenabstand für den iPhone-Balken ganz unten
   // entfällt damit, weil das Panel den Bildschirmrand nicht mehr berührt.)
+  // Der Schatten nach oben hebt das Panel von der Karte ab; er ist bewusst
+  // dezent (0.18 statt der früheren 0.5), weil ein kräftiger schwarzer
+  // Schatten auf hellem Grund sofort schmutzig wirkt.
   return (
     <section
       aria-label={`Windverlauf ${station.stationName}`}
-      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.5)] dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -878,7 +881,7 @@ export default function WindHistoryPanel({
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
           letzte 12 Stunden{" "}
           <span className="text-zinc-400 dark:text-zinc-500">
-            — <span className="text-zinc-700 dark:text-zinc-200">weiss</span>:
+            — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
             Messung ·{" "}
             <span className="text-red-600 dark:text-red-500">rot</span>: Prognose
             (ICON-CH1)
@@ -1028,8 +1031,8 @@ export default function WindHistoryPanel({
 
               {/* Reihenfolge (Wunsch des Projektbesitzers): erst die beiden
                   Flächen, dann die beiden Kurvenpaare. Dadurch liegen die
-                  roten Prognose-Kurven VOR der weißen Messfläche, aber HINTER
-                  den weißen Mess-Kurven — die Messung bleibt im Vordergrund,
+                  roten Prognose-Kurven VOR der schwarzen Messfläche, aber HINTER
+                  den schwarzen Mess-Kurven — die Messung bleibt im Vordergrund,
                   die Prognose-Linien verschwinden trotzdem nicht unter der
                   halbtransparenten Messfläche. */}
 
@@ -1042,7 +1045,7 @@ export default function WindHistoryPanel({
                 fillOpacity={FORECAST_BAND_OPACITY}
               />
 
-              {/* 2. Fläche zwischen Böen- und Mittelwind-Messung (weiß, 50 %
+              {/* 2. Fläche zwischen Böen- und Mittelwind-Messung (schwarz, 50 %
                      Deckkraft) — sie folgt ALLEN Messwerten im
                      10-Minuten-Takt und reißt bei jedem fehlenden Wert auf. */}
               <path

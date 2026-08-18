@@ -13,9 +13,9 @@ export const metadata: Metadata = {
   description: "Live-Windwerte Südtiroler Wetterstationen auf einer Karte",
 };
 
-// Färbt die Browserleiste am Handy passend zum Dunkelmodus ein.
+// Färbt die Browserleiste am Handy passend zum hellen Modus ein.
 export const viewport: Viewport = {
-  themeColor: "#18181b",
+  themeColor: "#ffffff",
 };
 
 export default function RootLayout({
@@ -23,12 +23,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Die Klasse "dark" schaltet die ganze Seite dauerhaft in den Dunkelmodus
-  // (siehe @custom-variant in src/app/globals.css).
+  // Die Seite läuft dauerhaft im HELLEN Modus. Dafür wird hier bewusst KEINE
+  // Klasse "dark" gesetzt — die `dark:`-Klassen im Code hängen an genau dieser
+  // Klasse (siehe @custom-variant in src/app/globals.css) und greifen deshalb
+  // nirgends mehr. Wer den Dunkelmodus zurückholen will, schreibt hier wieder
+  // `dark ` vor ${barlowSemiCondensed.variable} und dreht in globals.css
+  // color-scheme/--background/--foreground zurück; sonst ändert sich nichts.
   return (
     <html
       lang="de"
-      className={`dark ${barlowSemiCondensed.variable} h-full antialiased`}
+      className={`${barlowSemiCondensed.variable} h-full antialiased`}
     >
       <head>
         {/*
