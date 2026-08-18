@@ -87,7 +87,7 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
 (12 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
-`/api/collect` alle 10 min (Messwerte) und der Edge Function
+`/api/collect` alle 5 min (Messwerte) und der Edge Function
 `fetch-wind-forecasts` stündlich (Prognosen).
 
 | Datei | Zuständig für |
@@ -136,6 +136,14 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   messen nur alle 5–10 min. Ebenso bleibt der Abruf-Takt der Karte bei 3 min —
   „frischer" wird die Anzeige über den `visibilitychange`-Abruf, nicht über
   einen kürzeren Takt.
+- **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
+  die Stationen nur alle 10 min messen — siehe die Begründung oben in
+  `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".
+- **Einzelne Messlücken werden im Verlaufsbalken überbrückt** (`BAND_GAP_MS`,
+  25 min): Der Bozner Dienst überspringt gelegentlich einen Zeitpunkt bei allen
+  Stationen gleichzeitig. Ab zwei fehlenden Werten am Stück reißt die Kurve
+  weiterhin sichtbar auf — dieser Teil war ausdrücklicher Wunsch des
+  Projektbesitzers.
 
 **Prognosemodelle**
 - Gezeichnet wird nur **ICON-CH1** (rot). **ICON-D2** wird weiter gesammelt,
@@ -168,6 +176,15 @@ Projektbesitzers entfernt:
 - **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
   beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
   beide anfassen.
+- **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
+  `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
+  10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den
+  der Dienst verspätet nachliefert — nachdem der nächste schon da war —, wird
+  nie der „neueste" und ist für uns unerreichbar. Solche Lücken sind KEIN Fehler
+  der Sammel-Route; sie treten bei allen Stationen gleichzeitig auf und lassen
+  sich nur über die Archiv-Schnittstelle des Dienstes nachladen (noch nicht
+  gebaut). Vor der Fehlersuche in `/api/collect` erst prüfen, ob eine Lücke alle
+  Stationen betrifft.
 - **Leistung ist im Verlaufsbalken und in `WindMap` empfindlich**: Icon- und
   Handler-Zwischenspeicher, `useMemo`, `useDeferredValue` und die Refs in
   `WindApp` sind bewusst so gebaut (jeweils ausführlich im Code kommentiert).

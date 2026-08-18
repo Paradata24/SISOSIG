@@ -144,7 +144,7 @@ const FORECAST_COLUMN_W = MEAS_BOX_W + FORECAST_ARROW_GAP_X + ARROW_SIZE;
 // STÜNDLICHEN Kurven (die Prognosen): genau ein Stundenschritt. Fehlt eine
 // Stunde ganz, beträgt der Abstand 2 h und die Linie bricht dort sichtbar ab,
 // statt die Lücke zu überbrücken. Die beiden Messkurven benutzen stattdessen
-// BAND_GAP_MS (ein 10-Minuten-Schritt), weil sie jeder Messung folgen.
+// BAND_GAP_MS (2,5 Rasterschritte), weil sie jeder Messung folgen.
 const LINE_GAP_MS = 60 * 60 * 1000;
 
 // Farbe der ICON-CH1-Prognose als fester Hex-Wert. Kurve, Punkte und der
@@ -280,12 +280,26 @@ interface Point {
 // GRID_MS und snapToGrid stehen seit dem Zeitbalken in src/lib/wind.ts, weil
 // die Karte dasselbe Raster braucht.
 // Größter Abstand, über den die beiden Messkurven und die 50%-Fläche
-// dazwischen noch durchgezogen werden: genau EIN Rasterschritt. Fehlt ein
-// 10-Minuten-Wert, entsteht dort also eine echte Lücke (Wunsch des
-// Projektbesitzers), statt sie stillschweigend zu überbrücken. Bewusster
-// Nebeneffekt: auch ein einzelner ausgefallener Sammel-Lauf (/api/collect)
-// wird jetzt als schmale Lücke sichtbar.
-const BAND_GAP_MS = GRID_MS;
+// dazwischen noch durchgezogen werden: 2,5 Rasterschritte (25 min).
+//
+// Warum nicht EIN Rasterschritt (der frühere Wert)? Der Bozner Dienst
+// veröffentlicht einen Messwert erst 5–10 Minuten nach der Messung und liefert
+// unter /sensors immer nur den NEUESTEN Wert. Kommt ein Wert verspätet, nachdem
+// der nächste schon da war, wird er nie der neueste und ist für /api/collect
+// unsichtbar — egal wie oft abgefragt wird. In der Datenbank fehlt dann eine
+// einzelne 10-Minuten-Spalte, und zwar bei ALLEN Stationen gleichzeitig
+// (nachgemessen: statt ~80 Stationen pro Zeitfenster nur 5–7). Bei einem
+// Höchstabstand von einem Rasterschritt riss die Kurve dort auf und sah aus wie
+// ein Stationsausfall, obwohl links und rechts davon echte Messwerte stehen.
+//
+// 25 min ist bewusst zwischen 20 und 30 gewählt:
+//   - EIN fehlender Wert  → Nachbarn 20 min auseinander → wird durchgezogen.
+//   - ZWEI oder mehr      → 30 min und mehr             → Lücke bleibt sichtbar.
+// Ein echter Stationsausfall bleibt also erkennbar (Wunsch des
+// Projektbesitzers), nur die Aussetzer des Datenlieferanten werden überbrückt.
+// Erfunden wird dabei nichts: Beide Endpunkte der Linie sind echte Messungen,
+// und an der übersprungenen Stelle fehlen weiterhin Pfeil und Werte-Quadrat.
+const BAND_GAP_MS = 2.5 * GRID_MS;
 
 function snapPointsToGrid(points: Point[]): Point[] {
   const bySlot = new Map<number, { point: Point; dist: number; hasData: boolean }>();
@@ -780,16 +794,16 @@ export default function WindHistoryPanel({
     // Die beiden Messkurven verbinden ALLE Messpunkte im 10-Minuten-Takt
     // (Wunsch des Projektbesitzers) — die Linien folgen also genau den
     // Messungen und nicht nur den vollen Stunden. Sie benutzen denselben
-    // Höchstabstand wie die Fläche darunter (BAND_GAP_MS = ein Rasterschritt):
-    // fehlt ein 10-Minuten-Wert, reißen Linie und Fläche an derselben Stelle
-    // auf, statt die Lücke stillschweigend zu überbrücken.
+    // Höchstabstand wie die Fläche darunter (BAND_GAP_MS, 25 min): ein
+    // einzelner vom Bozner Dienst verschluckter Wert wird überbrückt, ab zwei
+    // fehlenden Werten reißen Linie und Fläche an derselben Stelle auf.
     const speedPath = buildLinePath(points, (p) => p.speed, x, y, BAND_GAP_MS);
     const gustPath = buildLinePath(points, (p) => p.gust, x, y, BAND_GAP_MS);
     const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
     const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
     // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
-    // unten). Anders als die Kurven benutzt sie ALLE Messwerte im
-    // 10-Minuten-Takt und bricht schon bei einem einzigen fehlenden Wert ab
+    // unten). Anders als die Prognosefläche benutzt sie ALLE Messwerte im
+    // 10-Minuten-Takt und bricht ab zwei fehlenden Werten am Stück ab
     // (BAND_GAP_MS).
     const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
     // Fläche zwischen den beiden Prognosekurven (Böe oben, Mittelwind unten),

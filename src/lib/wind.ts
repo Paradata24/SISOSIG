@@ -43,10 +43,13 @@ export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
- * Takt der Messwert-Aufzeichnung (/api/collect läuft alle 10 Minuten) und
- * damit auch die Schrittweite des Zeitbalkens unter der Karte sowie die
+ * Anzeige-Raster: Schrittweite des Zeitbalkens unter der Karte und
  * Spaltendichte im Verlaufsbalken. Steht hier zentral, damit Zeitbalken,
  * /api/timeline und der Verlaufsbalken dasselbe Raster benutzen.
+ *
+ * 10 Minuten, weil die Bozner Stationen in diesem Takt messen. NICHT zu
+ * verwechseln mit dem Abruf-Takt: /api/collect läuft alle 5 Minuten, also
+ * doppelt so oft — siehe den Kommentar dort, warum das nötig ist.
  */
 export const TIMELINE_STEP_MINUTES = 10;
 export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;

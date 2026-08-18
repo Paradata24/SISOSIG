@@ -21,7 +21,7 @@ export interface HistoryEntry {
 }
 
 // Zwischenspeicherung wie bei /api/wind: Neue Messwerte kommen nur alle
-// 10 Minuten dazu (Sammel-Lauf /api/collect), es lohnt sich also nicht, für
+// 10 Minuten dazu (so oft messen die Stationen), es lohnt sich also nicht, für
 // jeden Klick auf eine Station erneut die Datenbank zu befragen. 60 s im
 // CDN von Vercel bedeuten: klickt man zwischen zwei Stationen hin und her
 // oder schauen mehrere Leute dieselbe Station an, kommt die Antwort direkt
