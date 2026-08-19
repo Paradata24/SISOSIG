@@ -9,6 +9,7 @@ import {
   Marker,
   TileLayer,
   useMapEvents,
+  WMSTileLayer,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -48,6 +49,72 @@ const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: fa
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
+
+// Wie weit man höchstens hineinzoomen darf.
+//
+// Vorher stand hier NICHTS — und genau das war das Problem: ohne eigene
+// Angabe nimmt Leaflet die Obergrenze der Kachel-Ebenen, also 18. So weit
+// reicht aber die Esri-Schummerung ("Relief (Grau)") in Südtirol nicht: ab
+// einem gewissen Punkt liefert sie nur noch graue Platzhalter-Kacheln mit dem
+// Text "Map data not yet available".
+//
+// Der Wert steht BEWUSST an der Karte selbst und nicht an den Kachel-Ebenen.
+// Nur so hört auch das Scrollrad, der Doppelklick und das Aufziehen mit zwei
+// Fingern am Handy an dieser Stelle auf; eine Grenze allein an der Ebene
+// würde die Karte weiterzoomen lassen und nur die Kacheln vergrößert
+// stehenlassen.
+//
+// 15 gilt für BEIDE Basiskarten, obwohl die Standard-Karte (OpenStreetMap,
+// bis 19) und die Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll
+// sich beim Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht
+// Stufe 15 bequem (rund 3,5 m je Bildpunkt).
+const MAP_MAX_ZOOM = 15;
+
+// --- Höhenlinien-Ebene (nur bei "Relief (Grau)") ---
+// Kartendienst des Landes Südtirol (Geoportal). Die Linien liegen als
+// durchsichtiges Bild ÜBER der Esri-Schummerung; die Schummerung selbst
+// bleibt unverändert der Untergrund.
+//
+// Der Dienst rechnet die Daten (Original EPSG:25832) selbst nach
+// EPSG:3857 um, das Leaflet braucht, und liefert transparentes PNG — beides
+// vorab am fertigen Bild geprüft.
+const CONTOUR_WMS_URL =
+  "https://geoservices9.civis.bz.it/geoserver/p_bz-Elevation/ows";
+// Von den mehreren angebotenen Varianten die für HELLE Hintergründe — also
+// genau unser Fall (graue Reliefkarte). Der Dienst dünnt die Linien beim
+// Herauszoomen selbst aus, wir bekommen also nicht überall die vollen 2,5 m
+// Abstand des Geländemodells.
+const CONTOUR_WMS_LAYER = "p_bz-Elevation:ContourLines-ForLightBackgrounds";
+// Erst ab dieser Stufe einblenden. Darunter lägen die Linien so dicht
+// beieinander, dass sie nur ein grauer Schleier wären und die Windpfeile
+// stören würden. Leaflet lädt unterhalb der Grenze gar keine Kacheln — das
+// spart nebenbei Anfragen an den Landesserver.
+const CONTOUR_MIN_ZOOM = 13;
+// Deckkraft: die Linien sollen das Gelände andeuten, nicht mit den
+// Windpfeilen konkurrieren. Zusammen mit dem Graufilter in globals.css
+// (Klasse .hoehenlinien-ebene) treten sie deutlich zurück.
+const CONTOUR_OPACITY = 0.5;
+// Die Geodaten des Landes stehen unter CC BY: Quellenangabe ist Pflicht.
+// Sie steht in der Leaflet-Zeile unten rechts, gleich neben Esri und CARTO —
+// die frühere Fußzeile bleibt damit weiterhin draußen.
+const CONTOUR_ATTRIBUTION =
+  'Höhenlinien &copy; <a href="https://geoportal.buergernetz.bz.it">Autonome Provinz Bozen – Südtirol</a> (CC BY 4.0)';
+// Durchsichtiger 1×1-Punkt für Kacheln, die der Landesserver nicht liefert
+// (Ausfall, Zeitüberschreitung, Gebiet außerhalb Südtirols). Damit ist eine
+// fehlende Höhenlinien-Kachel schlicht LEER und kein sichtbarer Fehler — die
+// Karte, die Windpfeile und der Rest funktionieren unverändert weiter.
+const TRANSPARENT_TILE =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+// Zeichenreihenfolge der Kachel-Ebenen innerhalb der Karte (kleiner = weiter
+// unten). Bewusst ausgeschrieben statt der Einfügereihenfolge überlassen:
+// Schummerung ganz unten, darüber die Höhenlinien, obenauf die Ortsnamen —
+// sonst könnten die Höhenlinien die Beschriftung überdecken.
+// Windpfeile und Auswahl-Ring liegen ohnehin darüber: Leaflet setzt Marker
+// und Linien grundsätzlich in eine höhere Ebene als alle Kartenkacheln.
+const Z_HILLSHADE = 1;
+const Z_CONTOURS = 2;
+const Z_LABELS = 3;
 // Wie oft im Hintergrund neue Winddaten geholt werden. Die Stationen messen
 // nur alle 5-10 Minuten, ein kürzerer Takt holt also meistens nur dieselben
 // Werte noch einmal und kostet auf dem Handy unnötig Datenvolumen. Der Wert
@@ -452,6 +519,7 @@ export default function WindMap({
       <MapContainer
         center={SOUTH_TYROL_CENTER}
         zoom={SOUTH_TYROL_ZOOM}
+        maxZoom={MAP_MAX_ZOOM}
         zoomControl={false}
         className="h-full w-full"
       >
@@ -478,11 +546,35 @@ export default function WindMap({
               key="esri-hillshade"
               attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
+              zIndex={Z_HILLSHADE}
+            />
+            {/* Höhenlinien des Landes Südtirol, nur bei "Relief (Grau)":
+                Bei "Standard" (OpenStreetMap) sind Höhenlinien nicht
+                erwünscht — die Karte ist dort ohnehin schon dicht bedruckt.
+                Weil dieser Zweig nur im Relief-Fall gerendert wird, ist die
+                Ebene bei "Standard" gar nicht erst vorhanden und fragt auch
+                nichts ab.
+                Fällt der Landesserver aus, bleiben die Kacheln dank
+                errorTileUrl einfach leer (siehe TRANSPARENT_TILE oben). */}
+            <WMSTileLayer
+              key="hoehenlinien"
+              url={CONTOUR_WMS_URL}
+              layers={CONTOUR_WMS_LAYER}
+              format="image/png"
+              transparent
+              version="1.3.0"
+              attribution={CONTOUR_ATTRIBUTION}
+              minZoom={CONTOUR_MIN_ZOOM}
+              opacity={CONTOUR_OPACITY}
+              className="hoehenlinien-ebene"
+              errorTileUrl={TRANSPARENT_TILE}
+              zIndex={Z_CONTOURS}
             />
             <TileLayer
               key="carto-labels"
               attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
               url="https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+              zIndex={Z_LABELS}
             />
           </>
         )}

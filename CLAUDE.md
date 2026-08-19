@@ -102,7 +102,7 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/WindMap.tsx` | Karte, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
+| `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
@@ -126,6 +126,37 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   nirgends — so ist der Dunkelmodus mit einer Zeile wieder herstellbar.
   Die Karte (Kacheln, Pfeile, Beschriftungen, Auswahlring, Grenzen) und die
   Farbskala `WIND_COLOR_SCALE` waren schon immer hell und bleiben unverändert.
+- **Zoom-Obergrenze der Karte: 15** (`MAP_MAX_ZOOM` in
+  `src/components/WindMap.tsx`). Sie steht bewusst an der Karte selbst
+  (`maxZoom` am `MapContainer`) und nicht an den Kachel-Ebenen — nur so hören
+  auch Scrollrad, Doppelklick und Pinch-Zoom am Handy dort auf. Grund: Die
+  Esri-Schummerung liefert in Südtirol darüber hinaus nur noch graue
+  Platzhalter-Kacheln ("Map data not yet available"). Die Grenze gilt
+  **einheitlich für beide Basiskarten**, obwohl OpenStreetMap (19) und die
+  CARTO-Beschriftungen (20) mehr könnten — die Karte soll sich beim
+  Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
+  ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
+  echte Kacheln hat.
+- **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „Standard".
+  Quelle ist der WMS-Dienst des Landes Südtirol
+  (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
+  Layer `p_bz-Elevation:ContourLines-ForLightBackgrounds` — die Variante für
+  helle Hintergründe; der Dienst dünnt beim Herauszoomen selbst aus, wir
+  bekommen also nicht die vollen 2,5 m Abstand des Geländemodells).
+  Sie liegt als transparentes PNG **über** der Esri-Schummerung und **unter**
+  den CARTO-Ortsnamen (`Z_HILLSHADE`/`Z_CONTOURS`/`Z_LABELS`); Windpfeile und
+  Auswahl-Ring liegen ohnehin über allen Kacheln.
+  Eingeblendet **erst ab Zoom 13** (`CONTOUR_MIN_ZOOM`) — darunter lädt
+  Leaflet gar keine Kacheln, das spart auch Anfragen an den Landesserver.
+  Zurückgenommen über `CONTOUR_OPACITY` (0,5) und den Graufilter
+  `.hoehenlinien-ebene` in `src/app/globals.css`; die Windpfeile müssen klar
+  im Vordergrund bleiben.
+  **Ausfallsicherheit:** `errorTileUrl` ist ein durchsichtiger 1×1-Punkt
+  (`TRANSPARENT_TILE`) — fehlende Kacheln sind damit nur fehlende Kacheln und
+  kein Fehlerzustand der Karte.
+  **Lizenz:** Die Geodaten des Landes stehen unter CC BY, die Quellenangabe
+  (`CONTOUR_ATTRIBUTION`) muss sichtbar bleiben. Sie steht in der
+  Leaflet-Zeile unten rechts neben Esri und CARTO — nicht entfernen.
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere
@@ -200,8 +231,12 @@ Projektbesitzers entfernt:
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte) — bei
   einer Neuinstallation ist alles schon in `schema.sql`.
 - **Sandbox:** Ausgehende Verbindungen zu `daten.buergernetz.bz.it`,
-  `api.pioupiou.fr`, den Kartenkacheln und Supabase sind in manchen
-  Entwicklungsumgebungen blockiert. Fehlerantworten (502/500) sind dort
+  `api.pioupiou.fr`, den Kartenkacheln (auch `server.arcgisonline.com` und
+  dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
+  manchen Entwicklungsumgebungen blockiert. Kartendienste lassen sich dort
+  also **nicht** per `curl` prüfen — das geht nur am realen Kartenbild
+  (Vercel-Vorschau) oder indem der Projektbesitzer eine Test-Adresse im
+  Browser öffnet. Fehlerantworten (502/500) sind dort
   normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL` und
   `OPEN_METEO_BASE_URL` lässt sich auf einen lokalen Mock umbiegen.
 
