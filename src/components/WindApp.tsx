@@ -20,10 +20,13 @@ import {
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
 import TimeSlider, { type TimelineStatus } from "@/components/TimeSlider";
+import ChecklistPanel from "@/components/ChecklistPanel";
+import { CHECKLISTS, checklistItemKey } from "@/lib/checklists";
 
-// Titel-Balken + Karte + Zeitbalken. Der Menü-Button (3 Linien) sitzt ganz
-// rechts im Titel-Balken und öffnet ein Popup, in dem Kartenhintergrund und
-// Stationsfilter umgeschaltet werden. Der Zustand lebt hier (und nicht in
+// Titel-Balken + Karte + Zeitbalken. Oben rechts im Titel-Balken stehen die
+// drei Checklisten-Buttons (breakfast / lunch / dinner) und ganz rechts der
+// Menü-Button (3 Linien), der ein Popup mit Kartenhintergrund und
+// Stationsfilter öffnet. Der Zustand lebt hier (und nicht in
 // WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
@@ -32,6 +35,34 @@ export default function WindApp() {
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // --- Checklisten ---
+  // Welche Liste gerade offen ist (null = keine).
+  const [openChecklistId, setOpenChecklistId] = useState<string | null>(null);
+  // Die gesetzten Haken ALLER Listen an einer Stelle, Schlüssel
+  // "listenname:punktname" (siehe checklistItemKey in src/lib/checklists.ts).
+  // Bewusst hier oben und nicht im Checklisten-Fenster: das Fenster wird beim
+  // Schließen abgebaut, die Haken sollen aber erhalten bleiben, wenn man
+  // zwischendurch auf die Karte schaut.
+  const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
+
+  const openChecklist =
+    CHECKLISTS.find((list) => list.id === openChecklistId) ?? null;
+
+  const toggleChecklistItem = useCallback((key: string) => {
+    setCheckedItems((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  // Setzt nur die Haken EINER Liste zurück, die anderen bleiben stehen.
+  const resetChecklist = useCallback((listId: string) => {
+    const list = CHECKLISTS.find((entry) => entry.id === listId);
+    if (!list) return;
+    setCheckedItems((prev) => {
+      const next = { ...prev };
+      for (const item of list.items) delete next[checklistItemKey(listId, item.id)];
+      return next;
+    });
+  }, []);
 
   // --- Zeitbalken ---
   // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
@@ -143,11 +174,55 @@ export default function WindApp() {
 
   return (
     <>
-      <header className="relative border-b border-zinc-200 bg-white px-4 py-3 text-center dark:border-zinc-800 dark:bg-zinc-900">
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+      {/* Der Balken ist eine Flex-Reihe: Titel links (nimmt den freien Platz
+          und bricht bei Bedarf um), rechts die drei Checklisten-Buttons und
+          der Menü-Button. Bewusst NICHT mehr mit absolut gesetzten Buttons
+          über einem mittigen Titel — auf schmalen Handys würden sich Titel und
+          Buttons sonst überlappen. */}
+      <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
           Should I stay or should I go
         </h1>
-        <div ref={menuRef} className="absolute top-1/2 right-3 z-[1100] -translate-y-1/2">
+        {/* Die drei Checklisten-Buttons, links neben dem Menü-Button.
+            Reihenfolge und Beschriftung kommen aus CHECKLISTS
+            (src/lib/checklists.ts) — dort wird auch der Inhalt gepflegt.
+            shrink-0: Die Buttons dürfen nie schmaler werden als ihre
+            Beschriftung, notfalls bricht der Titel links um. */}
+        <div className="z-[1100] flex shrink-0 items-center gap-1">
+          {CHECKLISTS.map((list) => {
+            const total = list.items.length;
+            const done = list.items.filter(
+              (item) => checkedItems[checklistItemKey(list.id, item.id)],
+            ).length;
+            // Grün = alle Punkte dieser Liste abgehakt. Bei einer noch leeren
+            // Liste (Inhalte folgen) gibt es logischerweise kein "fertig".
+            const allDone = total > 0 && done === total;
+            const isOpen = openChecklistId === list.id;
+            return (
+              <button
+                key={list.id}
+                type="button"
+                onClick={() =>
+                  setOpenChecklistId((current) =>
+                    current === list.id ? null : list.id,
+                  )
+                }
+                aria-expanded={isOpen}
+                title={list.title}
+                className={`h-9 border px-1.5 text-[10px] font-semibold transition-colors sm:px-2 sm:text-[11px] ${
+                  allDone
+                    ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
+                    : isOpen
+                      ? "border-black bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                      : "border-black bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {list.buttonLabel}
+              </button>
+            );
+          })}
+        </div>
+        <div ref={menuRef} className="relative z-[1100] shrink-0">
           <button
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
@@ -235,6 +310,17 @@ export default function WindApp() {
         onEngage={ensureTimeline}
         status={timelineStatus}
       />
+      {/* Das Checklisten-Fenster liegt über allem (auch über der Karte) und
+          wird nur erzeugt, wenn wirklich eine Liste offen ist. */}
+      {openChecklist && (
+        <ChecklistPanel
+          checklist={openChecklist}
+          checked={checkedItems}
+          onToggle={toggleChecklistItem}
+          onResetList={resetChecklist}
+          onClose={() => setOpenChecklistId(null)}
+        />
+      )}
     </>
   );
 }
