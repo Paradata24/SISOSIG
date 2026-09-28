@@ -34,9 +34,13 @@
 // eigenen Secrets gesetzt werden. WIND_API_BASE_URL / OPEN_METEO_BASE_URL
 // sind optionale Overrides für Tests mit einem lokalen Mock-Server.
 
+// Adresse des Bozner Dienstes — identisch zu src/app/api/wind/route.ts (dort
+// steht, warum sie im Sept. 2026 geändert wurde). Nach einer Änderung hier die
+// Funktion im Supabase-Dashboard neu deployen, sonst läuft die alte Adresse
+// weiter.
 const WIND_API_BASE =
   Deno.env.get("WIND_API_BASE_URL") ??
-  "http://daten.buergernetz.bz.it/services/meteo/v1";
+  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
 
 const OPEN_METEO_BASE =
   Deno.env.get("OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com";

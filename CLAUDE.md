@@ -230,7 +230,12 @@ Projektbesitzers entfernt:
 - **Bestehende Datenbanken** brauchen die einmaligen SQL-Skripte in
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte) — bei
   einer Neuinstallation ist alles schon in `schema.sql`.
-- **Sandbox:** Ausgehende Verbindungen zu `daten.buergernetz.bz.it`,
+- **Adresse des Bozner Dienstes steht dreifach** (`/api/wind`, `/api/collect`,
+  Edge Function) — seit Sept. 2026 `geoservices.buergernetz.bz.it`, die alte
+  `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug alle drei
+  ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
+  werden.
+- **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
   `api.pioupiou.fr`, den Kartenkacheln (auch `server.arcgisonline.com` und
   dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
   manchen Entwicklungsumgebungen blockiert. Kartendienste lassen sich dort
