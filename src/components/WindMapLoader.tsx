@@ -16,17 +16,21 @@ export default function WindMapLoader({
   baseLayer,
   stationFilter,
   historyFrame,
+  refreshToken,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
   /** Gewählter Verlaufs-Zeitpunkt aus dem Zeitbalken; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
+  /** Zähler des Refresh-Buttons, siehe WindMap. */
+  refreshToken: number;
 }) {
   return (
     <WindMap
       baseLayer={baseLayer}
       stationFilter={stationFilter}
       historyFrame={historyFrame}
+      refreshToken={refreshToken}
     />
   );
 }

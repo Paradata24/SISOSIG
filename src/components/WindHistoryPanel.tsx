@@ -502,6 +502,7 @@ export default function WindHistoryPanel({
   station,
   onClose,
   markerTime = null,
+  refreshToken = 0,
 }: {
   station: WindStation;
   onClose: () => void;
@@ -510,6 +511,13 @@ export default function WindHistoryPanel({
    * eine senkrechte Linie im Diagramm, wo man gerade steht. null = live.
    */
   markerTime?: number | null;
+  /**
+   * Zähler des Refresh-Buttons im Titel-Balken. Ändert er sich, wird der
+   * Verlauf der offenen Station neu geladen. Die bisherige Kurve bleibt dabei
+   * stehen, bis die neuen Daten da sind (kein Flackern), weil der
+   * Stationscode im Ergebnis gleich bleibt.
+   */
+  refreshToken?: number;
 }) {
   // Ergebnis des letzten Ladevorgangs, inklusive Stationscode. Solange der
   // Code nicht zur aktuell gewählten Station passt, gilt das Panel als
@@ -581,7 +589,7 @@ export default function WindHistoryPanel({
     return () => {
       cancelled = true;
     };
-  }, [station.stationCode]);
+  }, [station.stationCode, refreshToken]);
 
   // Escape schließt das Panel.
   useEffect(() => {
