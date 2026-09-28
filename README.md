@@ -187,7 +187,12 @@ Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
 3. Als Aktion **HTTP Request** wählen:
    - Methode: **POST**
    - Endpoint URL: `https://<deine-vercel-domain>/api/collect`
-   - Timeout: der zulässige Maximalwert (z. B. 5000 ms) genügt.
+   - Timeout: **30000 ms**. Seit dem Umzug des Bozner Dienstes (Sept. 2026)
+     braucht ein Sammel-Lauf gut 5 Sekunden; mit nur 5000 ms meldet
+     `net._http_response` dann „Timeout" statt der echten Antwort, und echte
+     Fehler (z. B. `502`) bleiben unsichtbar. Lässt die Oberfläche nur
+     5000 ms zu, den Wert per SQL setzen:
+     `select cron.alter_job(job_id := 1, command := (select replace(command, $$timeout_milliseconds:='5000'$$, $$timeout_milliseconds:='30000'$$) from cron.job where jobid = 1));`
    - Header: `Authorization` = `Bearer <CRON_SECRET>` (derselbe Wert wie die
      Vercel-Variable) und optional `Content-Type` = `application/json`
    - Request Body: leer lassen.
