@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   CircleMarker,
@@ -376,11 +376,17 @@ export default function WindMap({
   baseLayer,
   stationFilter,
   historyFrame,
+  refreshToken,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
+  /**
+   * Zähler des Refresh-Buttons im Titel-Balken (WindApp). Jede Erhöhung holt
+   * sofort frische Live-Werte (und den Verlauf einer offenen Station).
+   */
+  refreshToken: number;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -460,6 +466,11 @@ export default function WindMap({
     return () => window.clearTimeout(timer);
   }, []);
 
+  // Zeigt auf die jeweils aktuelle loadWind-Funktion aus dem Abruf-Effekt
+  // unten, damit der Refresh-Button sie von außen anstoßen kann, ohne dass
+  // dafür Takt und visibilitychange-Zuhörer neu angemeldet werden müssen.
+  const loadWindRef = useRef<(() => Promise<void>) | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -490,6 +501,7 @@ export default function WindMap({
     }
 
     loadWind(true);
+    loadWindRef.current = () => loadWind(false);
     // Im Hintergrund (Tab nicht sichtbar, Handy gesperrt, andere App im
     // Vordergrund) wird NICHT abgefragt: Werte, die gerade niemand sieht,
     // müssen auch nicht geladen werden. Das spart auf dem Handy Datenvolumen
@@ -509,10 +521,19 @@ export default function WindMap({
 
     return () => {
       cancelled = true;
+      loadWindRef.current = null;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
+
+  // Refresh-Button: sofort frische Werte holen. Beim ersten Aufbau (Zähler 0)
+  // nichts tun — da lädt der Effekt oben ohnehin schon. Wie beim Takt bleiben
+  // bei einem Fehlschlag die bisherigen Pfeile stehen.
+  useEffect(() => {
+    if (refreshToken === 0) return;
+    void loadWindRef.current?.();
+  }, [refreshToken]);
 
   return (
     <div className="relative h-full w-full">
@@ -611,6 +632,7 @@ export default function WindMap({
           station={selectedStation}
           onClose={() => setSelectedStationCode(null)}
           markerTime={historyFrame?.time ?? null}
+          refreshToken={refreshToken}
         />
       )}
     </div>
