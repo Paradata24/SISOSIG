@@ -612,14 +612,6 @@ export default function WindHistoryPanel({
     return () => observer.disconnect();
   }, []);
 
-  // Nach dem Laden ans rechte Ende scrollen (neueste Werte zuerst sichtbar).
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el && entries && entries.length > 0) {
-      el.scrollLeft = el.scrollWidth;
-    }
-  }, [entries]);
-
   // --- Das eigentliche Diagramm ---
   // Alles ab hier (Punkte einrasten, Pfade bauen, Pfeile/Zahlen auswählen und
   // das fertige SVG) hängt NUR von den geladenen Daten, dem Bezugszeitpunkt
@@ -873,6 +865,24 @@ export default function WindHistoryPanel({
     forecastTimeSelection,
     forecastByT,
   } = chart;
+
+  // Beim Öffnen so scrollen, dass die "jetzt"-Linie in der MITTE des sichtbaren
+  // Bereichs steht (Wunsch des Projektbesitzers): links die letzten Stunden,
+  // rechts die Prognose. Früher wurde ans rechte Ende gescrollt, dann stand
+  // "jetzt" weit rechts.
+  // Nur einmal pro Station: Holt die Karte im Hintergrund neue Daten
+  // (refreshToken), bleibt die Position stehen, die der Nutzer selbst
+  // gescrollt hat. Auf sehr breiten Bildschirmen reicht die Prognose-Reserve
+  // rechts nicht für eine exakte Mitte — der Browser begrenzt den Wert dann
+  // selbst aufs rechte Ende.
+  const centeredForRef = useRef<string | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !entries || entries.length === 0) return;
+    if (centeredForRef.current === station.stationCode) return;
+    centeredForRef.current = station.stationCode;
+    el.scrollLeft = Math.max(0, x(now) - el.clientWidth / 2);
+  }, [entries, x, now, station.stationCode]);
 
   // absolute (nicht fixed): Das Panel sitzt am unteren Rand des KARTENbereichs,
   // also über dem Zeitbalken und der Fußzeile — beide bleiben sichtbar und
