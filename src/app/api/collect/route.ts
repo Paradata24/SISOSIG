@@ -31,9 +31,11 @@ import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 //   SUPABASE_SERVICE_ROLE_KEY  service_role Key des Supabase-Projekts
 //   CRON_SECRET                selbst gewähltes Geheimnis für den Cron-Aufruf
 
+// Adresse des Bozner Dienstes — identisch zu src/app/api/wind/route.ts (dort
+// steht, warum sie im Sept. 2026 geändert wurde) und zur Edge Function.
 const API_BASE =
   process.env.WIND_API_BASE_URL ??
-  "http://daten.buergernetz.bz.it/services/meteo/v1";
+  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
 
 // Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt nur HISTORY_HOURS
 // (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für

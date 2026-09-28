@@ -16,7 +16,10 @@ Danach im Browser [http://localhost:3000](http://localhost:3000) öffnen.
 
 Die Winddaten kommen vom offenen Datenportal der Provinz Bozen
 ([data.civis.bz.it](https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche)),
-über den Webservice unter `daten.buergernetz.bz.it/services/meteo/v1`:
+über den Webservice unter `geoservices.buergernetz.bz.it/services/meteo/v1`
+(bis Sept. 2026 `daten.buergernetz.bz.it` — die alte Adresse antwortet nur
+noch mit `404`; zeigt die Karte „Wetterdienst antwortete mit Status 404",
+zuerst auf der Datensatz-Seite nachsehen, ob die Adresse wieder umgezogen ist):
 
 - `/sensors` liefert die aktuellen Messwerte aller Stationen.
 - `/stations` liefert Name und Koordinaten der Stationen.

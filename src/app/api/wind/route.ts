@@ -6,9 +6,16 @@ import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
 // Zwei Anfragen genügen für alle Stationen: /sensors liefert die aktuellen
 // Messwerte ALLER Stationen auf einmal, /stations alle Metadaten.
+//
+// ADRESSE: Seit Sept. 2026 läuft der Dienst unter geoservices.buergernetz.bz.it.
+// Die frühere Adresse (daten.buergernetz.bz.it) antwortet nur noch mit 404
+// ("Questo endpoint è stato spostato") — die Karte zeigte dann keine Stationen
+// mehr. Die aktuelle Adresse steht auf der Datensatz-Seite oben. Sie steht
+// dreifach im Projekt: hier, in src/app/api/collect/route.ts und in der Edge
+// Function supabase/functions/fetch-wind-forecasts/index.ts — alle mitziehen.
 const API_BASE =
   process.env.WIND_API_BASE_URL ??
-  "http://daten.buergernetz.bz.it/services/meteo/v1";
+  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
 
 // Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen
 // (die Stationen messen normalerweise alle 5-10 Minuten).
