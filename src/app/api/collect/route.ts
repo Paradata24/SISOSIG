@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
+import { fetchSlfReadingsSince } from "@/lib/slf";
 import type { WindStation } from "@/lib/wind";
 
 // Sammel-Route: ruft den Open-Data-Wetterdienst der Provinz Bozen ab und
@@ -43,6 +44,13 @@ const API_BASE =
 // (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
 // ausgefallene Sammel-Läufe und halten die Tabelle klein.
 const RETENTION_DAYS = 2;
+
+// SLF-Stationen: Das SLF liefert die letzten 24 h mit, deshalb schreibt jeder
+// Lauf die letzten 3 Stunden (je Station 6 Halbstundenwerte, zusammen gut
+// 1.000 Zeilen). Ein verpasster Lauf oder ein verspätet gelieferter Wert
+// füllt sich so beim nächsten Lauf von selbst auf; Doppelte fängt der Upsert
+// ab. Mehr als 3 h wäre bei 12 Läufen pro Stunde nur unnötige Schreiblast.
+const SLF_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 // Nicht cachen und immer serverseitig zur Laufzeit ausführen — sonst würde
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
@@ -187,6 +195,23 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error(`${label}-Stationen nicht abrufbar:`, err);
     }
+  }
+
+  // 3c) SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv.
+  try {
+    const slfReadings = await fetchSlfReadingsSince(Date.now() - SLF_WINDOW_MS);
+    for (const r of slfReadings) {
+      rows.push({
+        station_code: r.stationCode,
+        measured_at: r.measuredAt,
+        direction: r.direction,
+        speed_kmh: r.speedKmh,
+        gust_kmh: r.gustKmh,
+        source: "slf",
+      });
+    }
+  } catch (err) {
+    console.error("SLF-Stationen nicht abrufbar:", err);
   }
 
   if (rows.length === 0) {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { WindStation } from "@/lib/wind";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
+import { fetchSlfStations } from "@/lib/slf";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
@@ -37,8 +38,11 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
 // alte Cache-Daten dafür bedeutungslos.
 //
+//   Die SLF-Stationen (src/lib/slf.ts) haben wegen ihrer Antwortgröße einen
+//   eigenen 2-Minuten-Zwischenspeicher, siehe dort.
+//
 // --- Gleichzeitige Abrufe ---
-// Die vier Upstream-Abrufe (/sensors, /stations, Pioupiou, GeoSphere) hängen NICHT
+// Die Upstream-Abrufe (/sensors, /stations, Pioupiou, SLF, GeoSphere) hängen NICHT
 // voneinander ab und werden deshalb mit einem einzigen Promise.all parallel
 // gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
 // die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
@@ -175,7 +179,17 @@ async function fetchOpenWindMapSafely(): Promise<WindStation[]> {
   }
 }
 
-// GeoSphere-Austria-Stationen (grenznahe Nord-/Osttiroler Stationen, siehe
+// SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv, gleiche Begründung.
+async function fetchSlfSafely(): Promise<WindStation[]> {
+  try {
+    return await fetchSlfStations();
+  } catch (err) {
+    console.error("SLF-Stationen nicht abrufbar:", err);
+    return [];
+  }
+}
+
+// GeoSphere-Austria-Stationen (alle österreichischen Stationen mit Wind, siehe
 // src/lib/geosphere.ts) sind genauso additiv wie OpenWindMap.
 async function fetchGeoSphereSafely(): Promise<WindStation[]> {
   try {
@@ -190,11 +204,12 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedStations = searchParams.get("station");
 
-  const [sensorsResult, stationsByCode, openWindMapStations, geoSphereStations] =
+  const [sensorsResult, stationsByCode, openWindMapStations, slfStations, geoSphereStations] =
     await Promise.all([
       fetchSensors(),
       fetchStationMeta(),
       fetchOpenWindMapSafely(),
+      fetchSlfSafely(),
       fetchGeoSphereSafely(),
     ]);
 
@@ -271,12 +286,17 @@ export async function GET(request: Request) {
     .map(buildWindStation)
     .filter((s): s is WindStation => s !== null);
 
-  let stations = [...bolzanoStations, ...openWindMapStations, ...geoSphereStations].sort((a, b) =>
+  let stations = [
+    ...bolzanoStations,
+    ...openWindMapStations,
+    ...slfStations,
+    ...geoSphereStations,
+  ].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),
   );
 
   // Optional gefiltert über ?station=CODE1,CODE2 (für Tests/Debugging;
-  // funktioniert auch mit Pioupiou-Codes wie "pioupiou-413").
+  // funktioniert auch mit Codes wie "pioupiou-413" oder "slf-ZNZ1").
   if (requestedStations) {
     const wanted = new Set(
       requestedStations.split(",").map((c) => c.trim()).filter(Boolean),

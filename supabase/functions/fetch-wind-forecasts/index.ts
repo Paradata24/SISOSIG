@@ -1,7 +1,8 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt Windprognosen mehrerer
-// Modelle von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
-// (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-Stationen und
-// grenznahe GeoSphere-Austria-Stationen) und
+// Modelle von Open-Meteo für alle Wetterstationen mit Windsensoren
+// (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-Stationen, die
+// Schweizer IMIS-Stationen des SLF und die grenznahen GeoSphere-Austria-
+// Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -17,7 +18,9 @@
 //   2. Stationsliste ableiten: Bozner Wetterdienst — exakt dieselbe Logik
 //      wie /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
-//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv).
+//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv) — plus
+//      die SLF-IMIS-Stationen (Schweiz, additiv; ICON-CH1 deckt die ganze
+//      Schweiz ab).
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
 //      abfragen — für ZWEI Modelle in EINEM Aufruf je Batch (models=a,b):
 //      meteoswiss_icon_ch1 (model 'icon_ch1') und dwd_icon_d2 (model
@@ -54,6 +57,12 @@ const PIOUPIOU_API_BASE =
 // Function unter Deno läuft und nichts aus src/lib importieren kann).
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
+
+// SLF-IMIS-Stationen — Adresse und Codepräfix identisch zu src/lib/slf.ts
+// (auch hier dupliziert, weil Deno nicht aus src/lib importieren kann).
+const SLF_API_BASE =
+  Deno.env.get("SLF_API_BASE_URL") ?? "https://measurement-api.slf.ch/public/api";
+const SLF_CODE_PREFIX = "slf-";
 
 // GeoSphere Austria (früher ZAMG), Messnetz TAWES — identisch zu
 // src/lib/geosphere.ts (dort für /api/wind und /api/collect). Es werden nur
@@ -267,15 +276,41 @@ async function loadOpenWindMapStations(): Promise<Station[]> {
   return stations;
 }
 
+// Antwortform einer SLF-Station (nur die für die Prognose nötigen Felder).
+interface SlfStationMeta {
+  code: string;
+  lat?: number;
+  lon?: number;
+}
+
+// Alle aktiven SLF-IMIS-Stationen laden. Die Stationsliste sagt nicht, welche
+// Station Wind misst; die wenigen ohne Windsensor bekommen einfach eine
+// Prognose, die nie angezeigt wird (sie erscheinen nicht auf der Karte).
+async function loadSlfStations(): Promise<Station[]> {
+  const res = await fetch(`${SLF_API_BASE}/imis/stations`);
+  if (!res.ok) {
+    throw new Error(`SLF-Stationsliste antwortete mit Status ${res.status}`);
+  }
+  const body: unknown = await res.json();
+  const raw = Array.isArray(body) ? (body as SlfStationMeta[]) : [];
+  const stations: Station[] = [];
+  for (const s of raw) {
+    if (typeof s.lat !== "number" || typeof s.lon !== "number") continue;
+    stations.push({ code: `${SLF_CODE_PREFIX}${s.code}`, lat: s.lat, lng: s.lon });
+  }
+  stations.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+  return stations;
+}
+
 // Grenznahe GeoSphere-Austria-Stationen laden (gleiche Bounding Box wie
 // Pioupiou). Ebenfalls additiv, siehe try/catch beim Aufruf.
 //
 // BEWUSST NUR DIE BOUNDING BOX, obwohl Karte und Historie seit Sept. 2026
 // ALLE ~275 österreichischen Stationen zeigen (src/lib/geosphere.ts): Mit
-// allen Stationen stiege die Zahl der Prognose-Standorte von ~100 auf ~375.
-// Bei stündlichem Lauf wären das ~9.000 Standort-Abrufe pro Tag (mal zwei
-// Modelle) — das sprengt die kostenlose Open-Meteo-Grenze von 10.000
-// Abrufen/Tag. Außerhalb der Box zeigt der Verlaufsbalken deshalb nur die
+// allen Stationen stiege die Zahl der Prognose-Standorte (Bozen, Pioupiou,
+// ~200 SLF) von ~300 auf ~575. Bei stündlichem Lauf wären das ~13.800
+// Standort-Abrufe pro Tag — das sprengt die kostenlose Open-Meteo-Grenze von
+// 10.000 Abrufen/Tag. Mit den 13 grenznahen Stationen sind es ~7.500. Außerhalb der Box zeigt der Verlaufsbalken deshalb nur die
 // Messung, keine Prognose-Kurve.
 interface GeoSphereStationMeta {
   id: string;
@@ -430,6 +465,11 @@ export async function handleRequest(request: Request): Promise<Response> {
     stations = [...stations, ...(await loadOpenWindMapStations())];
   } catch (err) {
     console.error("OpenWindMap-Stationsliste nicht abrufbar:", err);
+  }
+  try {
+    stations = [...stations, ...(await loadSlfStations())];
+  } catch (err) {
+    console.error("SLF-Stationsliste nicht abrufbar:", err);
   }
   try {
     stations = [...stations, ...(await loadGeoSphereStations())];
