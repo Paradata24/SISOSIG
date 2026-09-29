@@ -1,8 +1,8 @@
-// Supabase Edge Function "fetch-wind-forecasts": holt Windprognosen mehrerer
-// Modelle von Open-Meteo für alle Wetterstationen mit Windsensoren
-// (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-Stationen, die
-// Schweizer IMIS-Stationen des SLF und die grenznahen GeoSphere-Austria-
-// Stationen) und
+// Supabase Edge Function "fetch-wind-forecasts": holt die Windprognose des
+// Modells ICON-CH1 (MeteoSwiss) von Open-Meteo für alle Wetterstationen mit
+// Windsensoren (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-
+// Stationen, die Schweizer IMIS-Stationen des SLF und alle österreichischen
+// GeoSphere-Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -10,7 +10,31 @@
 // asynchron (die Antwort läge erst nach dem Cron-Lauf vor) und das Parsen
 // der verschachtelten Open-Meteo-JSON wäre in SQL fehleranfällig. Hier in
 // TypeScript ist beides einfach und gut zu loggen. Angestoßen wird die
-// Funktion stündlich von pg_cron + pg_net (siehe supabase/forecast-cron.sql).
+// Funktion regelmäßig von pg_cron + pg_net (siehe supabase/forecast-cron.sql).
+//
+// --- NUR BEI EINEM NEUEN MODELLLAUF ABFRAGEN (Sept. 2026) ---
+// ICON-CH1 rechnet alle 3 Stunden neu (Läufe 00, 03, 06, … UTC). Laut den
+// Metadaten von Open-Meteo (MODEL_META_URL) steht ein Lauf dort rund
+// 2 h 20 min nach dem Start bereit — der 00-UTC-Lauf also gegen 02:20 UTC
+// (04:20 Uhr Sommerzeit), dann alle 3 Stunden der nächste. Früher fragte die
+// Funktion trotzdem jede Stunde alle Stationen ab; zwei von drei Abrufen
+// lieferten also nur noch einmal dieselben Zahlen und kosteten nur
+// Kontingent.
+// Jetzt fragt sie zuerst die (kostenlose, nicht mitgezählte) Metadaten-Datei
+// ab: Ist der dort gemeldete neueste Lauf schon gespeichert (jüngstes
+// fetched_at in wind_forecasts liegt NACH dessen Bereitstellung), endet der
+// Lauf sofort ohne einen einzigen Prognose-Abruf. So kostet es gleich viel,
+// ob der Cron-Job stündlich oder alle 15 Minuten läuft — ein häufigerer
+// Takt bringt einen neuen Lauf nur schneller auf die Seite.
+// Erzwingen lässt sich ein Abruf mit dem Body {"force": true} (z. B. nach
+// einer Änderung der Stationsliste).
+//
+// --- KONTINGENT ---
+// Open-Meteo zählt kostenlos 10.000 "Aufrufe" pro Tag. Laut Quellcode von
+// Open-Meteo (calculateQueryWeight) kostet jeder Standort einer Anfrage
+// mindestens 1 Aufruf, mehr erst ab 10 Werte-Reihen oder 2 Wochen Zeitraum —
+// wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~580
+// Stationen und 8 Modellläufen am Tag sind das ~4.700 Aufrufe (47 %).
 //
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
@@ -21,10 +45,10 @@
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv) — plus
 //      die SLF-IMIS-Stationen (Schweiz, additiv; ICON-CH1 deckt die ganze
 //      Schweiz ab).
+//   (davor: Prüfung, ob es überhaupt einen neuen Modelllauf gibt, s. o.)
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
-//      abfragen — für ZWEI Modelle in EINEM Aufruf je Batch (models=a,b):
-//      meteoswiss_icon_ch1 (model 'icon_ch1') und dwd_icon_d2 (model
-//      'icon_d2'). Letzte 12 h + kommende ~7 h, Einheit km/h (wie in
+//      abfragen — nur ICON-CH1 (meteoswiss_icon_ch1, in der Datenbank
+//      'icon_ch1'). Letzte 12 h + kommende 12 h, Einheit km/h (wie in
 //      wind_measurements), Zeiten als Unix-Sekunden (eindeutig UTC). Die
 //      Antwort-Liste hat dieselbe Reihenfolge wie die Koordinaten und wird
 //      per Index den Stationen zugeordnet.
@@ -66,46 +90,42 @@ const SLF_CODE_PREFIX = "slf-";
 
 // GeoSphere Austria (früher ZAMG), Messnetz TAWES — identisch zu
 // src/lib/geosphere.ts (dort für /api/wind und /api/collect). Es werden nur
-// die Metadaten gebraucht (Koordinaten der Stationen in derselben Bounding
-// Box), keine Messwerte.
+// die Metadaten gebraucht (Koordinaten aller Stationen), keine Messwerte.
 const GEOSPHERE_API_BASE =
   Deno.env.get("GEOSPHERE_API_BASE_URL") ??
   "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min";
 const GEOSPHERE_CODE_PREFIX = "geosphere-";
 
-// Modellnamen in der Datenbank (Spalte "model") — kurz und stabil — und der
-// dazu passende Modellname der Open-Meteo-API. Es werden zwei Zeilen-Sorten
-// gespeichert:
-//   'icon_ch1' — Bodenwind aus MeteoSwiss ICON-CH1 (rote Kurve im Panel)
-//   'icon_d2'  — Bodenwind aus DWD ICON-D2 (~2 km, deckt Südtirol ab); wird
-//                weiterhin gesammelt, im Panel aber nicht gezeichnet
-// AROME (GeoSphere Austria, 'arome') wurde auf Wunsch des Projektbesitzers
-// wieder entfernt — es wird weder abgefragt noch gespeichert noch angezeigt.
+// Modellname in der Datenbank (Spalte "model") — kurz und stabil — und der
+// dazu passende Modellname der Open-Meteo-API. Gespeichert wird NUR noch
+// ICON-CH1 (dunkelgraue, gestrichelte Kurve im Verlaufsbalken).
+// Entfernt auf Wunsch des Projektbesitzers:
+//   - AROME (GeoSphere Austria, 'arome')
+//   - ICON-D2 (DWD, 'icon_d2') — wurde bis Sept. 2026 mitgesammelt, aber nie
+//     angezeigt. Alte icon_d2-Zeilen löscht das Aufräumen (RETENTION_DAYS)
+//     nach 2 Tagen von selbst.
 const MODEL_DB = "icon_ch1";
-const MODEL_D2_DB = "icon_d2";
 const MODEL_API = "meteoswiss_icon_ch1";
-const MODEL_D2_API = "dwd_icon_d2";
 
-// Alle Bodenwind-Modelle, die pro Batch in EINEM Open-Meteo-Aufruf abgefragt
-// werden (Parameter models=a,b). Open-Meteo hängt in diesem Fall an jeden
-// Variablennamen den Modellnamen an, z.B. "wind_speed_10m_dwd_icon_d2"; die
-// Zeitachse ("time") bleibt für alle Modelle gemeinsam.
-const SURFACE_MODELS = [
-  { api: MODEL_API, db: MODEL_DB },
-  { api: MODEL_D2_API, db: MODEL_D2_DB },
-];
+// Metadaten des Modells bei Open-Meteo: wann der neueste Lauf gestartet und
+// wann er bereitgestellt wurde (Unix-Sekunden). Statische Datei, zählt nicht
+// zum Kontingent.
+const MODEL_META_URL =
+  Deno.env.get("OPEN_METEO_META_URL") ??
+  `${OPEN_METEO_BASE}/data/${MODEL_API}/static/meta.json`;
 
 // Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
 // importieren, deshalb bei einer Änderung beide Stellen anfassen.
 const PAST_HOURS = 12;
-// Bewusst MEHR als FUTURE_MARGIN_HOURS (4): Open-Meteo zählt ab der aktuellen
-// vollen Stunde, und diese Funktion läuft nur stündlich (pg_cron, Minute 10).
-// Kurz vor dem nächsten Lauf ist der jüngste Datensatz also fast eine Stunde
-// alt; mit 7 Stunden ist der angezeigte Bereich bis "jetzt + 4h" auch im
-// ungünstigsten Fall lückenlos gefüllt. /api/forecast schneidet den Überhang
-// beim Ausliefern wieder ab.
-const FORECAST_HOURS = 7;
+// Deutlich MEHR als FUTURE_MARGIN_HOURS (4): Neu geholt wird nur noch alle
+// 3 Stunden (bei jedem neuen Modelllauf, s. o.), und Open-Meteo zählt ab der
+// aktuellen vollen Stunde. Kurz vor dem nächsten Lauf muss der gespeicherte
+// Stand also noch bis "jetzt + 4 h" reichen: bis zu 1 h (angebrochene
+// Stunde) + 3 h (bis zum nächsten Lauf) + 4 h = 8 h. 12 h decken zusätzlich
+// einen ausgefallenen Lauf ab. Kostet nichts extra (gezählt wird erst ab
+// 2 Wochen Zeitraum). /api/forecast schneidet den Überhang wieder ab.
+const FORECAST_HOURS = 12;
 // Aufbewahrung wie bei den Messwerten (/api/collect): 2 Tage reichen für die
 // 12h-Anzeige mit großem Puffer.
 const RETENTION_DAYS = 2;
@@ -149,10 +169,9 @@ interface OpenMeteoLocation {
   hourly?: Record<string, unknown>;
 }
 
-// Eine Messreihe aus der Antwort holen. Bei mehreren Modellen heißt sie
-// "<variable>_<modell>"; wird die Funktion einmal nur mit einem Modell
-// aufgerufen, liefert Open-Meteo den Namen ohne Suffix — beides wird
-// akzeptiert. Fehlt die Reihe ganz (Station außerhalb des Modellgebiets),
+// Eine Messreihe aus der Antwort holen. Bei nur einem Modell liefert
+// Open-Meteo den Namen ohne Suffix ("wind_speed_10m"), bei mehreren mit
+// ("wind_speed_10m_meteoswiss_icon_ch1") — beides wird akzeptiert. Fehlt die Reihe ganz (Station außerhalb des Modellgebiets),
 // kommt undefined zurück und alle Stunden gelten als leer.
 function hourlySeries(
   hourly: Record<string, unknown>,
@@ -302,16 +321,17 @@ async function loadSlfStations(): Promise<Station[]> {
   return stations;
 }
 
-// Grenznahe GeoSphere-Austria-Stationen laden (gleiche Bounding Box wie
-// Pioupiou). Ebenfalls additiv, siehe try/catch beim Aufruf.
+// Alle aktiven GeoSphere-Austria-Stationen laden. Ebenfalls additiv, siehe
+// try/catch beim Aufruf.
 //
-// BEWUSST NUR DIE BOUNDING BOX, obwohl Karte und Historie seit Sept. 2026
-// ALLE ~275 österreichischen Stationen zeigen (src/lib/geosphere.ts): Mit
-// allen Stationen stiege die Zahl der Prognose-Standorte (Bozen, Pioupiou,
-// ~200 SLF) von ~300 auf ~575. Bei stündlichem Lauf wären das ~13.800
-// Standort-Abrufe pro Tag — das sprengt die kostenlose Open-Meteo-Grenze von
-// 10.000 Abrufen/Tag. Mit den 13 grenznahen Stationen sind es ~7.500. Außerhalb der Box zeigt der Verlaufsbalken deshalb nur die
-// Messung, keine Prognose-Kurve.
+// Bis Sept. 2026 waren es nur die 13 grenznahen Stationen (Südtirol-Box),
+// weil stündliche Abrufe aller Stationen das Open-Meteo-Kontingent gesprengt
+// hätten. Seit nur noch bei neuen Modellläufen abgefragt wird (8× statt
+// 24× am Tag, s. o.), ist dafür Platz. Die Metadaten sagen nicht, welche
+// Station Wind misst; das gute Dutzend ohne Windsensor bekommt eine
+// Prognose, die nie angezeigt wird (wie beim SLF). Liegt eine Station
+// außerhalb des ICON-CH1-Gebiets (ganz im Osten Österreichs möglich),
+// liefert Open-Meteo leere Werte, die unten übersprungen werden.
 interface GeoSphereStationMeta {
   id: string;
   lat?: number;
@@ -330,24 +350,14 @@ async function loadGeoSphereStations(): Promise<Station[]> {
     if (s.is_active === false || typeof s.lat !== "number" || typeof s.lon !== "number") {
       continue;
     }
-    if (
-      s.lat < SOUTH_TYROL_BBOX.latMin ||
-      s.lat > SOUTH_TYROL_BBOX.latMax ||
-      s.lon < SOUTH_TYROL_BBOX.lngMin ||
-      s.lon > SOUTH_TYROL_BBOX.lngMax
-    ) {
-      continue;
-    }
     stations.push({ code: `${GEOSPHERE_CODE_PREFIX}${s.id}`, lat: s.lat, lng: s.lon });
   }
   return stations;
 }
 
 // Einen Batch Stationen bei Open-Meteo abfragen und zu Tabellenzeilen
-// aufbereiten — ALLE Modelle in einem einzigen Aufruf (models=a,b,c), nicht
-// ein Aufruf je Modell. Die Antwort ist eine Liste in derselben Reihenfolge
-// wie die übergebenen Koordinaten (bei nur einer Station ein einzelnes
-// Objekt); je Standort stehen die Modelle als Variablen-Suffix nebeneinander.
+// aufbereiten. Die Antwort ist eine Liste in derselben Reihenfolge wie die
+// übergebenen Koordinaten (bei nur einer Station ein einzelnes Objekt).
 async function fetchForecastBatch(
   batch: Station[],
   fetchedAt: string,
@@ -355,7 +365,7 @@ async function fetchForecastBatch(
   const params = new URLSearchParams({
     latitude: batch.map((s) => s.lat).join(","),
     longitude: batch.map((s) => s.lng).join(","),
-    models: SURFACE_MODELS.map((m) => m.api).join(","),
+    models: MODEL_API,
     hourly: "wind_speed_10m,wind_direction_10m,wind_gusts_10m",
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),
@@ -387,46 +397,86 @@ async function fetchForecastBatch(
   locations.forEach((loc, i) => {
     const station = batch[i];
     const hourly = loc.hourly;
-    // Gemeinsame Zeitachse aller Modelle dieses Standorts (nur die
-    // Wetter-Variablen bekommen ein Modell-Suffix, "time" nicht).
     const times = Array.isArray(hourly?.time)
       ? (hourly.time as Array<number | null>)
       : undefined;
     if (!hourly || !times) return;
 
-    for (const model of SURFACE_MODELS) {
-      const speeds = hourlySeries(hourly, "wind_speed_10m", model.api);
-      const directions = hourlySeries(hourly, "wind_direction_10m", model.api);
-      const gusts = hourlySeries(hourly, "wind_gusts_10m", model.api);
+    const speeds = hourlySeries(hourly, "wind_speed_10m", MODEL_API);
+    const directions = hourlySeries(hourly, "wind_direction_10m", MODEL_API);
+    const gusts = hourlySeries(hourly, "wind_gusts_10m", MODEL_API);
 
-      times.forEach((t, k) => {
-        if (typeof t !== "number") return;
-        const speed = speeds?.[k] ?? null;
-        const direction = directions?.[k] ?? null;
-        const gust = gusts?.[k] ?? null;
-        // Station am/außerhalb des Modellrands: Open-Meteo liefert für alle
-        // Variablen null — solche Stunden sauber
-        // überspringen statt leere Zeilen zu speichern. Für dieses Modell
-        // entsteht dann einfach keine Prognose, die anderen bleiben davon
-        // unberührt.
-        if (speed === null && direction === null && gust === null) {
-          skippedNullHours++;
-          return;
-        }
-        rows.push({
-          station_code: station.code,
-          model: model.db,
-          forecast_time: new Date(t * 1000).toISOString(),
-          direction,
-          speed_kmh: speed !== null ? round1(speed) : null,
-          gust_kmh: gust !== null ? round1(gust) : null,
-          fetched_at: fetchedAt,
-        });
+    times.forEach((t, k) => {
+      if (typeof t !== "number") return;
+      const speed = speeds?.[k] ?? null;
+      const direction = directions?.[k] ?? null;
+      const gust = gusts?.[k] ?? null;
+      // Station am/außerhalb des Modellrands: Open-Meteo liefert für alle
+      // Variablen null — solche Stunden sauber überspringen statt leere
+      // Zeilen zu speichern.
+      if (speed === null && direction === null && gust === null) {
+        skippedNullHours++;
+        return;
+      }
+      rows.push({
+        station_code: station.code,
+        model: MODEL_DB,
+        forecast_time: new Date(t * 1000).toISOString(),
+        direction,
+        speed_kmh: speed !== null ? round1(speed) : null,
+        gust_kmh: gust !== null ? round1(gust) : null,
+        fetched_at: fetchedAt,
       });
-    }
+    });
   });
 
   return { rows, skippedNullHours };
+}
+
+// Neuester ICON-CH1-Lauf laut Open-Meteo: Startzeit (nur für die Antwort)
+// und Zeitpunkt der Bereitstellung. null, wenn die Datei nicht lesbar ist.
+async function loadModelRun(): Promise<{ runIso: string; availableMs: number } | null> {
+  try {
+    const res = await fetch(MODEL_META_URL);
+    if (!res.ok) return null;
+    const meta = (await res.json()) as {
+      last_run_initialisation_time?: number;
+      last_run_availability_time?: number;
+    };
+    if (
+      typeof meta.last_run_initialisation_time !== "number" ||
+      typeof meta.last_run_availability_time !== "number"
+    ) {
+      return null;
+    }
+    return {
+      runIso: new Date(meta.last_run_initialisation_time * 1000).toISOString(),
+      availableMs: meta.last_run_availability_time * 1000,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Zeitpunkt des jüngsten gespeicherten ICON-CH1-Abrufs (fetched_at), oder
+// null (leere Tabelle oder Fehler → dann wird normal abgefragt).
+async function loadLastFetchedMs(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_forecasts?model=eq.${MODEL_DB}` +
+        `&select=fetched_at&order=fetched_at.desc&limit=1`,
+      { headers },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as Array<{ fetched_at?: string }>;
+    const t = rows[0]?.fetched_at ? Date.parse(rows[0].fetched_at) : NaN;
+    return Number.isNaN(t) ? null : t;
+  } catch {
+    return null;
+  }
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
@@ -449,6 +499,35 @@ export async function handleRequest(request: Request): Promise<Response> {
   }
   if (request.headers.get("authorization") !== `Bearer ${serviceKey}`) {
     return json({ error: "Nicht autorisiert" }, 401);
+  }
+
+  const supabaseHeaders = {
+    apikey: serviceKey,
+    Authorization: `Bearer ${serviceKey}`,
+    "Content-Type": "application/json",
+  };
+
+  // 1b) Gibt es einen neuen Modelllauf? (siehe "NUR BEI EINEM NEUEN
+  //     MODELLLAUF ABFRAGEN" oben). Jeder Fehler dabei führt zum normalen
+  //     Abruf — lieber einmal zu viel abfragen als eine Prognose verpassen.
+  let force = false;
+  try {
+    force = ((await request.json()) as { force?: unknown })?.force === true;
+  } catch {
+    // leerer oder kein JSON-Body (so ruft der Cron-Job auf) — kein force
+  }
+  const modelRun = await loadModelRun();
+  if (!force && modelRun) {
+    const lastFetchedMs = await loadLastFetchedMs(supabaseUrl, supabaseHeaders);
+    if (lastFetchedMs !== null && lastFetchedMs >= modelRun.availableMs) {
+      return json({
+        ok: true,
+        skipped: true,
+        reason: "Kein neuer ICON-CH1-Lauf seit dem letzten Abruf",
+        modelRun: modelRun.runIso,
+        lastFetched: new Date(lastFetchedMs).toISOString(),
+      });
+    }
   }
 
   // 2) Stationsliste ableiten: Bozner Stationen (Pflicht) + Südtiroler
@@ -480,8 +559,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
 
-  // 3) Bodenwind batchweise abfragen — beide Modelle (ICON-CH1, ICON-D2)
-  //    je Batch in EINEM Open-Meteo-Aufruf. Ein fehlgeschlagener
+  // 3) Bodenwind (ICON-CH1) batchweise abfragen. Ein fehlgeschlagener
   //    Batch bricht nicht den ganzen Lauf ab — die übrigen Stationen werden
   //    trotzdem gespeichert, der Fehler wird geloggt und in der Antwort
   //    gemeldet.
@@ -512,11 +590,6 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   // 4) Upsert: vorhandene (station_code, model, forecast_time)-Kombinationen
   //    werden aktualisiert statt doppelt angelegt.
-  const supabaseHeaders = {
-    apikey: serviceKey,
-    Authorization: `Bearer ${serviceKey}`,
-    "Content-Type": "application/json",
-  };
   const insertRes = await fetch(
     `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
     {
@@ -555,11 +628,10 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   return json({
     ok: true,
-    models: SURFACE_MODELS.map((m) => m.db),
+    model: MODEL_DB,
+    modelRun: modelRun?.runIso ?? null,
     stations: stations.length,
     saved: rows.length,
-    ch1Saved: rows.filter((r) => r.model === MODEL_DB).length,
-    d2Saved: rows.filter((r) => r.model === MODEL_D2_DB).length,
     skippedNullHours,
     batchErrors,
     cleanupBefore: cutoff,

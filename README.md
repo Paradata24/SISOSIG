@@ -77,7 +77,7 @@ Nach demselben Muster arbeiten auch die beiden Verlaufsbalken-Routen:
 `/api/history` wird 60 Sekunden vom CDN geteilt (neue Messwerte kommen nur
 alle 10 Minuten dazu, so oft messen die Stationen), `/api/forecast` 120
 Sekunden (die Prognose wird nur
-stündlich neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
+alle 3 Stunden neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
 und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
 jedes Mal aus der Datenbank.
 
@@ -331,30 +331,40 @@ angefasst wird**: wer nur die Live-Karte anschaut, lädt sie gar nicht.
 
 > **Bezugsname für Änderungswünsche: „Zeitbalken".**
 
-## Windprognosen ICON-CH1 & ICON-D2 (Supabase Edge Function)
+## Windprognosen ICON-CH1 (Supabase Edge Function)
 
 Die Supabase Edge Function `fetch-wind-forecasts`
-(Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt stündlich
-Windprognosen von [Open-Meteo](https://open-meteo.com) für alle
-Stationen, die auch auf der Karte erscheinen — Bozner Stationen
-(Windsensoren + Koordinaten, abgeleitet aus demselben Bozner Wetterdienst
-wie `/api/wind`) **und** die Südtiroler OpenWindMap/Pioupiou-Stationen
-(gleiche Bounding-Box-Filterung wie in `src/lib/pioupiou.ts`, hier in der
-Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
-— und schreibt sie in die Tabelle `wind_forecasts` (Schema:
+(Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt
+Windprognosen des Modells **ICON-CH1** (MeteoSwiss) von
+[Open-Meteo](https://open-meteo.com) für alle Stationen, die auch auf der
+Karte erscheinen — Bozen, Südtiroler OpenWindMap/Pioupiou-Stationen,
+SLF (Schweiz) und GeoSphere (ganz Österreich); die Stationslisten sind in
+der Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren
+kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
-- **Zwei Modelle in einem Aufruf:** Der Bodenwind wird aus **ICON-CH1**
-  (`model = 'icon_ch1'`, im Panel rot) und **ICON-D2**
-  (`model = 'icon_d2'`) geholt — pro Stationsbatch mit einer einzigen
-  Anfrage (`models=a,b`), nicht mit einer Anfrage je Modell.
-  **ICON-D2 wird weiterhin gesammelt, aber nicht im Verlaufsbalken
-  gezeichnet** (die Daten bleiben also für spätere Auswertungen erhalten).
-- Zeitfenster: letzte 12 Stunden + kommende ~7 Stunden (gleitendes
-  Fenster, deshalb läuft der Abruf stündlich, obwohl die Modelle nur alle
-  paar Stunden neu rechnen). Angezeigt werden davon nur 4 Stunden Zukunft —
-  der Rest ist Puffer, weil die Funktion nur einmal pro Stunde läuft;
-  `/api/forecast` schneidet den Überhang beim Ausliefern ab.
+- **Nur ICON-CH1** (`model = 'icon_ch1'`). ICON-D2 wurde bis Sept. 2026
+  mitgesammelt, aber nie angezeigt, und ist entfernt; alte `icon_d2`-Zeilen
+  laufen nach 2 Tagen von selbst ab.
+- **Wann gibt es neue Daten?** ICON-CH1 rechnet **alle 3 Stunden** neu
+  (Läufe um 00, 03, 06, … UTC). Bei Open-Meteo steht ein Lauf rund
+  **2 h 20 min** nach dem Start bereit, also etwa um 02:20, 05:20, 08:20, …
+  UTC (Sommerzeit: 04:20, 07:20, 10:20, … Uhr). Nachsehen lässt sich das
+  jederzeit unter
+  <https://api.open-meteo.com/data/meteoswiss_icon_ch1/static/meta.json>
+  (`last_run_initialisation_time` = Laufstart,
+  `last_run_availability_time` = bereit, beides in Unix-Sekunden).
+- **Nur bei neuem Lauf abfragen:** Die Funktion liest zuerst diese
+  Metadaten. Ist der neueste Lauf schon gespeichert, endet sie ohne einen
+  einzigen Prognose-Abruf (Antwort `"skipped": true`). So wird nur
+  **8-mal am Tag** wirklich abgefragt, egal wie oft der Cron-Job läuft.
+  Erzwingen: POST mit Body `{"force": true}`.
+- **Kontingent:** Open-Meteo erlaubt kostenlos 10.000 Aufrufe pro Tag,
+  gezählt je Station. ~580 Stationen × 8 Läufe ≈ **4.700 am Tag** (vorher
+  stündlich ~310 Stationen ≈ 7.400).
+- Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Angezeigt werden
+  davon nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
+  (und für einen ausgefallenen); `/api/forecast` schneidet den Überhang ab.
 - Einheiten wie in `wind_measurements`: Wind/Böen in **km/h**, Richtung in
   Grad, Prognosezeiten als UTC (`timestamptz`).
 - Upsert über `station_code` + `model` + `forecast_time` — wiederholte
@@ -368,9 +378,10 @@ Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren kann)
   `Authorization: Bearer <service_role Key>`, sonst `401`.
 
 **Antwort der Funktion (Erfolg):** Status `200` mit z. B.
-`{ "ok": true, "models": ["icon_ch1","icon_d2"],
-"stations": 89, "saved": 5000, "ch1Saved": 2500, "d2Saved": 2500,
-"skippedNullHours": 0, "batchErrors": [], … }`.
+`{ "ok": true, "model": "icon_ch1", "modelRun": "2026-09-29T00:00:00.000Z",
+"stations": 582, "saved": 13900, "skippedNullHours": 0, "batchErrors": [], … }`
+— oder, wenn es nichts Neues gibt,
+`{ "ok": true, "skipped": true, "reason": "Kein neuer ICON-CH1-Lauf …" }`.
 
 > **Früher gab es hier zusätzlich eine AROME-Prognose** von GeoSphere Austria
 > (`model = 'arome'`, im Verlaufsbalken gelb). Sie ist auf Wunsch wieder
@@ -459,6 +470,11 @@ Zwei Ursachen, die hier bereits aufgetreten sind:
   gleichem Job-Namen überschreibt den alten Eintrag) und mit `select jobid,
   jobname, command from cron.job;` kontrollieren, dass die `apikey`-Zeile in
   der Spalte `command` steht.
+- **Takt umstellen (Sept. 2026):** Bestehende Datenbanken laufen noch
+  stündlich um Minute 10. Nach dem Deploy der neuen Edge Function einmalig
+  `supabase/forecast-cron-15min.sql` im SQL-Editor ausführen — dann ist ein
+  neuer ICON-CH1-Lauf spätestens 15 statt 60 Minuten nach Erscheinen auf der
+  Seite, ohne zusätzliches Open-Meteo-Kontingent.
 
 Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
 Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
@@ -544,9 +560,8 @@ Deno-Gründen separat dupliziert.
   liefert m/s, umgerechnet wird auf km/h. Höhe kommt direkt aus den Metadaten.
 - **Anfrage-Grenze:** höchstens 240 Anfragen pro Stunde — deshalb 120 s Cache
   für die Messwerte (siehe Kommentar in `src/lib/geosphere.ts`).
-- **Prognosen nur nahe Südtirol:** Die Edge Function rechnet ICON-CH1 nur für
-  die Stationen in der Südtirol-Box (`SOUTH_TYROL_BBOX`), sonst würde die
-  kostenlose Open-Meteo-Grenze von 10.000 Abrufen pro Tag überschritten.
+- **Prognosen:** ICON-CH1 für alle Stationen (deckt ganz Österreich ab,
+  auch Wien/Graz/Linz).
 - **Lizenz:** CC BY 4.0 — Quellenangabe über den „Quelle:"-Link im
   Verlaufsbalken („GeoSphere Austria (CC BY 4.0)").
 - **Ausfallsicher** wie OpenWindMap: fällt der Dienst aus, bleiben die

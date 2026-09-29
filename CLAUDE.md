@@ -89,7 +89,8 @@ Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
 (12 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
 `/api/collect` alle 5 min (Messwerte) und der Edge Function
-`fetch-wind-forecasts` stündlich (Prognosen).
+`fetch-wind-forecasts` (Prognosen; holt nur bei einem neuen ICON-CH1-Lauf,
+also alle 3 h, wirklich neue Werte).
 
 | Datei | Zuständig für |
 | --- | --- |
@@ -199,8 +200,14 @@ Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
   rot, beide Kurven **gestrichelt**, Fläche dazwischen blasser als die
   Messfläche (`CH1_COLOR`, `FORECAST_DASH`, `FORECAST_BAND_OPACITY` in
   `src/components/WindHistoryPanel.tsx`). Die Prognose-Windrichtung steht als
-  Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **ICON-D2** wird
-  weiter gesammelt, aber nicht angezeigt. **AROME** ist komplett entfernt.
+  Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **Nur ICON-CH1 wird
+  überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
+  mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
+- **Prognosen nur bei neuem Modelllauf:** ICON-CH1 rechnet alle 3 h neu und
+  steht bei Open-Meteo rund 2 h 20 min nach dem Laufstart bereit (00-UTC-Lauf
+  gegen 02:20 UTC). Die Edge Function prüft vorher die Metadaten von
+  Open-Meteo und fragt nur ab, wenn ein noch nicht gespeicherter Lauf da ist
+  — 8 statt 24 Abrufe am Tag, egal wie oft der Cron-Job sie anstößt.
 
 ## Nicht wieder einführen (ohne Rücksprache)
 
@@ -236,12 +243,6 @@ Projektbesitzers entfernt:
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht.
-- **Prognosen nur für Stationen in der Südtirol-Box**, obwohl alle ~275
-  österreichischen Stationen auf der Karte sind: Mit allen würde die Edge
-  Function die kostenlose Open-Meteo-Grenze (10.000 Abrufe/Tag) sprengen
-  (Begründung in `loadGeoSphereStations()` der Edge Function). Österreichische
-  Stationen außerhalb der Box haben deshalb keine ICON-CH1-Kurve — das ist
-  kein Fehler.
 - **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
   beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
   beide anfassen.
@@ -269,11 +270,13 @@ Projektbesitzers entfernt:
   `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug alle drei
   ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
   werden.
-- **Open-Meteo-Kontingent:** Seit den ~200 SLF-Stationen und den 13
-  grenznahen GeoSphere-Stationen fragt die Edge Function rund 315 Standorte
-  pro Stunde ab (≈ 7.500 am Tag). Das kostenlose
-  Open-Meteo-Kontingent liegt bei 10.000 Aufrufen am Tag — weitere Stationen
-  oder ein kürzerer Prognose-Takt würden es sprengen.
+- **Open-Meteo-Kontingent:** kostenlos 10.000 Aufrufe am Tag. Gezählt wird
+  je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
+  Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
+  Anfrage kosten erst ab 10 Reihen extra. Stand Sept. 2026: ~580 Stationen
+  (inkl. ganz Österreich) × 8 Modellläufe ≈ 4.700 am Tag. Wird die
+  Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
+  entfernt, wären es stündlich ≈ 14.000 — über der Grenze.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
   `api.pioupiou.fr`, `dataset.api.hub.geosphere.at`, den Kartenkacheln (auch `server.arcgisonline.com` und
   dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
