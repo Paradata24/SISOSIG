@@ -51,8 +51,12 @@ const Y_MAX_STEP_KMH = 15;
 // Luft über dem höchsten Wert, damit die Spitze nicht genau die Oberkante
 // berührt.
 const Y_MAX_HEADROOM_KMH = 3;
-const ARROW_GAP = 14; // Abstand Kurvenbereich → Pfeilreihe
-const ARROW_ROW_H = 26; // Höhe der Messwert-Pfeilreihe (Pfeil ist ~15 px hoch, Rest ist Luft)
+// Abstand Kurvenbereich → Pfeilreihe und Höhe der Pfeilreihe. Im Sept. 2026
+// auf Wunsch des Projektbesitzers zusammengeschoben (vorher 14 bzw. 26 px),
+// damit das Panel flacher wird und mehr Karte sichtbar bleibt. Der Pfeil ist
+// ~15 px hoch; die Reihe lässt nur noch knapp Luft darum.
+const ARROW_GAP = 4;
+const ARROW_ROW_H = 20; // Höhe der Messwert-Pfeilreihe
 // Abstand Pfeilreihe → Wert-Quadrate. Bewusst klein, damit die Zahlen dicht
 // unter "ihrem" Pfeil sitzen und das Panel insgesamt flacher bleibt (Wunsch
 // des Projektbesitzers: mehr Karte sichtbar).
@@ -67,7 +71,9 @@ const MEAS_BOX_H = 16.5; // Kantenlänge eines Wert-Quadrats (Höhe = Breite)
 const MEAS_BOX_W = MEAS_BOX_H;
 const MEAS_BOX_GAP = 2; // senkrechter Abstand Mittelwind-Quadrat → Böen-Quadrat
 const MEAS_VALUES_ROW_H = MEAS_BOX_H * 2 + MEAS_BOX_GAP;
-const BOTTOM_PAD = 6; // zusätzlicher Freiraum unterhalb der Werte-Zeilen
+// Freiraum unterhalb der Werte-Zeilen (vorher 6 px plus 16 px Innenabstand
+// des Diagramm-Rahmens, siehe pb-1 im JSX — ebenfalls zusammengeschoben).
+const BOTTOM_PAD = 2;
 // Höhe des SVG: Zeitachse + Kurvenbereich + Messwert-Block (Pfeile + 2 Zeilen
 // eingefärbte Werte) + unterer Rand.
 // Früher folgten darunter noch die wiederholten Uhrzeiten und ein eigener
@@ -909,7 +915,7 @@ export default function WindHistoryPanel({
         </button>
       </header>
 
-      <div className="flex px-1 pb-4">
+      <div className="flex px-1 pb-1">
         <div
           ref={scrollRef}
           className="min-w-0 flex-1 overflow-x-auto"

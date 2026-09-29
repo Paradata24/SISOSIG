@@ -164,8 +164,13 @@ Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
   (`TRANSPARENT_TILE`) — fehlende Kacheln sind damit nur fehlende Kacheln und
   kein Fehlerzustand der Karte.
   **Lizenz:** Die Geodaten des Landes stehen unter CC BY, die Quellenangabe
-  (`CONTOUR_ATTRIBUTION`) muss sichtbar bleiben. Sie steht in der
-  Leaflet-Zeile unten rechts neben Esri und CARTO — nicht entfernen.
+  muss sichtbar bleiben. Sie steht (wie Esri, CARTO, OpenStreetMap) seit
+  Sept. 2026 **ganz unten im Menü-Popup unter „Quellen"** (`MAP_SOURCES` in
+  `src/lib/wind.ts`) — nicht entfernen.
+- **Auf der Karte unten steht nur „Zuletzt aktualisiert"**: Leaflets
+  Quellen-Zeile unten rechts ist per `attributionControl={false}`
+  abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
+  Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere
@@ -218,8 +223,9 @@ Projektbesitzers entfernt:
 - Farbiger Rahmen und runde Ecken an den Werte-Quadraten
 - Bernsteinfarbene Plakette „Verlauf: HH:MM Uhr" auf der Karte
 - Legenden-Overlay auf der Karte, Leaflets eigene Bedienelemente
-  (Zoom-Buttons, Layer-Umschalter) und der frühere Filter oben links
-- Fußzeile mit dem OpenWindMap-Credit (siehe „Offener Punkt")
+  (Zoom-Buttons, Layer-Umschalter, Quellen-Zeile unten rechts) und der
+  frühere Filter oben links
+- Fußzeile mit dem OpenWindMap-Credit (siehe „Quellenangaben")
 - `{s}.`-Subdomains in den Kachel-URLs
 
 ## Fallen, die man einer einzelnen Datei nicht ansieht
@@ -285,10 +291,26 @@ Projektbesitzers entfernt:
   `GEOSPHERE_API_BASE_URL` und `OPEN_METEO_BASE_URL` lässt sich auf einen
   lokalen Mock umbiegen.
 
-## Offener Punkt: Quellenangabe OpenWindMap
+## Quellenangaben (Lizenzpflicht)
 
-Die Community-Lizenz von OpenWindMap verlangt einen sichtbaren Credit mit
-Link. Er stand in der Fußzeile, die entfernt wurde; der Projektbesitzer will
-das später anders lösen. Aktuell gibt es ihn nur stationsweise als
-„Quelle:"-Link im Verlaufsbalken (`SOURCE_INFO` in `src/lib/wind.ts`). Beim
-Thema erwähnen, die Fußzeile aber nicht ungefragt zurückbringen.
+- **Kartenquellen** (Esri, Höhenlinien des Landes, CARTO/OpenStreetMap)
+  stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
+  `src/lib/wind.ts`).
+- **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,
+  keine Doppelung), sondern stationsweise unten im Verlaufsbalken als
+  „Quelle:"-Link (`SOURCE_INFO`). Offener Punkt: Die OpenWindMap-
+  Community-Lizenz verlangt einen sichtbaren Credit mit Link, SLF und
+  GeoSphere Austria stehen unter CC BY 4.0 — diese Nennungen sind damit nur
+  sichtbar, wenn eine Station der jeweiligen Quelle geöffnet ist. Beim Thema erwähnen,
+  die Fußzeile aber nicht ungefragt zurückbringen.
+
+## CARTO-Ortsnamen brauchen einen Schlüssel
+
+Seit Sept. 2026 liefert CARTO (`basemaps.cartocdn.com`) ohne Schlüssel nur
+Kacheln mit dem Wasserzeichen „API KEY REQUIRED". Der Schlüssel ist für
+nicht-kommerzielle Nutzung kostenlos und steht als Umgebungsvariable
+`NEXT_PUBLIC_CARTO_API_KEY` in Vercel (nach dem Eintragen neu deployen).
+**Ohne Schlüssel** nimmt die Karte automatisch die Esri-Ortsnamen
+(`World_Light_Gray_Reference`, keine Anmeldung nötig, aber nur italienische
+Namen) — so gibt es nie Wasserzeichen. Umschaltung in `src/components/WindMap.tsx`
+(`CARTO_API_KEY` aus `src/lib/wind.ts`), die Quellenzeile folgt automatisch.
