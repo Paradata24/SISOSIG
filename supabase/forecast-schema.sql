@@ -21,6 +21,10 @@ create table if not exists public.wind_forecasts (
   gust_kmh real,
   -- Wann dieser Wert zuletzt von Open-Meteo abgerufen wurde.
   fetched_at timestamptz not null default now(),
+  -- Startzeit (UTC) des Modelllaufs, aus dem der Wert stammt (z. B.
+  -- 06:00 UTC). Wird im Verlaufsbalken als "Lauf HH:MM" angezeigt. Leer,
+  -- wenn Open-Meteo beim Abruf keine Laufzeit meldete.
+  model_run timestamptz,
   -- Pro Station, Modell und Prognosestunde nur ein Eintrag: der stündliche
   -- Abruf überschreibt vorhandene Zeitpunkte per Upsert statt sie zu
   -- duplizieren.

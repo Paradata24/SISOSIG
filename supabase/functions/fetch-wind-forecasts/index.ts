@@ -159,6 +159,10 @@ interface ForecastRow {
   speed_kmh: number | null;
   gust_kmh: number | null;
   fetched_at: string;
+  // Startzeit des Modelllaufs (siehe loadModelRun), null wenn unbekannt.
+  // Spalte per supabase/add-model-run-column.sql — die muss VOR dem Deploy
+  // dieser Funktion angelegt sein, sonst schlägt der Upsert fehl.
+  model_run: string | null;
 }
 
 // Antwortform eines Standorts bei Open-Meteo (timeformat=unixtime). Die
@@ -426,6 +430,7 @@ async function fetchForecastBatch(
         speed_kmh: speed !== null ? round1(speed) : null,
         gust_kmh: gust !== null ? round1(gust) : null,
         fetched_at: fetchedAt,
+        model_run: null, // wird nach dem Abruf aller Batches gesetzt (s. u.)
       });
     });
   });
@@ -580,6 +585,14 @@ export async function handleRequest(request: Request): Promise<Response> {
       batchErrors.push(message);
     }
   }
+
+  // Laufzeit an alle Zeilen hängen. Die Metadaten wurden oben VOR dem Abruf
+  // gelesen; gleich danach geholte Werte stammen aus genau diesem Lauf (ein
+  // neuer kommt frühestens 3 h später). Konnte die Metadaten-Datei nicht
+  // gelesen werden, bleibt das Feld leer — die Seite zeigt dann nur
+  // "ICON-CH1" ohne Uhrzeit.
+  const modelRunIso = modelRun?.runIso ?? null;
+  for (const row of rows) row.model_run = modelRunIso;
 
   if (rows.length === 0) {
     return json(

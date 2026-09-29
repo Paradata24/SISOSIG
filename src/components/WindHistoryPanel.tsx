@@ -503,6 +503,8 @@ export default function WindHistoryPanel({
     // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
     // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
     forecast?: ForecastEntry[];
+    // Startzeit des ICON-CH1-Laufs der Prognose (ISO), null wenn unbekannt.
+    forecastRun?: string | null;
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -518,6 +520,7 @@ export default function WindHistoryPanel({
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
   const forecast = loading ? null : (result?.forecast ?? null);
+  const forecastRun = loading ? null : (result?.forecastRun ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -551,6 +554,8 @@ export default function WindHistoryPanel({
             code,
             entries: data.entries as HistoryEntry[],
             forecast: forecastEntries,
+            forecastRun:
+              typeof forecastJson?.modelRun === "string" ? forecastJson.modelRun : null,
           });
         }
       } catch {
@@ -627,9 +632,9 @@ export default function WindHistoryPanel({
 
     // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
     // werden — nicht fälschlich "Keine Daten verfügbar".
+    const hasForecast = forecastPoints.some((p) => p.speed !== null || p.gust !== null);
     const hasData =
-      points.some((p) => p.speed !== null || p.gust !== null) ||
-      forecastPoints.some((p) => p.speed !== null || p.gust !== null);
+      points.some((p) => p.speed !== null || p.gust !== null) || hasForecast;
 
     // --- Senkrechte Skala (km/h) ---
     // Obergrenze aus allen vorhandenen Werten bestimmen, damit hohe Böen nicht
@@ -802,6 +807,7 @@ export default function WindHistoryPanel({
       yTicks,
       minT,
       hasData,
+      hasForecast,
       svgWidth,
       bandWidth,
       hourTicks,
@@ -830,6 +836,7 @@ export default function WindHistoryPanel({
     yTicks,
     minT,
     hasData,
+    hasForecast,
     svgWidth,
     bandWidth,
     hourTicks,
@@ -844,6 +851,16 @@ export default function WindHistoryPanel({
     forecastTimeSelection,
     forecastByT,
   } = chart;
+
+  // "Lauf 08:00 Uhr" in Ortszeit — die Startzeit des Modelllaufs, aus dem die
+  // gezeichnete Prognose stammt. null, wenn unbekannt.
+  const forecastRunMs = forecastRun ? Date.parse(forecastRun) : NaN;
+  const forecastRunLabel = Number.isNaN(forecastRunMs)
+    ? null
+    : `Lauf ${new Date(forecastRunMs).toLocaleTimeString("de-DE", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })} Uhr`;
 
   // Beim Öffnen so scrollen, dass die "jetzt"-Linie in der MITTE des sichtbaren
   // Bereichs steht (Wunsch des Projektbesitzers): links die letzten Stunden,
@@ -1138,6 +1155,34 @@ export default function WindHistoryPanel({
                   </g>
                 );
               })}
+
+              {/* Herkunft der Prognose (Wunsch des Projektbesitzers): rechts
+                  im Prognosebereich, unter der Pfeilreihe, rechtsbündig am
+                  Ende der Farbflächen. Modell + Startzeit des Modelllaufs
+                  (ICON-CH1 rechnet alle 3 h neu, siehe Edge Function). Die
+                  Uhrzeit fehlt, solange die Datenbank die Laufzeit nicht
+                  kennt (supabase/add-model-run-column.sql). Weißer Rand um
+                  die Schrift, damit sie auch über einer Kurve lesbar ist. */}
+              {hasForecast && (
+                <text
+                  x={PAD_X + bandWidth - 4}
+                  y={forecastArrowCy + ARROW_SIZE / 2 + 12}
+                  textAnchor="end"
+                  fill={CH1_COLOR}
+                  stroke="white"
+                  strokeWidth={3}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                  className="text-[10px] font-semibold"
+                >
+                  <tspan x={PAD_X + bandWidth - 4}>Prognose ICON-CH1</tspan>
+                  {forecastRunLabel && (
+                    <tspan x={PAD_X + bandWidth - 4} dy={12}>
+                      {forecastRunLabel}
+                    </tspan>
+                  )}
+                </text>
+              )}
 
               {/* Windrichtungs-Pfeile: gleiche Form, Drehung (auf 8
                   Himmelsrichtungen eingerastete Richtung + 180°, Pfeil zeigt
