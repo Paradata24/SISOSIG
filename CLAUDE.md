@@ -81,8 +81,8 @@ direktes Aufrufen der API-Routen (`curl`).
 
 ## Landkarte
 
-Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst und dem
-OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
+Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
+OpenWindMap/Pioupiou-Netz und GeoSphere Austria (TAWES, grenznahe Stationen), Historie und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
@@ -94,6 +94,7 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 | --- | --- |
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
+| `src/lib/geosphere.ts` | Grenznahe österreichische Stationen von GeoSphere Austria (früher ZAMG), gleiche Bounding Box |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen + Pioupiou), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
@@ -212,9 +213,14 @@ Projektbesitzers entfernt:
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  von Zeitfenster-Konstanten und der Pioupiou-Bounding-Box. Wird `HISTORY_HOURS`
-  / `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` oder `SOUTH_TYROL_BBOX` in
-  `src/lib/pioupiou.ts` geändert, muss die Edge Function mitgezogen werden.
+  von Zeitfenster-Konstanten, der Pioupiou-Bounding-Box und der
+  GeoSphere-Adresse. Wird `HISTORY_HOURS` / `FUTURE_MARGIN_HOURS` in
+  `src/lib/wind.ts` oder `SOUTH_TYROL_BBOX` in `src/lib/pioupiou.ts` (gilt auch
+  für GeoSphere) geändert, muss die Edge Function mitgezogen werden.
+- **GeoSphere erlaubt nur 240 Anfragen pro Stunde** (je Absender). Deshalb
+  cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
+  verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
+  über `SOURCE_INFO` im Verlaufsbalken steht.
 - **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
   beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
   beide anfassen.
@@ -243,13 +249,13 @@ Projektbesitzers entfernt:
   ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
   werden.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
-  `api.pioupiou.fr`, den Kartenkacheln (auch `server.arcgisonline.com` und
+  `api.pioupiou.fr`, `dataset.api.hub.geosphere.at`, den Kartenkacheln (auch `server.arcgisonline.com` und
   dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
   manchen Entwicklungsumgebungen blockiert. Kartendienste lassen sich dort
   also **nicht** per `curl` prüfen — das geht nur am realen Kartenbild
   (Vercel-Vorschau) oder indem der Projektbesitzer eine Test-Adresse im
   Browser öffnet. Fehlerantworten (502/500) sind dort
-  normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL` und
+  normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL`, `GEOSPHERE_API_BASE_URL` und
   `OPEN_METEO_BASE_URL` lässt sich auf einen lokalen Mock umbiegen.
 
 ## Offener Punkt: Quellenangabe OpenWindMap

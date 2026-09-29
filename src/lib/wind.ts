@@ -15,8 +15,8 @@ export interface WindStation {
   timestamp: string | null;
   /** true, wenn die Station Windsensoren hat, aber keine aktuellen Werte liefert */
   stale: boolean;
-  /** Datenquelle: Bozner Wetterdienst oder OpenWindMap/Pioupiou-Netzwerk */
-  source: "bolzano" | "openwindmap";
+  /** Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk oder GeoSphere Austria (früher ZAMG) */
+  source: "bolzano" | "openwindmap" | "geosphere";
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -26,6 +26,8 @@ export const SOURCE_INFO: Record<
 > = {
   bolzano: { label: "Land Südtirol – Wetterdienst", url: "https://wetter.provinz.bz.it" },
   openwindmap: { label: "OpenWindMap / Pioupiou", url: "https://openwindmap.org" },
+  // Lizenz CC BY 4.0: Dieser Link ist die Pflicht-Quellenangabe, nicht entfernen.
+  geosphere: { label: "GeoSphere Austria (CC BY 4.0)", url: "https://data.hub.geosphere.at" },
 };
 
 /**

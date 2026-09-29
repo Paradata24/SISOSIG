@@ -1,6 +1,7 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt Windprognosen mehrerer
 // Modelle von Open-Meteo für alle Südtiroler Wetterstationen mit Windsensoren
-// (Bozner Wetterdienst UND Südtiroler OpenWindMap/Pioupiou-Stationen) und
+// (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-Stationen und
+// grenznahe GeoSphere-Austria-Stationen) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -53,6 +54,15 @@ const PIOUPIOU_API_BASE =
 // Function unter Deno läuft und nichts aus src/lib importieren kann).
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
+
+// GeoSphere Austria (früher ZAMG), Messnetz TAWES — identisch zu
+// src/lib/geosphere.ts (dort für /api/wind und /api/collect). Es werden nur
+// die Metadaten gebraucht (Koordinaten der Stationen in derselben Bounding
+// Box), keine Messwerte.
+const GEOSPHERE_API_BASE =
+  Deno.env.get("GEOSPHERE_API_BASE_URL") ??
+  "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min";
+const GEOSPHERE_CODE_PREFIX = "geosphere-";
 
 // Modellnamen in der Datenbank (Spalte "model") — kurz und stabil — und der
 // dazu passende Modellname der Open-Meteo-API. Es werden zwei Zeilen-Sorten
@@ -257,6 +267,39 @@ async function loadOpenWindMapStations(): Promise<Station[]> {
   return stations;
 }
 
+// Grenznahe GeoSphere-Austria-Stationen laden (gleiche Bounding Box wie
+// Pioupiou). Ebenfalls additiv, siehe try/catch beim Aufruf.
+interface GeoSphereStationMeta {
+  id: string;
+  lat?: number;
+  lon?: number;
+  is_active?: boolean;
+}
+
+async function loadGeoSphereStations(): Promise<Station[]> {
+  const res = await fetch(`${GEOSPHERE_API_BASE}/metadata`);
+  if (!res.ok) {
+    throw new Error(`GeoSphere-Metadaten antworteten mit Status ${res.status}`);
+  }
+  const body = (await res.json()) as { stations?: GeoSphereStationMeta[] };
+  const stations: Station[] = [];
+  for (const s of body.stations ?? []) {
+    if (s.is_active === false || typeof s.lat !== "number" || typeof s.lon !== "number") {
+      continue;
+    }
+    if (
+      s.lat < SOUTH_TYROL_BBOX.latMin ||
+      s.lat > SOUTH_TYROL_BBOX.latMax ||
+      s.lon < SOUTH_TYROL_BBOX.lngMin ||
+      s.lon > SOUTH_TYROL_BBOX.lngMax
+    ) {
+      continue;
+    }
+    stations.push({ code: `${GEOSPHERE_CODE_PREFIX}${s.id}`, lat: s.lat, lng: s.lon });
+  }
+  return stations;
+}
+
 // Einen Batch Stationen bei Open-Meteo abfragen und zu Tabellenzeilen
 // aufbereiten — ALLE Modelle in einem einzigen Aufruf (models=a,b,c), nicht
 // ein Aufruf je Modell. Die Antwort ist eine Liste in derselben Reihenfolge
@@ -379,6 +422,11 @@ export async function handleRequest(request: Request): Promise<Response> {
     stations = [...stations, ...(await loadOpenWindMapStations())];
   } catch (err) {
     console.error("OpenWindMap-Stationsliste nicht abrufbar:", err);
+  }
+  try {
+    stations = [...stations, ...(await loadGeoSphereStations())];
+  } catch (err) {
+    console.error("GeoSphere-Stationsliste nicht abrufbar:", err);
   }
   if (stations.length === 0) {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);

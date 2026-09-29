@@ -518,6 +518,30 @@ Winddaten soll später in anderer Form gelöst werden. Bis dahin gibt es
 den Hinweis nur noch stationsweise als „Quelle:"-Link unten im
 Verlaufsbalken.
 
+
+## GeoSphere-Austria-Stationen (früher ZAMG)
+
+Zusätzlich zeigt die Karte die **grenznahen österreichischen Wetterstationen**
+von GeoSphere Austria (Messnetz TAWES, 10-Minuten-Werte), z. B. Brenner,
+Obergurgl, Nauders, Pitztaler Gletscher, Sillian. Code:
+`src/lib/geosphere.ts` (genutzt von `/api/wind` und `/api/collect`), in der
+Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert.
+
+- **Endpunkt:** `https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min`
+  (offen, kein API-Schlüssel). `/metadata` liefert alle Stationen
+  Österreichs, ausgewählt wird über dieselbe Bounding Box wie bei Pioupiou
+  (`SOUTH_TYROL_BBOX`). Stand Sept. 2026: 13 aktive Stationen mit Wind.
+- **Stationscodes:** `geosphere-<Nummer>` (z. B. `geosphere-11129` = Brenner).
+- **Werte:** `DD` (Richtung), `FF` (10-min-Mittelwind), `FFX` (Böe). Die API
+  liefert m/s, umgerechnet wird auf km/h. Höhe kommt direkt aus den Metadaten.
+- **Anfrage-Grenze:** höchstens 240 Anfragen pro Stunde — deshalb 120 s Cache
+  für die Messwerte (siehe Kommentar in `src/lib/geosphere.ts`).
+- **Lizenz:** CC BY 4.0 — Quellenangabe über den „Quelle:"-Link im
+  Verlaufsbalken („GeoSphere Austria (CC BY 4.0)").
+- **Ausfallsicher** wie OpenWindMap: fällt der Dienst aus, bleiben die
+  übrigen Stationen sichtbar.
+- **Mock-Server:** `GEOSPHERE_API_BASE_URL` überschreibt den Endpunkt.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz

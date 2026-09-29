@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
+import { fetchGeoSphereStations } from "@/lib/geosphere";
+import type { WindStation } from "@/lib/wind";
 
 // Sammel-Route: ruft den Open-Data-Wetterdienst der Provinz Bozen ab und
 // schreibt die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
@@ -134,7 +136,7 @@ export async function POST(request: Request) {
     direction: number | null;
     speed_kmh: number | null;
     gust_kmh: number | null;
-    source: "bolzano" | "openwindmap";
+    source: WindStation["source"];
   }> = [];
 
   for (const [code, readings] of byStation) {
@@ -161,25 +163,30 @@ export async function POST(request: Request) {
     });
   }
 
-  // 3b) OpenWindMap/Pioupiou-Stationen dazuholen — additiv: schlägt der
-  //     Abruf fehl, werden trotzdem die Bozner Messwerte gespeichert statt
-  //     den ganzen Lauf abzubrechen.
-  try {
-    const openWindMapStations = await fetchOpenWindMapStations();
-    for (const s of openWindMapStations) {
-      if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
-      if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
-      rows.push({
-        station_code: s.stationCode,
-        measured_at: s.timestamp,
-        direction: s.direction,
-        speed_kmh: s.speedKmh,
-        gust_kmh: s.gustKmh,
-        source: "openwindmap",
-      });
+  // 3b) OpenWindMap/Pioupiou- und GeoSphere-Austria-Stationen dazuholen —
+  //     additiv: schlägt ein Abruf fehl, werden trotzdem die übrigen
+  //     Messwerte gespeichert statt den ganzen Lauf abzubrechen.
+  const extraSources: Array<[string, () => Promise<WindStation[]>]> = [
+    ["OpenWindMap", fetchOpenWindMapStations],
+    ["GeoSphere", fetchGeoSphereStations],
+  ];
+  for (const [label, fetchStations] of extraSources) {
+    try {
+      for (const s of await fetchStations()) {
+        if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
+        if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+        rows.push({
+          station_code: s.stationCode,
+          measured_at: s.timestamp,
+          direction: s.direction,
+          speed_kmh: s.speedKmh,
+          gust_kmh: s.gustKmh,
+          source: s.source,
+        });
+      }
+    } catch (err) {
+      console.error(`${label}-Stationen nicht abrufbar:`, err);
     }
-  } catch (err) {
-    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
   }
 
   if (rows.length === 0) {
