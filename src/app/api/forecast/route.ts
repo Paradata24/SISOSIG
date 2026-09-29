@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 
 // Liefert die Windprognosen einer Station aus der Supabase-Tabelle
-// wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die
-// stündlich per pg_cron angestoßen wird): ICON-CH1.
+// wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die per
+// pg_cron angestoßen wird und bei jedem neuen ICON-CH1-Lauf, also alle
+// 3 Stunden, neue Werte holt): ICON-CH1.
 //
 // Aufruf: /api/forecast?station=<SCODE>
 //
@@ -15,7 +16,7 @@ import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
 // Zeitfenster: genau der Bereich, den der Verlaufsbalken zeichnet, also
 // (jetzt − HISTORY_HOURS) bis (jetzt + FUTURE_MARGIN_HOURS) — beide Werte aus
 // src/lib/wind.ts. Die Edge Function speichert bewusst etwas mehr Zukunft, als
-// angezeigt wird (Puffer für ihren stündlichen Takt); die Obergrenze hier
+// angezeigt wird (Puffer für ihren 3-Stunden-Takt); die Obergrenze hier
 // schneidet diesen Überhang ab, damit keine Punkte rechts außerhalb der Achse
 // landen.
 
@@ -28,8 +29,7 @@ export interface ForecastEntry {
 
 // Modellname in der Tabelle wind_forecasts (siehe Edge Function): die
 // Bodenwind-Prognose ICON-CH1 (rote Kurve im Verlaufsbalken).
-// ICON-D2 ('icon_d2') wird weiterhin gesammelt, aber nicht ausgeliefert,
-// weil das Diagramm es nicht zeichnet. AROME wurde auf Wunsch des
+// Andere Modelle gibt es nicht mehr: AROME und ICON-D2 wurden auf Wunsch des
 // Projektbesitzers komplett entfernt (weder gesammelt noch angezeigt).
 const MODEL_SURFACE = "icon_ch1";
 

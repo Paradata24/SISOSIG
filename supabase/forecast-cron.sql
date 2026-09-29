@@ -1,4 +1,4 @@
--- Stündlicher Abruf der ICON-CH1-Windprognosen.
+-- Regelmäßiger Anstoß der ICON-CH1-Windprognosen (alle 15 Minuten).
 -- Einmalig im Supabase SQL-Editor ausführen, NACHDEM die Edge Function
 -- "fetch-wind-forecasts" deployt ist (siehe README, Abschnitt Windprognosen).
 --
@@ -16,13 +16,18 @@
 select vault.create_secret('https://DEIN-PROJEKT.supabase.co', 'project_url');
 select vault.create_secret('DEIN_SERVICE_ROLE_KEY', 'service_role_key');
 
--- 2) Cron-Job anlegen: jede Stunde um Minute 10 ruft pg_net die Edge
---    Function per HTTP-POST auf. Stündlich deshalb, weil sich das
---    gleitende Zeitfenster (24 h zurück + ~3 h voraus) mit jeder Stunde
---    mitbewegen soll, auch wenn das Modell nur alle 3 Stunden neu rechnet.
+-- 2) Cron-Job anlegen: alle 15 Minuten ruft pg_net die Edge Function per
+--    HTTP-POST auf. Das kostet KEIN Open-Meteo-Kontingent: Die Funktion
+--    prüft zuerst, ob es einen neuen ICON-CH1-Lauf gibt (alle 3 h, rund
+--    2 h 20 min nach Laufstart bereit), und fragt nur dann Prognosen ab —
+--    8-mal am Tag. Der 15-Minuten-Takt sorgt nur dafür, dass ein neuer Lauf
+--    spätestens 15 min nach Erscheinen auf der Seite ist (stündlich wären es
+--    bis zu 60 min).
+--    Der Name endet aus historischen Gründen auf "-hourly" (früher lief der
+--    Job stündlich); umbenennen ist unnötig.
 select cron.schedule(
   'fetch-wind-forecasts-hourly',
-  '10 * * * *',
+  '*/15 * * * *',
   $$
   select net.http_post(
     url := (select decrypted_secret from vault.decrypted_secrets
