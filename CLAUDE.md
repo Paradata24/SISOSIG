@@ -143,10 +143,14 @@ also alle 3 h, wirklich neue Werte).
   echte Kacheln hat.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
   alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (16-px-Pfeile,
-  keine Zahlen), Region Zoom 9–11 (26 px + Zahlen-Plakette), Detail ab Zoom 12
+  keine Zahlen), Region Zoom 9–11 (26 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
   (`DETAIL_MIN_ZOOM`, 32 px + Stationsname und Höhe). Feste Größen je Stufe
   (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
-  - **Zahlen erst ab Zoom 9** (`LABEL_MIN_ZOOM`, = Startansicht Südtirol).
+  - **Zahlen erst ab Zoom 10** (`LABEL_MIN_ZOOM`), also eine Stufe über der
+    Startansicht Südtirol (Zoom 9): Beim Öffnen stehen nur die Pfeile da, die
+    Zahlen kommen beim ersten Hineinzoomen (Wunsch des Projektbesitzers).
+    Die Region-Stufe (große Pfeile, kein Ausdünnen) beginnt trotzdem schon
+    bei Zoom 9 (`REGION_MIN_ZOOM`).
   - **Jeder Stationsfilter folgt denselben Regeln wie „Alle"** (Größen,
     Zahlen, Ausdünnen). Die früheren Sonderregeln bei aktivem Filter (Zahlen
     immer sichtbar, alles 25 % größer) hat der Projektbesitzer im Sept. 2026
@@ -230,6 +234,14 @@ also alle 3 h, wirklich neue Werte).
   Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **Nur ICON-CH1 wird
   überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
   mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
+- **Modell und Lauf stehen im Verlaufsbalken:** rechts im Prognosebereich
+  „Prognose ICON-CH1" und „Lauf HH:MM Uhr" (Startzeit des Modelllaufs,
+  Ortszeit; Wunsch des Projektbesitzers, Sept. 2026). Die Laufzeit speichert
+  die Edge Function in der Spalte `model_run` von `wind_forecasts`
+  (`supabase/add-model-run-column.sql`). **Reihenfolge bei einer neuen
+  Datenbank-Spalte für die Edge Function: erst Spalte anlegen, dann Funktion
+  deployen** — sonst schlägt ihr Speichern fehl. `/api/forecast` fragt
+  ohne `model_run` nach, falls die Spalte fehlt.
 - **Prognosen nur bei neuem Modelllauf:** ICON-CH1 rechnet alle 3 h neu und
   steht bei Open-Meteo rund 2 h 20 min nach dem Laufstart bereit (00-UTC-Lauf
   gegen 02:20 UTC). Die Edge Function prüft vorher die Metadaten von

@@ -25,6 +25,8 @@ export interface ForecastEntry {
   direction: number | null;
   speed_kmh: number | null;
   gust_kmh: number | null;
+  /** Startzeit des Modelllaufs (ISO), fehlt bei Datenbanken ohne die Spalte. */
+  model_run?: string | null;
 }
 
 // Modellname in der Tabelle wind_forecasts (siehe Edge Function): die
@@ -81,14 +83,25 @@ export async function GET(request: Request) {
     Authorization: `Bearer ${serviceKey}`,
   };
 
-  // Bodenwind ICON-CH1 abfragen.
-  const surfaceQuery =
-    `${baseUrl}&model=eq.${MODEL_SURFACE}` +
-    `&select=forecast_time,direction,speed_kmh,gust_kmh`;
+  // Bodenwind ICON-CH1 abfragen — samt Laufzeit (model_run), die der
+  // Verlaufsbalken rechts bei der Prognosekurve anzeigt.
+  const surfaceQuery = (columns: string) =>
+    `${baseUrl}&model=eq.${MODEL_SURFACE}&select=${columns}`;
+  const BASE_COLUMNS = "forecast_time,direction,speed_kmh,gust_kmh";
 
   let res: Response;
   try {
-    res = await fetch(surfaceQuery, { headers, cache: "no-store" });
+    res = await fetch(surfaceQuery(`${BASE_COLUMNS},model_run`), {
+      headers,
+      cache: "no-store",
+    });
+    // Die Spalte model_run kommt erst mit supabase/add-model-run-column.sql.
+    // Fehlt sie noch, antwortet Supabase mit 400 — dann ohne Laufzeit
+    // abfragen, statt die ganze Prognose zu verlieren. So ist es egal, ob
+    // zuerst die Webseite oder zuerst die Datenbank aktualisiert wird.
+    if (res.status === 400) {
+      res = await fetch(surfaceQuery(BASE_COLUMNS), { headers, cache: "no-store" });
+    }
   } catch {
     return NextResponse.json(
       { error: "Supabase ist nicht erreichbar" },
@@ -105,11 +118,23 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
+  // Der jüngste Lauf unter den gelieferten Werten. Normalerweise stammen
+  // alle aus demselben Lauf; nur wenn beim letzten Abruf eine Station
+  // ausfiel, können ihre Werte noch aus einem älteren sein.
+  let modelRun: string | null = null;
+  for (const e of entries) {
+    if (e.model_run && (modelRun === null || e.model_run > modelRun)) {
+      modelRun = e.model_run;
+    }
+  }
+
   return NextResponse.json(
     {
       stationCode: station,
       hours: HISTORY_HOURS,
       count: entries.length,
+      model: "ICON-CH1",
+      modelRun,
       entries,
     },
     { headers: { "Cache-Control": RESPONSE_CACHE_CONTROL } },
