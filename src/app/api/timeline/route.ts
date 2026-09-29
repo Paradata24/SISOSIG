@@ -16,7 +16,7 @@ import {
 // Aufruf: /api/timeline  (keine Parameter)
 //
 // Gegenstück zu /api/history, das dasselbe für EINE Station tut. Hier wäre ein
-// Zeilen-JSON (~130 Stationen × 73 Zeitpunkte) mehrere hundert KB groß,
+// Zeilen-JSON (~375 Stationen × 73 Zeitpunkte) mehrere hundert KB groß,
 // deshalb ein kompaktes SPALTEN-Format: eine gemeinsame Zeitliste und pro
 // Station drei gleich lange Zahlenreihen (siehe TimelinePayload in
 // src/lib/wind.ts). Das sind rund 15–25 KB komprimiert.
@@ -39,9 +39,10 @@ export const dynamic = "force-dynamic";
 // seitenweise gelesen.
 const PAGE_SIZE = 1000;
 // Harte Obergrenze, damit die Route bei einer unerwartet großen Tabelle nicht
-// endlos weiterliest. 30 Seiten = 30.000 Zeilen ≈ das Dreifache der Erwartung
-// (~130 Stationen × 73 Zeitpunkte ≈ 9.500).
-const MAX_PAGES = 30;
+// endlos weiterliest. 80 Seiten = 80.000 Zeilen ≈ das Dreifache der Erwartung
+// (~375 Stationen × 73 Zeitpunkte ≈ 27.000, seit alle österreichischen
+// GeoSphere-Stationen dabei sind; vorher ~130 Stationen und 30 Seiten).
+const MAX_PAGES = 80;
 
 // Zwischenspeicherung wie bei /api/history: Neue Messwerte kommen nur alle
 // 10 Minuten dazu (Messtakt der Stationen). Fehlerantworten bekommen bewusst

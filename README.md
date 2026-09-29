@@ -521,21 +521,26 @@ Verlaufsbalken.
 
 ## GeoSphere-Austria-Stationen (früher ZAMG)
 
-Zusätzlich zeigt die Karte die **grenznahen österreichischen Wetterstationen**
-von GeoSphere Austria (Messnetz TAWES, 10-Minuten-Werte), z. B. Brenner,
-Obergurgl, Nauders, Pitztaler Gletscher, Sillian. Code:
-`src/lib/geosphere.ts` (genutzt von `/api/wind` und `/api/collect`), in der
-Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert.
+Zusätzlich zeigt die Karte **alle österreichischen Wetterstationen mit
+Windmessung** von GeoSphere Austria (Messnetz TAWES, 10-Minuten-Werte),
+rund 275 Stück. Code: `src/lib/geosphere.ts` (genutzt von `/api/wind` und
+`/api/collect`), in der Edge Function `fetch-wind-forecasts` aus
+Deno-Gründen separat dupliziert.
 
 - **Endpunkt:** `https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min`
   (offen, kein API-Schlüssel). `/metadata` liefert alle Stationen
-  Österreichs, ausgewählt wird über dieselbe Bounding Box wie bei Pioupiou
-  (`SOUTH_TYROL_BBOX`). Stand Sept. 2026: 13 aktive Stationen mit Wind.
+  Österreichs; Stationen ganz ohne Windwerte werden ausgelassen.
+- **Mehrere Zeitpunkte in einer Antwort:** Hinkt eine Station hinterher,
+  enthält die Antwort mehrere Zeitpunkte. Je Station gilt der letzte
+  Zeitpunkt mit Windwert; ist er älter als 2 h, erscheint die Station grau.
 - **Stationscodes:** `geosphere-<Nummer>` (z. B. `geosphere-11129` = Brenner).
 - **Werte:** `DD` (Richtung), `FF` (10-min-Mittelwind), `FFX` (Böe). Die API
   liefert m/s, umgerechnet wird auf km/h. Höhe kommt direkt aus den Metadaten.
 - **Anfrage-Grenze:** höchstens 240 Anfragen pro Stunde — deshalb 120 s Cache
   für die Messwerte (siehe Kommentar in `src/lib/geosphere.ts`).
+- **Prognosen nur nahe Südtirol:** Die Edge Function rechnet ICON-CH1 nur für
+  die Stationen in der Südtirol-Box (`SOUTH_TYROL_BBOX`), sonst würde die
+  kostenlose Open-Meteo-Grenze von 10.000 Abrufen pro Tag überschritten.
 - **Lizenz:** CC BY 4.0 — Quellenangabe über den „Quelle:"-Link im
   Verlaufsbalken („GeoSphere Austria (CC BY 4.0)").
 - **Ausfallsicher** wie OpenWindMap: fällt der Dienst aus, bleiben die

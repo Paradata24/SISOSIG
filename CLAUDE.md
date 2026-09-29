@@ -82,7 +82,7 @@ direktes Aufrufen der API-Routen (`curl`).
 ## Landkarte
 
 Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
-OpenWindMap/Pioupiou-Netz und GeoSphere Austria (TAWES, grenznahe Stationen), Historie und Prognose in Supabase.
+OpenWindMap/Pioupiou-Netz und GeoSphere Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
@@ -94,7 +94,7 @@ OpenWindMap/Pioupiou-Netz und GeoSphere Austria (TAWES, grenznahe Stationen), Hi
 | --- | --- |
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
-| `src/lib/geosphere.ts` | Grenznahe österreichische Stationen von GeoSphere Austria (früher ZAMG), gleiche Bounding Box |
+| `src/lib/geosphere.ts` | Alle österreichischen Stationen mit Wind von GeoSphere Austria (früher ZAMG) |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen + Pioupiou), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
@@ -221,6 +221,12 @@ Projektbesitzers entfernt:
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht.
+- **Prognosen nur für Stationen in der Südtirol-Box**, obwohl alle ~275
+  österreichischen Stationen auf der Karte sind: Mit allen würde die Edge
+  Function die kostenlose Open-Meteo-Grenze (10.000 Abrufe/Tag) sprengen
+  (Begründung in `loadGeoSphereStations()` der Edge Function). Österreichische
+  Stationen außerhalb der Box haben deshalb keine ICON-CH1-Kurve — das ist
+  kein Fehler.
 - **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
   beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
   beide anfassen.

@@ -269,6 +269,14 @@ async function loadOpenWindMapStations(): Promise<Station[]> {
 
 // Grenznahe GeoSphere-Austria-Stationen laden (gleiche Bounding Box wie
 // Pioupiou). Ebenfalls additiv, siehe try/catch beim Aufruf.
+//
+// BEWUSST NUR DIE BOUNDING BOX, obwohl Karte und Historie seit Sept. 2026
+// ALLE ~275 österreichischen Stationen zeigen (src/lib/geosphere.ts): Mit
+// allen Stationen stiege die Zahl der Prognose-Standorte von ~100 auf ~375.
+// Bei stündlichem Lauf wären das ~9.000 Standort-Abrufe pro Tag (mal zwei
+// Modelle) — das sprengt die kostenlose Open-Meteo-Grenze von 10.000
+// Abrufen/Tag. Außerhalb der Box zeigt der Verlaufsbalken deshalb nur die
+// Messung, keine Prognose-Kurve.
 interface GeoSphereStationMeta {
   id: string;
   lat?: number;

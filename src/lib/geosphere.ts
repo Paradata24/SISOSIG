@@ -1,5 +1,4 @@
 import type { WindStation } from "./wind";
-import { SOUTH_TYROL_BBOX } from "./pioupiou";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
 // GeoSphere Austria (früher ZAMG), Messnetz TAWES (teilautomatische
@@ -15,16 +14,24 @@ import { SOUTH_TYROL_BBOX } from "./pioupiou";
 // den anderen Quellen über den "Quelle:"-Link im Verlaufsbalken
 // (SOURCE_INFO in src/lib/wind.ts). Nicht entfernen.
 //
-// Welche Stationen: dieselbe Südtirol-Bounding-Box wie bei Pioupiou
-// (SOUTH_TYROL_BBOX in src/lib/pioupiou.ts). Damit kommen die grenznahen
-// Nord- und Osttiroler Stationen dazu (u. a. Brenner, Obergurgl, Nauders,
-// Pitztaler Gletscher, Sillian) — Stand Sept. 2026 rund 15 Stück.
+// Welche Stationen: ALLE aktiven Stationen Österreichs mit Windmessung
+// (Wunsch des Projektbesitzers, Sept. 2026) — rund 275 Stück. Anfangs waren
+// es nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box.
+// Stationen ganz ohne Windwerte (reine Temperatur-/Niederschlagsstationen,
+// rund ein Dutzend) werden ausgelassen, wie beim Bozner Dienst.
 //
 // Zwei Anfragen je Abruf:
 //   1. /metadata: alle ~290 österreichischen Stationen mit Name, Koordinaten
 //      und Höhe. Ändert sich praktisch nie → 6 h gecacht.
-//   2. Aktuelle Messwerte nur der Stationen in der Bounding Box
-//      (station_ids=…), Parameter DD (Richtung), FF (Mittelwind), FFX (Böe).
+//   2. Aktuelle Messwerte aller aktiven Stationen (station_ids=… ist
+//      Pflicht, die Schnittstelle kennt kein "alle"), Parameter DD
+//      (Richtung), FF (Mittelwind), FFX (Böe).
+//
+// ACHTUNG Antwortformat: Die Antwort enthält MEHRERE Zeitpunkte, sobald
+// einzelne Stationen hinterherhinken (z. B. eine seit Wochen ausgefallene
+// Station). "timestamps" ist dann die Vereinigung aller Zeitpunkte, und jede
+// Station hat je Zeitpunkt einen Wert (meist null). Je Station gilt deshalb
+// der LETZTE Zeitpunkt, zu dem sie einen Windwert hat.
 //
 // Der Dienst liefert wie der Bozner Dienst immer nur den NEUESTEN
 // 10-Minuten-Wert, rund 10 min nach der Messung. Der 5-Minuten-Takt von
@@ -76,15 +83,6 @@ interface GeoSphereResponse {
   features?: GeoSphereFeature[];
 }
 
-function inSouthTyrolBbox(lat: number, lng: number): boolean {
-  return (
-    lat >= SOUTH_TYROL_BBOX.latMin &&
-    lat <= SOUTH_TYROL_BBOX.latMax &&
-    lng >= SOUTH_TYROL_BBOX.lngMin &&
-    lng <= SOUTH_TYROL_BBOX.lngMax
-  );
-}
-
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
@@ -116,13 +114,13 @@ export function formatGeoSphereName(name: string): string {
     .replace(LOWERCASE_WORDS, (w) => w.toLowerCase());
 }
 
-// Den ersten (einzigen) Wert eines Parameters lesen, oder null.
-function firstValue(param: GeoSphereParameter | undefined): number | null {
-  const v = param?.data?.[0];
+// Wert eines Parameters zum Zeitpunkt Nummer `idx` lesen, oder null.
+function valueAt(param: GeoSphereParameter | undefined, idx: number): number | null {
+  const v = param?.data?.[idx];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-async function fetchStationsInBbox(): Promise<GeoSphereStationMeta[]> {
+async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
   const res = await fetch(`${API_BASE}/metadata`, {
     next: { revalidate: METADATA_REVALIDATE_S },
   });
@@ -134,18 +132,16 @@ async function fetchStationsInBbox(): Promise<GeoSphereStationMeta[]> {
     (s) =>
       s.is_active !== false &&
       typeof s.lat === "number" &&
-      typeof s.lon === "number" &&
-      inSouthTyrolBbox(s.lat, s.lon),
+      typeof s.lon === "number",
   );
 }
 
 /**
- * Ruft die grenznahen GeoSphere-Austria-Stationen (Bounding Box Südtirol)
- * ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
+ * Ruft alle GeoSphere-Austria-Stationen mit Windmessung ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
  * Farbskala, gleiches stale-Verhalten, gleiche Darstellung).
  */
 export async function fetchGeoSphereStations(): Promise<WindStation[]> {
-  const metas = await fetchStationsInBbox();
+  const metas = await fetchActiveStations();
   if (metas.length === 0) return [];
 
   // Nach Nummer sortiert, damit die Abfrage-Adresse (und damit der
@@ -163,11 +159,8 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
   }
   const body = (await res.json()) as GeoSphereResponse;
 
-  // Alle Stationen einer Antwort teilen sich denselben Zeitstempel, z. B.
-  // "2026-09-29T03:10+00:00" — hier in das übliche ISO-Format umgewandelt.
-  const rawTime = body.timestamps?.[0];
-  const parsed = rawTime ? Date.parse(rawTime) : NaN;
-  const timestamp = Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+  // Zeitpunkte einmal umwandeln, z. B. "2026-09-29T03:10+00:00" → Epoch-ms.
+  const times = (body.timestamps ?? []).map((t) => Date.parse(t));
 
   const byId = new Map<string, GeoSphereFeature>();
   for (const f of body.features ?? []) {
@@ -177,20 +170,28 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
   const now = Date.now();
   const result: WindStation[] = [];
 
-  // Über die Metadaten laufen (nicht über die Messwerte): so erscheint auch
-  // eine Station ohne aktuelle Werte — dann als grauer Punkt.
   for (const meta of metas) {
     const p = byId.get(meta.id)?.properties?.parameters;
-    const direction = firstValue(p?.DD);
-    const speed = firstValue(p?.FF);
-    const gust = firstValue(p?.FFX);
-    const speedKmh = speed !== null ? round1(msToKmh(speed)) : null;
 
+    // Letzter Zeitpunkt mit Richtung ODER Mittelwind (siehe "ACHTUNG
+    // Antwortformat" oben). Keiner gefunden → Station misst keinen Wind
+    // und wird ausgelassen.
+    let idx = times.length - 1;
+    while (idx >= 0 && valueAt(p?.DD, idx) === null && valueAt(p?.FF, idx) === null) {
+      idx--;
+    }
+    if (idx < 0 || Number.isNaN(times[idx])) continue;
+
+    const direction = valueAt(p?.DD, idx);
+    const speed = valueAt(p?.FF, idx);
+    const gust = valueAt(p?.FFX, idx);
+    const speedKmh = speed !== null ? round1(msToKmh(speed)) : null;
+    const measuredAt = times[idx];
+
+    // Eine ausgefallene Station (letzter Wert älter als 2 h) erscheint als
+    // grauer Punkt, genau wie bei den anderen Quellen.
     const stale =
-      direction === null ||
-      speedKmh === null ||
-      Number.isNaN(parsed) ||
-      now - parsed > STALE_AFTER_MS;
+      direction === null || speedKmh === null || now - measuredAt > STALE_AFTER_MS;
 
     result.push({
       stationCode: `${CODE_PREFIX}${meta.id}`,
@@ -201,7 +202,7 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
       direction,
       speedKmh,
       gustKmh: gust !== null ? round1(msToKmh(gust)) : null,
-      timestamp,
+      timestamp: new Date(measuredAt).toISOString(),
       stale,
       source: "geosphere",
     });
