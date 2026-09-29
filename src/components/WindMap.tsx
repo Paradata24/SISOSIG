@@ -144,7 +144,8 @@ const POLL_INTERVAL_MS = 180_000; // 3 Minuten
 // eigenen Aufgabe:
 //   - Übersicht (bis Zoom 8):   "Wo ist es ruhig, wo zu stark?" — nur Pfeile,
 //                               überlappende werden ausgedünnt (siehe unten)
-//   - Region    (Zoom 9–11):    "Wie stark genau, wie böig?" — Pfeil + Zahlen
+//   - Region    (Zoom 9–11):    "Wie stark genau, wie böig?" — große Pfeile,
+//                               Zahlen erst ab Zoom 10 (LABEL_MIN_ZOOM)
 //   - Detail    (ab Zoom 12):   "Welche Station ist das?" — zusätzlich
 //                               Stationsname und Höhe
 type ZoomTier = "overview" | "region" | "detail";
@@ -154,19 +155,25 @@ type ZoomTier = "overview" | "region" | "detail";
 // die Karte ~560 Stationen; herausgezoomt überdeckten sich die Zahlen zu
 // einem unlesbaren Teppich. Darunter zeigt die Karte deshalb nur die farbigen
 // Pfeile (Farbe = Mittelwind, Rand = Böe).
-// 9 = die Startansicht Südtirol (SOUTH_TYROL_ZOOM): Beim Öffnen der Seite sind
-// die Zahlen also da, sie verschwinden erst beim Herauszoomen.
+// 10 = eine Stufe über der Startansicht Südtirol (SOUTH_TYROL_ZOOM = 9): Beim
+// Öffnen der Seite stehen nur die Pfeile da, die Zahlen erscheinen erst beim
+// ersten Hineinzoomen (Wunsch des Projektbesitzers, Sept. 2026 — vorher
+// waren sie schon in der Startansicht sichtbar).
 // Das gilt genauso bei aktivem Stationsfilter: Früher blieben die Zahlen dort
 // immer sichtbar und alles war 25 % größer — auf Wunsch des Projektbesitzers
 // (Sept. 2026) gelten jetzt für jeden Filter dieselben Regeln wie für "Alle".
-const LABEL_MIN_ZOOM = SOUTH_TYROL_ZOOM;
+const LABEL_MIN_ZOOM = SOUTH_TYROL_ZOOM + 1;
+// Ab hier beginnt die Stufe "Region" (große Pfeile, kein Ausdünnen). Bewusst
+// getrennt von LABEL_MIN_ZOOM: Die Startansicht soll schon die großen,
+// vollständigen Pfeile zeigen, nur eben noch ohne Zahlen.
+const REGION_MIN_ZOOM = SOUTH_TYROL_ZOOM;
 // Ab hier kommen Stationsname und Höhe unter die Zahlen. Darunter wären die
 // Namen zu lang für den Abstand zwischen den Stationen.
 const DETAIL_MIN_ZOOM = 12;
 
 function getZoomTier(zoom: number): ZoomTier {
   if (zoom >= DETAIL_MIN_ZOOM) return "detail";
-  if (zoom >= LABEL_MIN_ZOOM) return "region";
+  if (zoom >= REGION_MIN_ZOOM) return "region";
   return "overview";
 }
 
