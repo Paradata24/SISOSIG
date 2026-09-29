@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
+import { fetchGeoSphereStations } from "@/lib/geosphere";
+import { fetchSlfReadingsSince } from "@/lib/slf";
+import type { WindStation } from "@/lib/wind";
 
 // Sammel-Route: ruft den Open-Data-Wetterdienst der Provinz Bozen ab und
 // schreibt die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
@@ -41,6 +44,13 @@ const API_BASE =
 // (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
 // ausgefallene Sammel-Läufe und halten die Tabelle klein.
 const RETENTION_DAYS = 2;
+
+// SLF-Stationen: Das SLF liefert die letzten 24 h mit, deshalb schreibt jeder
+// Lauf die letzten 3 Stunden (je Station 6 Halbstundenwerte, zusammen gut
+// 1.000 Zeilen). Ein verpasster Lauf oder ein verspätet gelieferter Wert
+// füllt sich so beim nächsten Lauf von selbst auf; Doppelte fängt der Upsert
+// ab. Mehr als 3 h wäre bei 12 Läufen pro Stunde nur unnötige Schreiblast.
+const SLF_WINDOW_MS = 3 * 60 * 60 * 1000;
 
 // Nicht cachen und immer serverseitig zur Laufzeit ausführen — sonst würde
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
@@ -134,7 +144,7 @@ export async function POST(request: Request) {
     direction: number | null;
     speed_kmh: number | null;
     gust_kmh: number | null;
-    source: "bolzano" | "openwindmap";
+    source: WindStation["source"];
   }> = [];
 
   for (const [code, readings] of byStation) {
@@ -161,25 +171,47 @@ export async function POST(request: Request) {
     });
   }
 
-  // 3b) OpenWindMap/Pioupiou-Stationen dazuholen — additiv: schlägt der
-  //     Abruf fehl, werden trotzdem die Bozner Messwerte gespeichert statt
-  //     den ganzen Lauf abzubrechen.
+  // 3b) OpenWindMap/Pioupiou- und GeoSphere-Austria-Stationen dazuholen —
+  //     additiv: schlägt ein Abruf fehl, werden trotzdem die übrigen
+  //     Messwerte gespeichert statt den ganzen Lauf abzubrechen.
+  const extraSources: Array<[string, () => Promise<WindStation[]>]> = [
+    ["OpenWindMap", fetchOpenWindMapStations],
+    ["GeoSphere", fetchGeoSphereStations],
+  ];
+  for (const [label, fetchStations] of extraSources) {
+    try {
+      for (const s of await fetchStations()) {
+        if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
+        if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+        rows.push({
+          station_code: s.stationCode,
+          measured_at: s.timestamp,
+          direction: s.direction,
+          speed_kmh: s.speedKmh,
+          gust_kmh: s.gustKmh,
+          source: s.source,
+        });
+      }
+    } catch (err) {
+      console.error(`${label}-Stationen nicht abrufbar:`, err);
+    }
+  }
+
+  // 3c) SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv.
   try {
-    const openWindMapStations = await fetchOpenWindMapStations();
-    for (const s of openWindMapStations) {
-      if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
-      if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+    const slfReadings = await fetchSlfReadingsSince(Date.now() - SLF_WINDOW_MS);
+    for (const r of slfReadings) {
       rows.push({
-        station_code: s.stationCode,
-        measured_at: s.timestamp,
-        direction: s.direction,
-        speed_kmh: s.speedKmh,
-        gust_kmh: s.gustKmh,
-        source: "openwindmap",
+        station_code: r.stationCode,
+        measured_at: r.measuredAt,
+        direction: r.direction,
+        speed_kmh: r.speedKmh,
+        gust_kmh: r.gustKmh,
+        source: "slf",
       });
     }
   } catch (err) {
-    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
+    console.error("SLF-Stationen nicht abrufbar:", err);
   }
 
   if (rows.length === 0) {

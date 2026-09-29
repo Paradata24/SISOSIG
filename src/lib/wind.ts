@@ -15,8 +15,12 @@ export interface WindStation {
   timestamp: string | null;
   /** true, wenn die Station Windsensoren hat, aber keine aktuellen Werte liefert */
   stale: boolean;
-  /** Datenquelle: Bozner Wetterdienst oder OpenWindMap/Pioupiou-Netzwerk */
-  source: "bolzano" | "openwindmap";
+  /**
+   * Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk, die
+   * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts) oder GeoSphere
+   * Austria (früher ZAMG, siehe src/lib/geosphere.ts)
+   */
+  source: "bolzano" | "openwindmap" | "slf" | "geosphere";
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -26,6 +30,33 @@ export const SOURCE_INFO: Record<
 > = {
   bolzano: { label: "Land Südtirol – Wetterdienst", url: "https://wetter.provinz.bz.it" },
   openwindmap: { label: "OpenWindMap / Pioupiou", url: "https://openwindmap.org" },
+  // Lizenz CC BY 4.0 — die Nennung des SLF ist Pflicht, nicht entfernen.
+  slf: {
+    label: "WSL-Institut für Schnee- und Lawinenforschung SLF (IMIS)",
+    url: "https://www.slf.ch/de/services-und-produkte/slf-datenservice/",
+  },
+  // Lizenz CC BY 4.0: Dieser Link ist die Pflicht-Quellenangabe, nicht entfernen.
+  geosphere: { label: "GeoSphere Austria (CC BY 4.0)", url: "https://data.hub.geosphere.at" },
+};
+
+/**
+ * Wie oft eine Quelle einen neuen Messwert liefert (Minuten). Bozen misst
+ * alle 10 min, Pioupiou sendet unregelmäßig alle paar Minuten (landet im
+ * 10-Minuten-Raster), GeoSphere Austria ebenfalls alle 10 min. Die SLF-IMIS-Stationen liefern dagegen nur einen
+ * 30-Minuten-Mittelwert zu :00 und :30 — nachgeprüft im Sept. 2026, auch
+ * whiterisk.ch selbst zeigt nichts Feineres.
+ *
+ * Daraus leiten sich ab:
+ *  - measurementGapMs: ab welcher Lücke die Kurve im Verlaufsbalken abreißt,
+ *  - der "Halte"-Zeitraum im Zeitbalken (/api/timeline): ein 30-Minuten-Wert
+ *    bleibt dort bis zum nächsten Wert stehen, statt dass die Station an den
+ *    Zwischenschritten :10/:20 grau wird.
+ */
+export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
+  bolzano: 10,
+  openwindmap: 10,
+  slf: 30,
+  geosphere: 10,
 };
 
 /**
@@ -56,6 +87,20 @@ export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
 /** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
 export const TIMELINE_SLOT_COUNT =
   HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
+
+/**
+ * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
+ * noch durchgezogen werden: 2,5 Messtakte der Quelle. Bei 10-Minuten-Quellen
+ * sind das 25 min (EIN fehlender Wert wird überbrückt, ab ZWEI reißt die
+ * Kurve auf — siehe die ausführliche Begründung bei BAND_GAP_MS in
+ * WindHistoryPanel.tsx). Für die 30-Minuten-Werte des SLF gilt dieselbe Regel
+ * im eigenen Takt: 75 min. Mit dem 10-Minuten-Wert wäre jede SLF-Kurve nur
+ * noch eine Reihe einzelner Punkte.
+ */
+export function measurementGapMs(source: WindStation["source"]): number {
+  const intervalMs = Math.max(SOURCE_INTERVAL_MINUTES[source] * 60 * 1000, GRID_MS);
+  return 2.5 * intervalMs;
+}
 
 /**
  * Rastet einen Zeitpunkt auf das 10-Minuten-Raster ein.
