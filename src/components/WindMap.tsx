@@ -118,6 +118,14 @@ const TRANSPARENT_TILE =
 // Windpfeile und Auswahl-Ring liegen ohnehin darüber: Leaflet setzt Marker
 // und Linien grundsätzlich in eine höhere Ebene als alle Kartenkacheln.
 const Z_HILLSHADE = 1;
+// Deckkraft der Esri-Schummerung. Sie liegt auf weißem Kartengrund (siehe
+// style am MapContainer), 0,75 hellt das Relief also um ein Viertel auf —
+// die Windfarben leuchten dadurch stärker (Umbau "Karte lesbarer", Sept. 2026).
+const HILLSHADE_OPACITY = 0.75;
+// Kartengrund hinter den Kacheln. Leaflet setzt von sich aus Grau (#ddd); bei
+// halbdurchsichtigem Relief würde das durchscheinen. Inline statt über eine
+// Tailwind-Klasse, weil leaflet.css sonst Vorrang hätte.
+const MAP_BACKGROUND = "#ffffff";
 const Z_CONTOURS = 2;
 const Z_LABELS = 3;
 // Wie oft im Hintergrund neue Winddaten geholt werden. Die Stationen messen
@@ -129,131 +137,205 @@ const Z_LABELS = 3;
 // holt dann sofort frische Werte, unabhängig vom Takt.
 const POLL_INTERVAL_MS = 180_000; // 3 Minuten
 
-const ARROW_BASE_SIZE = 22;
-const LABEL_BASE_HEIGHT = 10;
-const MIN_ICON_SCALE = 0.35;
-
-// Die Pfeile skalieren stufenlos mit dem Kartenzoom mit (größer beim
-// Reinzoomen, kleiner beim Rauszoomen) statt eine feste Pixelgröße zu haben.
-// Beim Rauszoomen wird der Skalierfaktor nach unten hin gedeckelt
-// (MIN_ICON_SCALE), damit die Pfeile nicht auf der ganzen Karte verschwinden
-// und diese übersichtlich bleibt. getIconScale() rechnet eine Zoomstufe in
-// diesen Skalierfaktor um.
-function getIconScale(zoom: number): number {
-  const scale = 1 + (zoom - SOUTH_TYROL_ZOOM) * 0.15;
-  return Math.max(MIN_ICON_SCALE, scale);
-}
-
-// Ist ein Stationsfilter aktiv (also NICHT "Alle"), stehen deutlich weniger
-// Pfeile auf der Karte — dann ist Platz da, und Pfeile samt Zahlen werden auf
-// Wunsch des Projektbesitzers um 25 % vergrößert, damit sie besser ablesbar
-// sind.
-const FILTERED_ICON_SCALE_BOOST = 1.25;
-
-function getFilterScaleBoost(stationFilter: StationFilter): number {
-  return stationFilter === "all" ? 1 : FILTERED_ICON_SCALE_BOOST;
-}
+// --- Drei Zoomstufen (Sept. 2026, Umbau "Karte lesbarer") ---
+// Früher schrumpften die Pfeile mit jedem Zoomschritt stufenlos, herausgezoomt
+// bis auf 8 px, und die Zahlen waren in der Startansicht nur 7 px hoch. Jetzt
+// gibt es drei klar getrennte Ansichten mit festen Größen, jede mit einer
+// eigenen Aufgabe:
+//   - Übersicht (bis Zoom 8):   "Wo ist es ruhig, wo zu stark?" — nur Pfeile,
+//                               überlappende werden ausgedünnt (siehe unten)
+//   - Region    (Zoom 9–11):    "Wie stark genau, wie böig?" — große Pfeile,
+//                               Zahlen erst ab Zoom 10 (LABEL_MIN_ZOOM)
+//   - Detail    (ab Zoom 12):   "Welche Station ist das?" — zusätzlich
+//                               Stationsname und Höhe
+type ZoomTier = "overview" | "region" | "detail";
 
 // Ab welcher Zoomstufe die Zahlen (Mittelwind / Böe) unter den Pfeilen
 // stehen. Seit Schweiz (SLF) und ganz Österreich (GeoSphere) dabei sind, hat
 // die Karte ~560 Stationen; herausgezoomt überdeckten sich die Zahlen zu
 // einem unlesbaren Teppich. Darunter zeigt die Karte deshalb nur die farbigen
 // Pfeile (Farbe = Mittelwind, Rand = Böe).
-// 9 = die Startansicht Südtirol (SOUTH_TYROL_ZOOM): Beim Öffnen der Seite sind
-// die Zahlen also wie bisher da, sie verschwinden erst beim Herauszoomen.
-// Bei aktivem Stationsfilter (nicht "Alle") bleiben sie immer sichtbar — dann
-// stehen nur wenige Pfeile auf der Karte, und Platz ist genug (Wunsch des
-// Projektbesitzers, Sept. 2026).
-const LABEL_MIN_ZOOM = SOUTH_TYROL_ZOOM;
+// 10 = eine Stufe über der Startansicht Südtirol (SOUTH_TYROL_ZOOM = 9): Beim
+// Öffnen der Seite stehen nur die Pfeile da, die Zahlen erscheinen erst beim
+// ersten Hineinzoomen (Wunsch des Projektbesitzers, Sept. 2026 — vorher
+// waren sie schon in der Startansicht sichtbar).
+// Das gilt genauso bei aktivem Stationsfilter: Früher blieben die Zahlen dort
+// immer sichtbar und alles war 25 % größer — auf Wunsch des Projektbesitzers
+// (Sept. 2026) gelten jetzt für jeden Filter dieselben Regeln wie für "Alle".
+const LABEL_MIN_ZOOM = SOUTH_TYROL_ZOOM + 1;
+// Ab hier beginnt die Stufe "Region" (große Pfeile, kein Ausdünnen). Bewusst
+// getrennt von LABEL_MIN_ZOOM: Die Startansicht soll schon die großen,
+// vollständigen Pfeile zeigen, nur eben noch ohne Zahlen.
+const REGION_MIN_ZOOM = SOUTH_TYROL_ZOOM;
+// Ab hier kommen Stationsname und Höhe unter die Zahlen. Darunter wären die
+// Namen zu lang für den Abstand zwischen den Stationen.
+const DETAIL_MIN_ZOOM = 12;
 
-function shouldShowLabels(zoom: number, stationFilter: StationFilter): boolean {
-  return stationFilter !== "all" || zoom >= LABEL_MIN_ZOOM;
+function getZoomTier(zoom: number): ZoomTier {
+  if (zoom >= DETAIL_MIN_ZOOM) return "detail";
+  if (zoom >= REGION_MIN_ZOOM) return "region";
+  return "overview";
+}
+
+function shouldShowLabels(zoom: number): boolean {
+  return zoom >= LABEL_MIN_ZOOM;
+}
+
+// Kantenlänge der Pfeile je Zoomstufe (Bildschirmpixel).
+const ARROW_SIZE: Record<ZoomTier, number> = { overview: 16, region: 26, detail: 32 };
+// Breite des böenfarbigen Pfeilrands (Bildschirmpixel). Bewusst deutlich
+// breiter als früher (knapp 1 px), damit die Böe am Pfeil ablesbar bleibt —
+// Wunsch des Projektbesitzers: die Böe bleibt im Pfeilrand, ZUSÄTZLICH zur
+// Zahl in der Plakette.
+const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2, region: 2.6, detail: 3 };
+// Dunkler Umriss AUSSEN um den Böenrand. Ohne ihn verschwanden hellblaue und
+// gelbe Pfeile auf dem hellgrauen Relief, und bei gleicher Farbe von Mittelwind
+// und Böe war gar kein Rand zu sehen. Der Umriss macht jede Farbe der Skala auf
+// jedem Untergrund sichtbar, ohne die Farbskala selbst anzufassen.
+const OUTLINE_PX = 1.1;
+// Pfeilform im 40er-Raster des SVG: Spitze oben, Kerbe hinten, runde Ecken.
+// Eine spitzere Variante wurde im Sept. 2026 ausprobiert und vom
+// Projektbesitzer wieder verworfen — die Form bleibt so.
+const ARROW_PATH = "M20 3 L34 34 L20 26 L6 34 Z";
+const OUTLINE_COLOR = "#1f2937";
+// Schriftgröße der Zahlen-Plakette (Mittelwind; die Böe steht eine Spur
+// kleiner daneben). Früher 7 px in der Startansicht.
+const LABEL_FONT_PX: Record<ZoomTier, number> = { overview: 12, region: 12, detail: 14 };
+// Ungefähre Höhe der Plakette — nur für den Auswahl-Ring, der Pfeil und
+// Plakette umschließen soll.
+const LABEL_HEIGHT_PX: Record<ZoomTier, number> = { overview: 16, region: 16, detail: 19 };
+// Breite des Icon-Kastens (Pfeil ist mittig darin). Breiter als der Pfeil,
+// damit Plakette und Stationsname Platz haben. Klicks fängt der Kasten
+// trotzdem nicht ab: nur Pfeil und Plakette sind anklickbar (Klasse
+// .wind-marker in globals.css).
+const ICON_BOX_WIDTH: Record<ZoomTier, number> = { overview: 64, region: 64, detail: 180 };
+
+// --- Ausdünnen in der Übersicht ---
+// Herausgezoomt liegen hunderte Pfeile übereinander. In der Übersicht (bei
+// jedem Stationsfilter, auch "Alle") bleibt deshalb von zwei Pfeilen, die sich überdecken
+// würden, nur der der HÖHER GELEGENEN Station — die ist für Flieger meist die
+// wichtigere. Mindestabstand = Pfeilgröße × dieser Faktor.
+//
+// Wichtig: Die Rangfolge hängt nur an der Höhe (und bei Gleichstand am
+// Stationscode), NICHT am Wind. So springt beim Blättern im Zeitbalken nichts
+// hin und her. Ausgedünnte Stationen bleiben als unsichtbare Marker bestehen
+// — Anzahl und Reihenfolge der Marker ändern sich nie (siehe displayStations
+// in WindMap).
+// Ausgefallene Stationen (grau) zählen beim Ausdünnen nicht mit und sind in
+// der Übersicht ganz unsichtbar: Ein Ausfall soll keinen echten Messwert
+// daneben verdrängen.
+const THIN_DISTANCE_FACTOR = 1.25;
+
+// Stationsnamen kommen von fremden Diensten und landen im HTML des Icons —
+// deshalb Sonderzeichen entschärfen.
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
 // die Richtung meldet, AUS der der Wind kommt). Die angezeigte Richtung wird
 // dabei auf die 8 Haupt-Himmelsrichtungen (0/45/…/315°) eingerastet, damit der
-// Pfeil nicht "krumme" Zwischenwinkel zeigt. Die Füllfarbe zeigt den
-// Mittelwind, die Randfarbe die Böe (beide über dieselbe Farbskala).
+// Pfeil nicht "krumme" Zwischenwinkel zeigt.
+//
+// Aufbau von außen nach innen: dunkler Umriss → Rand in Böenfarbe → Fläche in
+// Mittelwindfarbe. Gezeichnet wird das als zwei gleiche Pfade übereinander:
+// unten ein breiter dunkler Strich, darüber der Pfeil mit Böenrand, der den
+// inneren Teil des dunklen Strichs verdeckt.
+//
+// Darunter (ab Zoom 9 oder bei aktivem Filter) die Zahlen-Plakette: links der
+// Mittelwind, rechts die Böe, jedes Feld in seiner Windfarbe. Im Detail
+// zusätzlich Stationsname und Höhe.
 function createWindIcon(
-  direction: number | null,
-  speedKmh: number | null,
-  gustKmh: number | null,
-  scale: number,
+  station: WindStation,
+  tier: ZoomTier,
   showLabel: boolean,
 ) {
+  const { direction, speedKmh, gustKmh } = station;
   const fillColor = getWindColor(speedKmh);
-  const strokeColor = getWindColor(gustKmh);
+  const gustColor = getWindColor(gustKmh);
   const snappedDirection = direction !== null ? snapDirectionTo8(direction) : null;
   const rotation = snappedDirection !== null ? (snappedDirection + 180) % 360 : 0;
   const speedLabel = speedKmh !== null ? Math.round(speedKmh) : "–";
   const gustLabel = gustKmh !== null ? Math.round(gustKmh) : "–";
 
-  const arrowSize = Math.round(ARROW_BASE_SIZE * scale);
-  const labelHeight = showLabel ? Math.round(LABEL_BASE_HEIGHT * scale) : 0;
-  const fontSize = Math.max(5, Math.round(6.5 * scale));
-  // Randstärke bewusst 10 % über dem früheren Wert (1,5 bzw. 0,75), damit die
-  // Böen-Farbe am Pfeilrand besser ablesbar ist.
-  const strokeWidth = Math.max(0.825, 1.65 * scale);
+  const arrowSize = ARROW_SIZE[tier];
+  // Das SVG rechnet in einem 40er-Raster; Strichbreiten also umrechnen.
+  const toUnits = 40 / arrowSize;
+  const gustWidth = GUST_STROKE_PX[tier] * toUnits;
+  const outlineWidth = gustWidth + 2 * OUTLINE_PX * toUnits;
+  const arrowPath = ARROW_PATH;
 
-  const textHalo = "-1.5px 0 white, 1.5px 0 white, 0 -1.5px white, 0 1.5px white, -1px -1px white, 1px -1px white, -1px 1px white, 1px 1px white";
+  const boxWidth = Math.max(arrowSize, ICON_BOX_WIDTH[tier]);
+  const fontSize = LABEL_FONT_PX[tier];
+  const gustFontSize = Math.round(fontSize * 0.88);
+  const labelHeight = showLabel ? LABEL_HEIGHT_PX[tier] : 0;
+
+  let label = "";
+  if (showLabel) {
+    label = `<div style="display: flex; margin-top: 1px; border: 1px solid rgba(31,41,55,0.85); font-weight: 700; line-height: 1.2; color: #111827; white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: auto; cursor: pointer;">
+        <span style="background: ${fillColor}; padding: 0 4px; font-size: ${fontSize}px;">${speedLabel}</span>
+        <span style="background: ${gustColor}; padding: 0 4px; font-size: ${gustFontSize}px; display: flex; align-items: center; border-left: 1px solid rgba(31,41,55,0.5);">${gustLabel}</span>
+      </div>`;
+    if (tier === "detail") {
+      const altitude = station.altitude !== null ? ` · ${Math.round(station.altitude)} m` : "";
+      label += `<div style="margin-top: 2px; font-size: 12px; font-weight: 700; line-height: 1.2; color: #1f2937; white-space: nowrap; text-shadow: 0 0 2px white, 0 0 2px white, 0 0 3px white;">${escapeHtml(station.stationName)}${altitude}</div>`;
+    }
+  }
 
   const html = `
-    <div style="display: flex; flex-direction: column; align-items: center; width: ${arrowSize}px;">
-      <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px;">
-        <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-          <path
-            d="M20 2 L34 34 L20 26 L6 34 Z"
-            fill="${fillColor}"
-            stroke="${strokeColor}"
-            stroke-width="${strokeWidth}"
-            stroke-linejoin="round"
-            stroke-linecap="round"
-          />
+    <div style="display: flex; flex-direction: column; align-items: center; width: ${boxWidth}px; font-family: var(--font-barlow-semi-condensed), Arial, sans-serif;">
+      <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px; pointer-events: auto; cursor: pointer;">
+        <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" style="overflow: visible;" xmlns="http://www.w3.org/2000/svg">
+          <path d="${arrowPath}" fill="none" stroke="${OUTLINE_COLOR}" stroke-width="${outlineWidth}" stroke-linejoin="round" />
+          <path d="${arrowPath}" fill="${fillColor}" stroke="${gustColor}" stroke-width="${gustWidth}" stroke-linejoin="round" />
         </svg>
       </div>
-      ${
-        showLabel
-          ? `<div style="margin-top: -2px; font-size: ${fontSize}px; font-weight: 700; line-height: 1.3; color: #1f2937; white-space: nowrap; text-shadow: ${textHalo};">
-        ${speedLabel} / ${gustLabel}
-      </div>`
-          : ""
-      }
+      ${label}
     </div>
   `;
 
   return L.divIcon({
     html,
-    className: "",
-    iconSize: [arrowSize, arrowSize + labelHeight],
-    iconAnchor: [arrowSize / 2, arrowSize / 2],
+    className: "wind-marker",
+    iconSize: [boxWidth, arrowSize + labelHeight],
+    iconAnchor: [boxWidth / 2, arrowSize / 2],
     popupAnchor: [0, -arrowSize / 2],
   });
 }
 
-// Grauer Punkt für Stationen mit Windsensoren, die gerade keine aktuellen
-// Werte liefern (Ausfall oder veraltete Messung).
-function createStaleIcon(scale: number) {
-  const size = Math.round(ARROW_BASE_SIZE * scale);
-  const dotSize = Math.max(4, Math.round(9 * scale));
+// Blasser, hohler Ring für Stationen mit Windsensoren, die gerade keine
+// aktuellen Werte liefern (Ausfall oder veraltete Messung). Früher ein voller
+// grauer Punkt, der genauso viel Blick zog wie ein echter Messwert.
+function createStaleIcon(tier: ZoomTier) {
+  const size = ARROW_SIZE[tier];
+  const ringSize = tier === "detail" ? 11 : 9;
 
   const html = `
     <div style="width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
-      <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="9" cy="9" r="7" fill="#9ca3af" stroke="white" stroke-width="2" />
+      <svg width="${ringSize}" height="${ringSize}" viewBox="0 0 10 10" style="opacity: 0.6; pointer-events: auto; cursor: pointer;" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="5" cy="5" r="3.7" fill="white" fill-opacity="0.6" stroke="#6b7280" stroke-width="1.5" />
       </svg>
     </div>
   `;
 
   return L.divIcon({
     html,
-    className: "",
+    className: "wind-marker",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
   });
 }
+
+// Leeres Icon für Stationen, die in der Übersicht ausgedünnt werden. Der
+// Marker bleibt bestehen (siehe THIN_DISTANCE_FACTOR), ist aber unsichtbar
+// und nicht anklickbar (.wind-marker in globals.css).
+const HIDDEN_ICON = L.divIcon({ html: "", className: "wind-marker", iconSize: [0, 0] });
 
 // --- Zwischenspeicher für Marker-Icons ---
 // Leaflet baut das komplette DOM eines Markers neu auf, sobald er ein NEUES
@@ -285,16 +367,27 @@ const iconCache = new Map<string, L.DivIcon>();
 // den gerundeten Zahlen ab (die Farben runden intern ebenfalls). Rohwerte wie
 // 137.4° oder 12.3 km/h wären dagegen fast immer verschieden — beim Schieben
 // des Zeitbalkens hätte der Zwischenspeicher dann praktisch nie einen Treffer.
-function iconCacheKey(station: WindStation, scale: number, showLabel: boolean): string {
-  if (station.stale) return `stale|${scale}`;
+// In der Detail-Stufe steht der Stationsname im Icon — dort gehört der
+// Stationscode mit in den Schlüssel.
+function iconCacheKey(
+  station: WindStation,
+  tier: ZoomTier,
+  showLabel: boolean,
+): string {
+  if (station.stale) return `stale|${tier}`;
   const dir = station.direction === null ? "x" : snapDirectionTo8(station.direction);
   const speed = station.speedKmh === null ? "x" : Math.round(station.speedKmh);
   const gust = station.gustKmh === null ? "x" : Math.round(station.gustKmh);
-  return `wind|${dir}|${speed}|${gust}|${scale}|${showLabel ? "z" : "-"}`;
+  const named = tier === "detail" && showLabel ? station.stationCode : "";
+  return `wind|${dir}|${speed}|${gust}|${tier}|${showLabel ? "z" : "-"}|${named}`;
 }
 
-function getMarkerIcon(station: WindStation, scale: number, showLabel: boolean): L.DivIcon {
-  const key = iconCacheKey(station, scale, showLabel);
+function getMarkerIcon(
+  station: WindStation,
+  tier: ZoomTier,
+  showLabel: boolean,
+): L.DivIcon {
+  const key = iconCacheKey(station, tier, showLabel);
   const cached = iconCache.get(key);
   if (cached) {
     // Neu einsortieren = "zuletzt benutzt", damit der Deckel unten die
@@ -304,8 +397,8 @@ function getMarkerIcon(station: WindStation, scale: number, showLabel: boolean):
     return cached;
   }
   const icon = station.stale
-    ? createStaleIcon(scale)
-    : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale, showLabel);
+    ? createStaleIcon(tier)
+    : createWindIcon(station, tier, showLabel);
   iconCache.set(key, icon);
   while (iconCache.size > ICON_CACHE_LIMIT) {
     const oldest = iconCache.keys().next().value;
@@ -315,8 +408,8 @@ function getMarkerIcon(station: WindStation, scale: number, showLabel: boolean):
   return icon;
 }
 
-// Rendert die Windmarker und hält ihre Größe mit dem aktuellen Zoom
-// synchron (siehe getIconScale). Muss innerhalb von <MapContainer> stehen,
+// Rendert die Windmarker und hält ihre Darstellung mit dem aktuellen Zoom
+// synchron (siehe getZoomTier). Muss innerhalb von <MapContainer> stehen,
 // da useMapEvents auf den Leaflet-Kartenkontext angewiesen ist.
 // Ein Klick auf einen Marker öffnet das Verlaufspanel am unteren
 // Bildschirmrand (onSelect) und zeichnet einen Auswahl-Kreis um Pfeil und
@@ -325,7 +418,6 @@ function WindMarkers({
   stations,
   onSelect,
   selectedStationCode,
-  stationFilter,
 }: {
   stations: WindStation[];
   // Bewusst nur der Stationscode (nicht das ganze Stations-Objekt): so bleibt
@@ -333,30 +425,62 @@ function WindMarkers({
   // derselbe — siehe handlersByCode unten.
   onSelect: (stationCode: string) => void;
   selectedStationCode: string | null;
-  // Nur für die Pfeilgröße: bei aktivem Filter größere Marker
-  // (siehe getFilterScaleBoost).
-  stationFilter: StationFilter;
 }) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
   const map = useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
   });
-  const scale = getIconScale(zoom) * getFilterScaleBoost(stationFilter);
-  const showLabels = shouldShowLabels(zoom, stationFilter);
+  const tier = getZoomTier(zoom);
+  const showLabels = shouldShowLabels(zoom);
   const selectedStation = stations.find(
     (s) => s.stationCode === selectedStationCode && s.lat !== null && s.lng !== null,
   );
-  // Radius so bemessen, dass sowohl der Pfeil als auch die Werte-Beschriftung
+  // Radius so bemessen, dass sowohl der Pfeil als auch die Zahlen-Plakette
   // darunter innerhalb des Kreises liegen (Anker sitzt in der Pfeilmitte).
   // Ohne Zahlen (herausgezoomt) umschließt der Kreis nur den Pfeil.
   const selectionRadius = Math.round(
-    scale * (ARROW_BASE_SIZE / 2 + (showLabels ? LABEL_BASE_HEIGHT : 0)) + 4,
+    ARROW_SIZE[tier] / 2 + (showLabels ? LABEL_HEIGHT_PX[tier] : 0) + 4,
   );
 
   const positionedStations = useMemo(
     () => stations.filter((s) => s.lat !== null && s.lng !== null),
     [stations],
   );
+
+  // Welche Stationen in der Übersicht ausgedünnt werden (siehe
+  // THIN_DISTANCE_FACTOR). null = keine. Gerechnet wird in Bildschirmpixeln
+  // der aktuellen Zoomstufe; map.project mit fester Zoomstufe hängt nicht vom
+  // Kartenausschnitt ab, Verschieben löst also keine Neuberechnung aus.
+  // Auch bei ~560 Stationen ist das nur ein paar Zehntausend Abstandsvergleiche
+  // — schnell genug, um bei jedem Schritt im Zeitbalken neu zu laufen.
+  const thinOut = tier === "overview";
+  const hiddenCodes = useMemo(() => {
+    if (!thinOut) return null;
+    const minDistance = ARROW_SIZE.overview * THIN_DISTANCE_FACTOR;
+    const minDistanceSq = minDistance * minDistance;
+    const hidden = new Set<string>();
+    const candidates: WindStation[] = [];
+    for (const s of positionedStations) {
+      if (s.stale) hidden.add(s.stationCode);
+      else candidates.push(s);
+    }
+    candidates.sort(
+      (a, b) =>
+        (b.altitude ?? -1) - (a.altitude ?? -1) || a.stationCode.localeCompare(b.stationCode),
+    );
+    const kept: L.Point[] = [];
+    for (const s of candidates) {
+      const p = map.project([s.lat!, s.lng!], zoom);
+      const overlaps = kept.some((k) => {
+        const dx = k.x - p.x;
+        const dy = k.y - p.y;
+        return dx * dx + dy * dy < minDistanceSq;
+      });
+      if (overlaps) hidden.add(s.stationCode);
+      else kept.push(p);
+    }
+    return hidden;
+  }, [thinOut, positionedStations, map, zoom]);
 
   // Auch die Klick-Handler werden festgehalten: bekommt ein Marker ein NEUES
   // Handler-Objekt, meldet react-leaflet den alten Leaflet-Listener ab und den
@@ -379,7 +503,11 @@ function WindMarkers({
         <Marker
           key={station.stationCode}
           position={[station.lat!, station.lng!]}
-          icon={getMarkerIcon(station, scale, showLabels)}
+          icon={
+            hiddenCodes?.has(station.stationCode)
+              ? HIDDEN_ICON
+              : getMarkerIcon(station, tier, showLabels)
+          }
           eventHandlers={handlersByCode.get(station.stationCode)}
         />
       ))}
@@ -579,6 +707,7 @@ export default function WindMap({
         // src/lib/wind.ts) — NICHT ersatzlos streichen, sie sind Pflicht.
         attributionControl={false}
         className="h-full w-full"
+        style={{ background: MAP_BACKGROUND }}
       >
         {/* Die key-Attribute sorgen dafür, dass beim Umschalten die alten
             Kachel-Ebenen komplett entfernt und neue angelegt werden.
@@ -601,6 +730,7 @@ export default function WindMap({
               key="esri-hillshade"
               url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
               zIndex={Z_HILLSHADE}
+              opacity={HILLSHADE_OPACITY}
             />
             {/* Höhenlinien des Landes Südtirol, nur bei "Relief (Grau)":
                 Bei "Standard" (OpenStreetMap) sind Höhenlinien nicht
@@ -654,7 +784,6 @@ export default function WindMap({
           stations={displayStations}
           onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
-          stationFilter={stationFilter}
         />
       </MapContainer>
       {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, bleibt die

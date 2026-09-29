@@ -141,12 +141,38 @@ also alle 3 h, wirklich neue Werte).
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
   echte Kacheln hat.
-- **Zahlen unter den Pfeilen erst ab Zoom 9** (`LABEL_MIN_ZOOM` in
-  `src/components/WindMap.tsx`, = Startansicht Südtirol). Herausgezoomt
-  überdeckten sich die Zahlen der ~560 Stationen (Schweiz + Österreich) zu
-  einem unlesbaren Teppich; dort zeigt die Karte nur die farbigen Pfeile.
-  Bei aktivem Stationsfilter (nicht „Alle") bleiben die Zahlen immer sichtbar.
-  Wunsch des Projektbesitzers, Sept. 2026.
+- **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
+  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (16-px-Pfeile,
+  keine Zahlen), Region Zoom 9–11 (26 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
+  (`DETAIL_MIN_ZOOM`, 32 px + Stationsname und Höhe). Feste Größen je Stufe
+  (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
+  - **Zahlen erst ab Zoom 10** (`LABEL_MIN_ZOOM`), also eine Stufe über der
+    Startansicht Südtirol (Zoom 9): Beim Öffnen stehen nur die Pfeile da, die
+    Zahlen kommen beim ersten Hineinzoomen (Wunsch des Projektbesitzers).
+    Die Region-Stufe (große Pfeile, kein Ausdünnen) beginnt trotzdem schon
+    bei Zoom 9 (`REGION_MIN_ZOOM`).
+  - **Jeder Stationsfilter folgt denselben Regeln wie „Alle"** (Größen,
+    Zahlen, Ausdünnen). Die früheren Sonderregeln bei aktivem Filter (Zahlen
+    immer sichtbar, alles 25 % größer) hat der Projektbesitzer im Sept. 2026
+    ausdrücklich abgeschafft.
+  - **Pfeil-Aufbau:** bisherige Pfeilform mit runden Ecken (`ARROW_PATH`;
+    eine spitzere Form wurde ausprobiert und vom Projektbesitzer verworfen),
+    dunkler Umriss außen (`OUTLINE_PX`) → Rand in
+    **Böenfarbe** (`GUST_STROKE_PX`) → Fläche in Mittelwindfarbe. Der
+    Böenrand bleibt ausdrücklich erhalten (Wunsch des Projektbesitzers), auch
+    wenn die Böe zusätzlich in der Plakette steht.
+  - **Zahlen-Plakette:** links Mittelwind, rechts Böe, jedes Feld in seiner
+    Windfarbe, dünner dunkler Rahmen, eckig.
+  - **Ausdünnen in der Übersicht** (bei jedem Filter): Überdecken sich
+    zwei Pfeile, bleibt die höher gelegene Station (`THIN_DISTANCE_FACTOR`).
+    Rangfolge nur nach Höhe, nicht nach Wind — sonst spränge das Bild beim
+    Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
+    bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
+    der Übersicht unsichtbar, sonst ein blasser hohler Ring.
+  - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
+    Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
+- **Relief um ein Viertel aufgehellt** (`HILLSHADE_OPACITY` 0,75 auf weißem
+  Kartengrund `MAP_BACKGROUND`), damit die Windfarben stärker leuchten.
 - **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „Standard".
   Quelle ist der WMS-Dienst des Landes Südtirol
   (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
@@ -208,6 +234,14 @@ also alle 3 h, wirklich neue Werte).
   Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **Nur ICON-CH1 wird
   überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
   mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
+- **Modell und Lauf stehen im Verlaufsbalken:** rechts im Prognosebereich
+  „Prognose ICON-CH1" und „Lauf HH:MM Uhr" (Startzeit des Modelllaufs,
+  Ortszeit; Wunsch des Projektbesitzers, Sept. 2026). Die Laufzeit speichert
+  die Edge Function in der Spalte `model_run` von `wind_forecasts`
+  (`supabase/add-model-run-column.sql`). **Reihenfolge bei einer neuen
+  Datenbank-Spalte für die Edge Function: erst Spalte anlegen, dann Funktion
+  deployen** — sonst schlägt ihr Speichern fehl. `/api/forecast` fragt
+  ohne `model_run` nach, falls die Spalte fehlt.
 - **Prognosen nur bei neuem Modelllauf:** ICON-CH1 rechnet alle 3 h neu und
   steht bei Open-Meteo rund 2 h 20 min nach dem Laufstart bereit (00-UTC-Lauf
   gegen 02:20 UTC). Die Edge Function prüft vorher die Metadaten von
