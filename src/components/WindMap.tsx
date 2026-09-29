@@ -190,13 +190,18 @@ function shouldShowLabels(zoom: number): boolean {
   return zoom >= LABEL_MIN_ZOOM;
 }
 
-// Kantenlänge der Pfeile je Zoomstufe (Bildschirmpixel).
-const ARROW_SIZE: Record<ZoomTier, number> = { overview: 16, region: 26, detail: 32 };
+// Kantenlänge der Pfeile je Zoomstufe (Bildschirmpixel). Sept. 2026 auf
+// Wunsch des Projektbesitzers um rund ein Viertel verkleinert (vorher
+// 16 / 26 / 32). Die Größe springt bewusst nur an den Stufengrenzen
+// (Zoom 9 und 12), dazwischen bleibt sie fest.
+const ARROW_SIZE: Record<ZoomTier, number> = { overview: 12, region: 20, detail: 24 };
 // Breite des böenfarbigen Pfeilrands (Bildschirmpixel). Bewusst deutlich
 // breiter als früher (knapp 1 px), damit die Böe am Pfeil ablesbar bleibt —
 // Wunsch des Projektbesitzers: die Böe bleibt im Pfeilrand, ZUSÄTZLICH zur
 // Zahl in der Plakette.
-const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2, region: 2.6, detail: 3 };
+// Mit den kleineren Pfeilen (siehe ARROW_SIZE) im gleichen Verhältnis
+// schmaler geworden (vorher 2 / 2,6 / 3).
+const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 1.6, region: 2.1, detail: 2.4 };
 // Dunkler Umriss AUSSEN um den Böenrand. Ohne ihn verschwanden hellblaue und
 // gelbe Pfeile auf dem hellgrauen Relief, und bei gleicher Farbe von Mittelwind
 // und Böe war gar kein Rand zu sehen. Der Umriss macht jede Farbe der Skala auf

@@ -142,9 +142,9 @@ also alle 3 h, wirklich neue Werte).
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
   echte Kacheln hat.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
-  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (16-px-Pfeile,
-  keine Zahlen), Region Zoom 9–11 (26 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
-  (`DETAIL_MIN_ZOOM`, 32 px + Stationsname und Höhe). Feste Größen je Stufe
+  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (12-px-Pfeile,
+  keine Zahlen), Region Zoom 9–11 (20 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
+  (`DETAIL_MIN_ZOOM`, 24 px + Stationsname und Höhe). Feste Größen je Stufe
   (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
   - **Zahlen erst ab Zoom 10** (`LABEL_MIN_ZOOM`), also eine Stufe über der
     Startansicht Südtirol (Zoom 9): Beim Öffnen stehen nur die Pfeile da, die
