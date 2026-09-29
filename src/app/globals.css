@@ -50,6 +50,19 @@ body {
   filter: grayscale(100%) contrast(65%);
 }
 
+/* Windpfeile der Karte (WindMap.tsx, className der Marker-Icons).
+   Der Icon-Kasten ist breiter als der Pfeil, damit Zahlen-Plakette und
+   Stationsname hineinpassen. Damit er Nachbarstationen keine Klicks
+   wegschnappt, ist der Kasten selbst "durchklickbar"; anklickbar sind nur
+   Pfeil, Plakette und Ausfall-Ring (dort steht pointer-events: auto direkt im
+   HTML). Klicks darauf steigen trotzdem zum Marker auf und öffnen den
+   Verlaufsbalken. !important, weil Leaflet dem Kasten selbst Klicks erlaubt
+   (Klasse leaflet-interactive). Ausgedünnte Stationen haben ein leeres Icon
+   und sind so gar nicht anklickbar. */
+.wind-marker {
+  pointer-events: none !important;
+}
+
 /* Schieberegler des Zeitbalkens unter der Karte (TimeSlider.tsx).
    Browser bringen für <input type="range"> sehr unterschiedliche Standard-
    Optiken mit, deshalb hier eine eigene: flache Schiene, großer runder Griff
