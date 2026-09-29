@@ -81,8 +81,9 @@ direktes Aufrufen der API-Routen (`curl`).
 
 ## Landkarte
 
-Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst und dem
-OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
+Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
+OpenWindMap/Pioupiou-Netz und den SLF-IMIS-Stationen (Schweiz), Historie und
+Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
@@ -94,6 +95,7 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 | --- | --- |
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
+| `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen + Pioupiou), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
@@ -174,11 +176,16 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
   `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".
-- **Einzelne Messlücken werden im Verlaufsbalken überbrückt** (`BAND_GAP_MS`,
-  25 min): Der Bozner Dienst überspringt gelegentlich einen Zeitpunkt bei allen
+- **Einzelne Messlücken werden im Verlaufsbalken überbrückt**
+  (`measurementGapMs` in `src/lib/wind.ts`, 2,5 Messtakte = 25 min, beim SLF
+  75 min): Der Bozner Dienst überspringt gelegentlich einen Zeitpunkt bei allen
   Stationen gleichzeitig. Ab zwei fehlenden Werten am Stück reißt die Kurve
   weiterhin sichtbar auf — dieser Teil war ausdrücklicher Wunsch des
   Projektbesitzers.
+- **SLF-Stationen messen nur alle 30 min** — vom Projektbesitzer bezweifelt,
+  im Sept. 2026 nachgeprüft (auch whiterisk.ch hat nichts Feineres). Der Takt
+  steht je Quelle in `SOURCE_INTERVAL_MINUTES` (`src/lib/wind.ts`); im
+  Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Prognosemodelle**
 - Gezeichnet wird nur **ICON-CH1** — seit Sept. 2026 **dunkelgrau** statt
@@ -212,9 +219,11 @@ Projektbesitzers entfernt:
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  von Zeitfenster-Konstanten und der Pioupiou-Bounding-Box. Wird `HISTORY_HOURS`
-  / `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts` oder `SOUTH_TYROL_BBOX` in
-  `src/lib/pioupiou.ts` geändert, muss die Edge Function mitgezogen werden.
+  von Zeitfenster-Konstanten, der Pioupiou-Bounding-Box und des SLF-
+  Stationsabrufs. Wird `HISTORY_HOURS` / `FUTURE_MARGIN_HOURS` in
+  `src/lib/wind.ts`, `SOUTH_TYROL_BBOX` in `src/lib/pioupiou.ts` oder Adresse/
+  Codepräfix in `src/lib/slf.ts` geändert, muss die Edge Function mitgezogen
+  werden.
 - **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
   beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
   beide anfassen.
@@ -242,6 +251,10 @@ Projektbesitzers entfernt:
   `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug alle drei
   ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
   werden.
+- **Open-Meteo-Kontingent:** Seit den ~200 SLF-Stationen fragt die Edge
+  Function rund 300 Standorte pro Stunde ab (≈ 7.200 am Tag). Das kostenlose
+  Open-Meteo-Kontingent liegt bei 10.000 Aufrufen am Tag — weitere Stationen
+  oder ein kürzerer Prognose-Takt würden es sprengen.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
   `api.pioupiou.fr`, den Kartenkacheln (auch `server.arcgisonline.com` und
   dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
@@ -249,8 +262,8 @@ Projektbesitzers entfernt:
   also **nicht** per `curl` prüfen — das geht nur am realen Kartenbild
   (Vercel-Vorschau) oder indem der Projektbesitzer eine Test-Adresse im
   Browser öffnet. Fehlerantworten (502/500) sind dort
-  normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL` und
-  `OPEN_METEO_BASE_URL` lässt sich auf einen lokalen Mock umbiegen.
+  normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL`, `SLF_API_BASE_URL`
+  und `OPEN_METEO_BASE_URL` lässt sich auf einen lokalen Mock umbiegen.
 
 ## Offener Punkt: Quellenangabe OpenWindMap
 

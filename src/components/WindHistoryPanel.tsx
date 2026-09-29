@@ -6,6 +6,7 @@ import {
   getWindColor,
   GRID_MS,
   HISTORY_HOURS,
+  measurementGapMs,
   snapDirectionTo8,
   snapToGrid,
   SOURCE_INFO,
@@ -125,7 +126,7 @@ const AXIS_PAD = Math.max(PAD_X, MEAS_BOX_W / 2, ARROW_SIZE / 2);
 // STÜNDLICHEN Kurven (die Prognosen): genau ein Stundenschritt. Fehlt eine
 // Stunde ganz, beträgt der Abstand 2 h und die Linie bricht dort sichtbar ab,
 // statt die Lücke zu überbrücken. Die beiden Messkurven benutzen stattdessen
-// BAND_GAP_MS (2,5 Rasterschritte), weil sie jeder Messung folgen.
+// measurementGapMs (2,5 Messtakte), weil sie jeder Messung folgen.
 const LINE_GAP_MS = 60 * 60 * 1000;
 
 // Farbe der ICON-CH1-Prognose (Kurven, Fläche, Richtungspfeile): Dunkelgrau
@@ -274,7 +275,12 @@ interface Point {
 // Projektbesitzers), nur die Aussetzer des Datenlieferanten werden überbrückt.
 // Erfunden wird dabei nichts: Beide Endpunkte der Linie sind echte Messungen,
 // und an der übersprungenen Stelle fehlen weiterhin Pfeil und Werte-Quadrat.
-const BAND_GAP_MS = 2.5 * GRID_MS;
+//
+// Seit den SLF-Stationen (Schweiz, nur ein Wert pro halbe Stunde) hängt der
+// Wert an der Quelle: measurementGapMs in src/lib/wind.ts liefert 2,5 Messtakte
+// — für Bozen und Pioupiou genau diese 25 min, für das SLF 75 min (dieselbe
+// Regel im 30-Minuten-Takt). Bei SLF-Stationen stehen Pfeile und Werte-
+// Quadrate deshalb nur an jeder dritten Spalte (:00 und :30).
 
 function snapPointsToGrid(points: Point[]): Point[] {
   const bySlot = new Map<number, { point: Point; dist: number; hasData: boolean }>();
@@ -352,7 +358,7 @@ function buildLinePath(
 // Mittelwind). Wie buildLinePath wird die Fläche unterbrochen, sobald ein
 // Wert fehlt oder die Messlücke zu groß ist — sonst würde über eine Lücke
 // hinweg eine Fläche gemalt, die es gar nicht gibt. Die Fläche nutzt ALLE
-// Messwerte im 10-Minuten-Takt, deshalb ist ihr `maxGapMs` (BAND_GAP_MS)
+// Messwerte im 10-Minuten-Takt, deshalb ist ihr `maxGapMs` (measurementGapMs)
 // deutlich kleiner als das der stündlichen Prognosekurven.
 function buildBandPath(
   points: Point[],
@@ -584,6 +590,9 @@ export default function WindHistoryPanel({
   // holt: dabei bekommt dieses Panel ein neues station-Objekt (für die
   // "Stand:"-Zeile) und wurde bisher jedes Mal komplett neu gezeichnet — mit
   // rund 400 SVG-Elementen. Jetzt wird nur noch die Kopfzeile aktualisiert.
+  // Nur die Quelle (nicht das ganze station-Objekt) als Abhängigkeit, damit
+  // das Diagramm beim Hintergrund-Abruf der Karte nicht neu gezeichnet wird.
+  const source = station.source;
   const chart = useMemo(() => {
     // Messpunkte, eingerastet auf das 10-Minuten-Anzeige-Raster (siehe
     // snapPointsToGrid): dadurch stehen die Pfeile und Wert-Quadrate bei ALLEN
@@ -757,18 +766,19 @@ export default function WindHistoryPanel({
     // Die beiden Messkurven verbinden ALLE Messpunkte im 10-Minuten-Takt
     // (Wunsch des Projektbesitzers) — die Linien folgen also genau den
     // Messungen und nicht nur den vollen Stunden. Sie benutzen denselben
-    // Höchstabstand wie die Fläche darunter (BAND_GAP_MS, 25 min): ein
+    // Höchstabstand wie die Fläche darunter (measurementGapMs: 25 min, beim SLF 75 min): ein
     // einzelner vom Bozner Dienst verschluckter Wert wird überbrückt, ab zwei
     // fehlenden Werten reißen Linie und Fläche an derselben Stelle auf.
-    const speedPath = buildLinePath(points, (p) => p.speed, x, y, BAND_GAP_MS);
-    const gustPath = buildLinePath(points, (p) => p.gust, x, y, BAND_GAP_MS);
+    const gapMs = measurementGapMs(source);
+    const speedPath = buildLinePath(points, (p) => p.speed, x, y, gapMs);
+    const gustPath = buildLinePath(points, (p) => p.gust, x, y, gapMs);
     const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
     const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
     // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
     // unten). Anders als die Prognosefläche benutzt sie ALLE Messwerte im
     // 10-Minuten-Takt und bricht ab zwei fehlenden Werten am Stück ab
-    // (BAND_GAP_MS).
-    const measurementBandPath = buildBandPath(points, x, y, BAND_GAP_MS);
+    // (measurementGapMs).
+    const measurementBandPath = buildBandPath(points, x, y, gapMs);
     // Fläche zwischen den beiden Prognosekurven (Böe oben, Mittelwind unten),
     // das graue Gegenstück zur schwarzen Messfläche. Die Prognose liefert einen Wert
     // pro voller Stunde, deshalb darf die Fläche einen vollen Stundenschritt
@@ -800,7 +810,7 @@ export default function WindHistoryPanel({
       forecastTimeSelection,
       forecastByT,
     };
-  }, [entries, forecast, now, containerW]);
+  }, [entries, forecast, now, containerW, source]);
 
   // Namen der berechneten Werte unverändert übernehmen, damit die
   // Zeichen-Anweisungen weiter unten unverändert bleiben können.

@@ -46,6 +46,10 @@ SCODEs kollidieren. Schlägt der Abruf fehl, zeigt die Karte trotzdem die
 Bozner Stationen (additiv, kein Blocker). Details zu Lizenz und Einheiten
 siehe unten unter „OpenWindMap/Pioupiou-Stationen".
 
+Ebenso kommen über `src/lib/slf.ts` die **Schweizer IMIS-Stationen des
+SLF** dazu (dieselben wie auf whiterisk.ch, Codes `slf-<CODE>`, z. B.
+`slf-ZNZ1`) — siehe unten unter „SLF-IMIS-Stationen (Schweiz)".
+
 ### Zwischenspeicherung (Caching)
 
 Die Stationen messen nur alle 5–10 Minuten. Deshalb fragt nicht jeder
@@ -58,6 +62,8 @@ Cache-Ebenen (alle in `src/app/api/wind/route.ts` bzw.
 | Messwerte Bozen (`/sensors`)                 | 60 Sekunden | Neue Messungen kommen eh nur alle 5–10 min   |
 | Messwerte OpenWindMap/Pioupiou (`/live/all`) | 60 Sekunden | dito                                         |
 | Stationsmetadaten Bozen (`/stations`)        | 6 Stunden   | Name/Koordinaten/Höhe ändern sich praktisch nie |
+| Messwerte SLF (`/imis/measurements`)         | 2 Minuten (eigener Speicher, siehe `src/lib/slf.ts`) | Neue Werte nur alle 30 min; Antwort ist zu groß für den Next.js-Cache |
+| Stationsliste SLF (`/imis/stations`)         | 6 Stunden   | wie bei Bozen                                |
 
 Zusätzlich wird die **fertige JSON-Antwort** von `/api/wind` über den
 `Cache-Control`-Header (`s-maxage=60`) 60 Sekunden vom Vercel-CDN
@@ -517,6 +523,37 @@ auf Wunsch des Projektbesitzers entfernt; die Quellenangabe für die
 Winddaten soll später in anderer Form gelöst werden. Bis dahin gibt es
 den Hinweis nur noch stationsweise als „Quelle:"-Link unten im
 Verlaufsbalken.
+
+## SLF-IMIS-Stationen (Schweiz)
+
+Seit Sept. 2026 zeigt die Karte auch die rund 200 automatischen
+**IMIS-Stationen** des WSL-Instituts für Schnee- und Lawinenforschung SLF
+(Schweiz und Liechtenstein) — dieselben Stationen wie auf
+[whiterisk.ch](https://whiterisk.ch). Code: `src/lib/slf.ts` (genutzt von
+`/api/wind` und `/api/collect`), in der Edge Function
+`fetch-wind-forecasts` wieder aus Deno-Gründen separat dupliziert.
+
+- **Quelle:** die offizielle, öffentliche
+  [SLF Measurement API](https://measurement-api.slf.ch/docs), ohne
+  Anmeldung. `/imis/stations` liefert Name, Lage und Höhe,
+  `/imis/measurements` die Messwerte aller Stationen der letzten 24 h.
+- **Lizenz:** CC BY 4.0 — die Nennung des SLF ist Pflicht und steht als
+  „Quelle:" unten im Verlaufsbalken (`SOURCE_INFO` in `src/lib/wind.ts`).
+- **Messtakt: nur alle 30 Minuten** (Werte zu :00 und :30, jeweils Mittel
+  über die letzten 30 min; Böe = stärkster 5-Sekunden-Wert). Im Sept. 2026
+  nachgeprüft: Auch whiterisk.ch selbst bekommt nichts Feineres. Folgen:
+  - Verlaufsbalken: Pfeile und Werte-Quadrate stehen nur an jeder dritten
+    Spalte; die Kurve reißt erst ab, wenn zwei Halbstundenwerte am Stück
+    fehlen (`measurementGapMs` in `src/lib/wind.ts`).
+  - Zeitbalken: Ein Halbstundenwert bleibt bis zum nächsten stehen
+    (`/api/timeline`), damit die Stationen dazwischen nicht grau werden.
+- **Einheit:** Das SLF liefert m/s, umgerechnet wird in `src/lib/slf.ts`.
+- **Sammeln:** `/api/collect` schreibt bei jedem Lauf die SLF-Werte der
+  letzten 3 Stunden (Upsert), Lücken füllen sich also von selbst.
+- **Stationen ohne Windrichtung** (z. B. ZNZ1, auch auf whiterisk.ch ohne
+  Richtung) erscheinen als grauer Punkt; der Verlauf mit Mittelwind und
+  Böen ist trotzdem abrufbar.
+- **Mock-Server für lokale Tests:** `SLF_API_BASE_URL`.
 
 ## Hinweis zur Sandbox-Umgebung
 
