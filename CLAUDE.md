@@ -136,7 +136,7 @@ also alle 3 h, wirklich neue Werte).
   auch Scrollrad, Doppelklick und Pinch-Zoom am Handy dort auf. Grund: Die
   Esri-Schummerung liefert in Südtirol darüber hinaus nur noch graue
   Platzhalter-Kacheln ("Map data not yet available"). Die Grenze gilt
-  **einheitlich für beide Basiskarten**, obwohl OpenStreetMap (19) und die
+  **einheitlich für beide Basiskarten**, obwohl OpenTopoMap (17) und die
   CARTO-Beschriftungen (20) mehr könnten — die Karte soll sich beim
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
@@ -171,9 +171,22 @@ also alle 3 h, wirklich neue Werte).
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
+- **Standardkarte ist OpenTopoMap in sehr hellen Graustufen** (Sept. 2026,
+  Wunsch des Projektbesitzers; die frühere Karte „Standard" =
+  OpenStreetMap wurde dafür entfernt). Zwei Karten im Menü: „OpenTopoMap"
+  (Voreinstellung, `BaseLayer` = `"topo"`) und „Relief (Grau)". Kachel-Adresse
+  `TOPO_URL` in `src/components/WindMap.tsx`; sie bringt Höhenlinien,
+  Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
+  Die Aufhellung macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
+  (`grayscale` 100 %, `contrast` 30 %, `brightness` 165 % — am Bild
+  ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
+  CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
+  Kartendarstellung OpenTopoMap) steht im Menü unter „Quellen"
+  (`MAP_SOURCES.topo`) — nicht entfernen.
 - **Relief um ein Viertel aufgehellt** (`HILLSHADE_OPACITY` 0,75 auf weißem
   Kartengrund `MAP_BACKGROUND`), damit die Windfarben stärker leuchten.
-- **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „Standard".
+- **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „OpenTopoMap"
+  (dort sind die Linien schon im Kartenbild).
   Quelle ist der WMS-Dienst des Landes Südtirol
   (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
   Layer `p_bz-Elevation:ContourLines-ForLightBackgrounds` — die Variante für
@@ -339,7 +352,8 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (Esri, Höhenlinien des Landes, CARTO/OpenStreetMap)
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Esri, Höhenlinien des
+  Landes, CARTO)
   stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
   `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,

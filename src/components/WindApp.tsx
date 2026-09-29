@@ -30,7 +30,7 @@ import TimeSlider, { type TimelineStatus } from "@/components/TimeSlider";
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {
-  const [baseLayer, setBaseLayer] = useState<BaseLayer>("relief");
+  const [baseLayer, setBaseLayer] = useState<BaseLayer>("topo");
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -232,6 +232,15 @@ export default function WindApp() {
                 Karte
               </p>
               <div className="flex flex-col gap-1.5">
+                {/* Reihenfolge = Standardkarte (OpenTopoMap) zuerst. */}
+                <button
+                  type="button"
+                  onClick={() => setBaseLayer("topo")}
+                  aria-pressed={baseLayer === "topo"}
+                  className={optionClass(baseLayer === "topo")}
+                >
+                  OpenTopoMap
+                </button>
                 <button
                   type="button"
                   onClick={() => setBaseLayer("relief")}
@@ -239,14 +248,6 @@ export default function WindApp() {
                   className={optionClass(baseLayer === "relief")}
                 >
                   Relief (Grau)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBaseLayer("standard")}
-                  aria-pressed={baseLayer === "standard"}
-                  className={optionClass(baseLayer === "standard")}
-                >
-                  Standard
                 </button>
               </div>
               <p className="mt-3 mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">

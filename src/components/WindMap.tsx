@@ -65,11 +65,20 @@ const SOUTH_TYROL_ZOOM = 9;
 // würde die Karte weiterzoomen lassen und nur die Kacheln vergrößert
 // stehenlassen.
 //
-// 15 gilt für BEIDE Basiskarten, obwohl die Standard-Karte (OpenStreetMap,
-// bis 19) und die Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll
-// sich beim Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht
-// Stufe 15 bequem (rund 3,5 m je Bildpunkt).
+// 15 gilt für BEIDE Basiskarten, obwohl OpenTopoMap (bis 17) und die
+// Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll sich beim
+// Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht Stufe 15
+// bequem (rund 3,5 m je Bildpunkt).
 const MAP_MAX_ZOOM = 15;
+
+// --- OpenTopoMap (Standardkarte) ---
+// Frei nutzbare Topografie-Karte auf Basis von OpenStreetMap und SRTM-
+// Höhendaten (CC BY-SA, Quellenangabe im Menü unter "Quellen"). Ohne
+// "{s}."-Unterdomain, siehe Kommentar im JSX weiter unten. OpenTopoMap
+// liefert nur bis Zoom 17; die eigene Obergrenze der Karte (MAP_MAX_ZOOM)
+// liegt darunter, der Wert hier schützt nur vor einer späteren Änderung.
+const TOPO_URL = "https://tile.opentopomap.org/{z}/{x}/{y}.png";
+const TOPO_MAX_NATIVE_ZOOM = 17;
 
 // --- Höhenlinien-Ebene (nur bei "Relief (Grau)") ---
 // Kartendienst des Landes Südtirol (Geoportal). Die Linien liegen als
@@ -719,10 +728,16 @@ export default function WindMap({
             Kacheln parallel — drei Unterdomains bedeuten dann nur drei
             getrennte Verbindungsaufbauten (langsamer, vor allem im
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
-        {baseLayer === "standard" ? (
+        {baseLayer === "topo" ? (
+          // OpenTopoMap (Standardkarte): bringt Höhenlinien, Schummerung und
+          // Ortsnamen schon selbst mit, deshalb keine weiteren Ebenen darüber.
+          // Die Klasse .topo-ebene (globals.css) macht daraus eine sehr
+          // helle Graustufenkarte, damit die Windfarben leuchten.
           <TileLayer
-            key="osm"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            key="opentopomap"
+            url={TOPO_URL}
+            className="topo-ebene"
+            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
           />
         ) : (
           <>
@@ -733,11 +748,10 @@ export default function WindMap({
               opacity={HILLSHADE_OPACITY}
             />
             {/* Höhenlinien des Landes Südtirol, nur bei "Relief (Grau)":
-                Bei "Standard" (OpenStreetMap) sind Höhenlinien nicht
-                erwünscht — die Karte ist dort ohnehin schon dicht bedruckt.
-                Weil dieser Zweig nur im Relief-Fall gerendert wird, ist die
-                Ebene bei "Standard" gar nicht erst vorhanden und fragt auch
-                nichts ab.
+                Bei "OpenTopoMap" sind Höhenlinien schon im Kartenbild
+                enthalten. Weil dieser Zweig nur im Relief-Fall gerendert
+                wird, ist die Ebene bei "OpenTopoMap" gar nicht erst
+                vorhanden und fragt auch nichts ab.
                 Fällt der Landesserver aus, bleiben die Kacheln dank
                 errorTileUrl einfach leer (siehe TRANSPARENT_TILE oben). */}
             <WMSTileLayer
