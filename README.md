@@ -301,32 +301,30 @@ jedem Fall, es wird also nichts dazuerfunden.
 
 ## Zeitbalken (Windhistorie auf der Karte)
 
-Unter der Karte sitzt ein **Zeitbalken**: ein Stück Zeitachse im selben
-Maßstab wie der Verlaufsbalken. **Wischt** man es nach rechts, geht es zurück
-in der Zeit; eine feste schwarze Linie in der Mitte zeigt, welchen Zeitpunkt
-die Karte gerade darstellt. Die Pfeile **aller** Stationen zeigen dann die
-aufgezeichneten Messwerte zu diesem Zeitpunkt — man kann also durch den
-Windverlauf der ganzen Karte blättern und z. B. sehen, wie der Föhn
-durchbricht.
+Unter der Karte sitzt ein **Zeitbalken** mit den **ganzen letzten 12
+Stunden auf einen Blick**. **Tippt** man auf eine Stelle oder **zieht** den
+Finger darüber, zeigt eine schwarze Linie den gewählten Zeitpunkt, und die
+Pfeile **aller** Stationen zeigen die aufgezeichneten Messwerte zu diesem
+Zeitpunkt — man kann also durch den Windverlauf der ganzen Karte blättern und
+z. B. sehen, wie der Föhn durchbricht.
 
-- **Farbstrich** unter der Zeitachse: je 10 Minuten die Windfarbe der
-  windigsten 10 % der Stationen im **gerade sichtbaren Kartenausschnitt**.
-  So sieht man ohne Suchen, wann es in diesem Gebiet aufgefrischt hat.
-- **Abspielen** (▶) spielt die letzten 12 Stunden in rund 20 Sekunden ab.
+- **Farbstrich** im Band: je 10 Minuten die Windfarbe der windigsten 10 % der
+  Stationen im **gerade sichtbaren Kartenausschnitt**. So sieht man ohne
+  Suchen, wann es in diesem Gebiet aufgefrischt hat.
+- **◀ ▶** gehen je 10 Minuten zurück bzw. vor, **Abspielen** (▶ ganz links)
+  spielt die letzten 12 Stunden in rund 20 Sekunden ab.
 - **Schrittweite 10 Minuten**, genau der Takt, in dem die Stationen messen.
-  Am Computer: Band mit der Maus ziehen, Mausrad oder Pfeiltasten.
+  Am Computer geht auch die Maus oder die Pfeiltasten.
 - **Zeitraum: die letzten 12 Stunden** (dieselben `HISTORY_HOURS` wie beim
   Verlaufsbalken). Weiter zurück geht es bewusst nicht, auch wenn die Datenbank
-  2 Tage aufbewahrt. Rechts von „jetzt" ist (wie im Verlaufsbalken) die
-  Prognose-Zeit angedeutet; dorthin gewischt, rastet das Band auf „jetzt"
-  zurück, weil die Karte für die Zukunft keine Werte hat.
+  2 Tage aufbewahrt.
 - Der Knopf **„Aktuell"** springt von überall zurück zu den aktuellen Werten.
 - Stationen, für die zu diesem Zeitpunkt keine Messung gespeichert ist,
   erscheinen als **grauer Punkt** — genauso wie eine Station, die gerade
   ausgefallen ist. Es wird nichts dazugerechnet oder geschätzt.
 - Ist der Verlaufsbalken einer Station geöffnet, scrollt sein Diagramm beim
-  Wischen mit: Eine **senkrechte schwarze Linie** im Diagramm steht genau über
-  der Mittellinie des Zeitbalkens.
+  Blättern mit: Eine **senkrechte schwarze Linie** im Diagramm zeigt den
+  gewählten Zeitpunkt.
 
 **Datenquelle:** `src/app/api/timeline/route.ts` (Komponente:
 `src/components/TimeSlider.tsx`). Die Route liest die Tabelle

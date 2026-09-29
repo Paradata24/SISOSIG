@@ -158,7 +158,7 @@ export default function WindApp() {
     window.setTimeout(() => setRefreshSpinning(false), 700);
   }, [ensureTimeline]);
 
-  // Beim schnellen Wischen feuert der Zeitbalken viele Male pro Sekunde. Mit
+  // Beim schnellen Ziehen feuert der Zeitbalken viele Male pro Sekunde. Mit
   // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
   // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
   const deferredTime = useDeferredValue(clampedTime);
@@ -331,7 +331,7 @@ export default function WindApp() {
       </main>
       {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Ein
           geöffneter Verlaufsbalken liegt direkt darüber am unteren Kartenrand;
-          seine Zeitmarke steht über der Mittellinie des Zeitbalkens. */}
+          sein Diagramm scrollt beim Blättern mit. */}
       <TimeSlider
         slots={slots}
         selectedTime={clampedTime}

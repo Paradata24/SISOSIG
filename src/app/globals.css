@@ -75,22 +75,16 @@ body {
   pointer-events: none !important;
 }
 
-/* Zeitbalken unter der Karte (TimeSlider.tsx): ein waagrecht wischbares
-   Band. Der Browser übernimmt Wischen, Nachgleiten und das Einrasten auf jeden
-   10-Minuten-Schritt (scroll-snap, Einrast-Punkte = .zeitband-punkt). Die
-   Bildlaufleiste ist ausgeblendet — das Band selbst ist die Bedienung. */
+/* Zeitbalken unter der Karte (TimeSlider.tsx): das Band mit den ganzen
+   12 Stunden. Antippen/Ziehen wertet TimeSlider selbst aus; touch-action:
+   none verhindert, dass der Browser die Geste als Seiten-Scrollen, Zoomen
+   oder "Zurück"-Wischen deutet — sonst bricht das Ziehen am Handy ab. */
 .zeitband {
-  position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  /* Am Handy nur waagrecht wischen; senkrecht bleibt die Seite ruhig. */
-  touch-action: pan-x;
-  cursor: grab;
-}
-.zeitband::-webkit-scrollbar {
-  display: none;
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .zeitband:focus {
   outline: none;
@@ -99,13 +93,4 @@ body {
 .zeitband:focus-visible {
   outline: 2px solid #18181b;
   outline-offset: -2px;
-}
-/* Unsichtbarer Einrast-Punkt je 10-Minuten-Schritt; "center" = der Punkt
-   rastet unter der Mittellinie ein. */
-.zeitband-punkt {
-  position: absolute;
-  top: 0;
-  width: 1px;
-  height: 1px;
-  scroll-snap-align: center;
 }

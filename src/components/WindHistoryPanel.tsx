@@ -878,14 +878,13 @@ export default function WindHistoryPanel({
     if (centeredForRef.current === station.stationCode) return;
     centeredForRef.current = station.stationCode;
     // Ist im Zeitbalken eine frühere Uhrzeit gewählt, steht stattdessen sie
-    // in der Mitte (über der Mittellinie des Zeitbalkens).
+    // in der Mitte.
     el.scrollLeft = Math.max(0, x(deferredMarkerTime ?? now) - el.clientWidth / 2);
   }, [entries, x, now, station.stationCode, deferredMarkerTime]);
 
-  // followMarker: Wischt man im Zeitbalken unter der Karte, läuft das
-  // Diagramm mit — die gewählte Zeit (bzw. "jetzt") steht dann in der Mitte,
-  // genau über der Mittellinie des Zeitbalkens. Beide Balken haben am Handy
-  // denselben Zeitmaßstab und wirken so wie eine gemeinsame Zeitachse. Nur
+  // followMarker: Blättert man im Zeitbalken unter der Karte, läuft das
+  // Diagramm mit — die gewählte Zeit (bzw. "jetzt") steht dann in der Mitte
+  // des sichtbaren Bereichs, die Zeitmarke bleibt also immer im Blick. Nur
   // bei einer ÄNDERUNG der Zeit, damit eigenes Scrollen im Diagramm (z. B. um
   // die Prognose anzusehen) nicht sofort zurückspringt. An den Rändern
   // begrenzt der Browser den Wert selbst.
@@ -1070,10 +1069,10 @@ export default function WindHistoryPanel({
 
               {/* Zeitmarke: Steht der Zeitbalken unter der Karte nicht auf
                   "aktuell", zeigt diese Linie, welchen Zeitpunkt die Karte
-                  gerade darstellt. Schwarz wie die Mittellinie des
-                  Zeitbalkens (früher bernsteinfarben); das Diagramm scrollt
-                  so mit, dass beide Linien übereinander stehen (siehe
-                  followMarker unten). */}
+                  gerade darstellt. Schwarz wie die Zeitmarke im
+                  Zeitbalken (früher bernsteinfarben); das Diagramm scrollt
+                  so mit, dass sie in der Mitte steht (siehe followMarker
+                  unten). */}
               {deferredMarkerTime !== null && deferredMarkerTime >= minT && (
                 <line
                   x1={x(deferredMarkerTime)}
