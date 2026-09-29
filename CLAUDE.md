@@ -234,6 +234,14 @@ also alle 3 h, wirklich neue Werte).
   Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **Nur ICON-CH1 wird
   überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
   mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
+- **Modell und Lauf stehen im Verlaufsbalken:** rechts im Prognosebereich
+  „Prognose ICON-CH1" und „Lauf HH:MM Uhr" (Startzeit des Modelllaufs,
+  Ortszeit; Wunsch des Projektbesitzers, Sept. 2026). Die Laufzeit speichert
+  die Edge Function in der Spalte `model_run` von `wind_forecasts`
+  (`supabase/add-model-run-column.sql`). **Reihenfolge bei einer neuen
+  Datenbank-Spalte für die Edge Function: erst Spalte anlegen, dann Funktion
+  deployen** — sonst schlägt ihr Speichern fehl. `/api/forecast` fragt
+  ohne `model_run` nach, falls die Spalte fehlt.
 - **Prognosen nur bei neuem Modelllauf:** ICON-CH1 rechnet alle 3 h neu und
   steht bei Open-Meteo rund 2 h 20 min nach dem Laufstart bereit (00-UTC-Lauf
   gegen 02:20 UTC). Die Edge Function prüft vorher die Metadaten von
