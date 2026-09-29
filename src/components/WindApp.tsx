@@ -13,6 +13,7 @@ import {
   buildTimelineSlots,
   getStationFilterLabel,
   GRID_MS,
+  MAP_SOURCES,
   STATION_FILTER_ORDER,
   type BaseLayer,
   type StationFilter,
@@ -267,6 +268,39 @@ export default function WindApp() {
                   </button>
                 ))}
               </div>
+              {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
+                  rechts auf der Karte, jetzt hier ganz unten im Popup (siehe
+                  MAP_SOURCES in wind.ts). Richtet sich nach dem gewählten
+                  Kartenhintergrund. Bewusst klein und grau: Pflichtangabe,
+                  aber keine Bedienung. */}
+              <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                Quellen
+              </p>
+              <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                {MAP_SOURCES[baseLayer].map((source) => (
+                  <li key={source.url}>
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-zinc-700 dark:hover:text-zinc-200"
+                    >
+                      {source.label}
+                    </a>
+                    {source.note ? ` (${source.note})` : null}
+                  </li>
+                ))}
+                <li>
+                  <a
+                    href="https://leafletjs.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-zinc-700 dark:hover:text-zinc-200"
+                  >
+                    Leaflet
+                  </a>
+                </li>
+              </ul>
             </div>
           )}
         </div>

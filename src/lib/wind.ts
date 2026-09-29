@@ -217,6 +217,40 @@ export function isWindanzeigerStation(station: WindStation): boolean {
 /** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
 export type BaseLayer = "standard" | "relief";
 
+/**
+ * Quellenangaben der Kartenkacheln je Kartenhintergrund.
+ *
+ * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
+ * der Karte (die hat auf dem Handy zwei Zeilen belegt und die
+ * "Zuletzt aktualisiert"-Plakette überdeckt), sondern ganz unten im Menü-Popup
+ * unter "Quellen" (WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
+ * attributionControl={false} abgeschaltet (WindMap.tsx).
+ *
+ * Wichtig: Die Höhenlinien des Landes stehen unter CC BY 4.0 — die Nennung
+ * ist Pflicht und darf hier nicht wegfallen, solange die Ebene angezeigt wird.
+ * Gleiches gilt sinngemäß für OpenStreetMap (ODbL), Esri und CARTO.
+ */
+export const MAP_SOURCES: Record<
+  BaseLayer,
+  { label: string; url: string; note?: string }[]
+> = {
+  standard: [
+    {
+      label: "© OpenStreetMap-Mitwirkende",
+      url: "https://www.openstreetmap.org/copyright",
+    },
+  ],
+  relief: [
+    { label: "Relief © Esri", url: "https://www.esri.com" },
+    {
+      label: "Höhenlinien © Autonome Provinz Bozen – Südtirol",
+      url: "https://geoportal.buergernetz.bz.it",
+      note: "CC BY 4.0",
+    },
+    { label: "Beschriftung © CARTO", url: "https://carto.com/attributions" },
+  ],
+};
+
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer

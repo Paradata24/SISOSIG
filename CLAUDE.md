@@ -155,8 +155,13 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   (`TRANSPARENT_TILE`) — fehlende Kacheln sind damit nur fehlende Kacheln und
   kein Fehlerzustand der Karte.
   **Lizenz:** Die Geodaten des Landes stehen unter CC BY, die Quellenangabe
-  (`CONTOUR_ATTRIBUTION`) muss sichtbar bleiben. Sie steht in der
-  Leaflet-Zeile unten rechts neben Esri und CARTO — nicht entfernen.
+  muss sichtbar bleiben. Sie steht (wie Esri, CARTO, OpenStreetMap) seit
+  Sept. 2026 **ganz unten im Menü-Popup unter „Quellen"** (`MAP_SOURCES` in
+  `src/lib/wind.ts`) — nicht entfernen.
+- **Auf der Karte unten steht nur „Zuletzt aktualisiert"**: Leaflets
+  Quellen-Zeile unten rechts ist per `attributionControl={false}`
+  abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
+  Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere
@@ -204,7 +209,8 @@ Projektbesitzers entfernt:
 - Farbiger Rahmen und runde Ecken an den Werte-Quadraten
 - Bernsteinfarbene Plakette „Verlauf: HH:MM Uhr" auf der Karte
 - Legenden-Overlay auf der Karte, Leaflets eigene Bedienelemente
-  (Zoom-Buttons, Layer-Umschalter) und der frühere Filter oben links
+  (Zoom-Buttons, Layer-Umschalter, Quellen-Zeile unten rechts) und der
+  frühere Filter oben links
 - Fußzeile mit dem OpenWindMap-Credit (siehe „Offener Punkt")
 - `{s}.`-Subdomains in den Kachel-URLs
 
