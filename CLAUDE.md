@@ -141,12 +141,30 @@ also alle 3 h, wirklich neue Werte).
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
   echte Kacheln hat.
-- **Zahlen unter den Pfeilen erst ab Zoom 9** (`LABEL_MIN_ZOOM` in
-  `src/components/WindMap.tsx`, = Startansicht Südtirol). Herausgezoomt
-  überdeckten sich die Zahlen der ~560 Stationen (Schweiz + Österreich) zu
-  einem unlesbaren Teppich; dort zeigt die Karte nur die farbigen Pfeile.
-  Bei aktivem Stationsfilter (nicht „Alle") bleiben die Zahlen immer sichtbar.
-  Wunsch des Projektbesitzers, Sept. 2026.
+- **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
+  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (16-px-Pfeile,
+  keine Zahlen), Region Zoom 9–11 (26 px + Zahlen-Plakette), Detail ab Zoom 12
+  (`DETAIL_MIN_ZOOM`, 32 px + Stationsname und Höhe). Feste Größen je Stufe
+  (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
+  - **Zahlen erst ab Zoom 9** (`LABEL_MIN_ZOOM`, = Startansicht Südtirol);
+    bei aktivem Stationsfilter (nicht „Alle") immer sichtbar und alles um 25 %
+    größer. Wunsch des Projektbesitzers.
+  - **Pfeil-Aufbau:** dunkler Umriss außen (`OUTLINE_PX`) → Rand in
+    **Böenfarbe** (`GUST_STROKE_PX`) → Fläche in Mittelwindfarbe. Der
+    Böenrand bleibt ausdrücklich erhalten (Wunsch des Projektbesitzers), auch
+    wenn die Böe zusätzlich in der Plakette steht.
+  - **Zahlen-Plakette:** links Mittelwind, rechts Böe, jedes Feld in seiner
+    Windfarbe, dünner dunkler Rahmen, eckig.
+  - **Ausdünnen in der Übersicht** (nur bei Filter „Alle"): Überdecken sich
+    zwei Pfeile, bleibt die höher gelegene Station (`THIN_DISTANCE_FACTOR`).
+    Rangfolge nur nach Höhe, nicht nach Wind — sonst spränge das Bild beim
+    Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
+    bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
+    der Übersicht unsichtbar, sonst ein blasser hohler Ring.
+  - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
+    Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
+- **Relief um ein Viertel aufgehellt** (`HILLSHADE_OPACITY` 0,75 auf weißem
+  Kartengrund `MAP_BACKGROUND`), damit die Windfarben stärker leuchten.
 - **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „Standard".
   Quelle ist der WMS-Dienst des Landes Südtirol
   (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
