@@ -194,14 +194,18 @@ function shouldShowLabels(zoom: number): boolean {
 // Wunsch des Projektbesitzers um rund ein Viertel verkleinert (vorher
 // 16 / 26 / 32). Die Größe springt bewusst nur an den Stufengrenzen
 // (Zoom 9 und 12), dazwischen bleibt sie fest.
-const ARROW_SIZE: Record<ZoomTier, number> = { overview: 12, region: 20, detail: 24 };
+// Übersicht (bis Zoom 8) und Region (Zoom 9–11) haben seit Sept. 2026 auf
+// Wunsch des Projektbesitzers dieselbe, gut lesbare Größe — beim Wechsel von
+// Zoom 8 auf 9 springt der Pfeil also nicht mehr. Der Unterschied der beiden
+// Stufen ist nur noch das Ausdünnen in der Übersicht (siehe unten).
+const ARROW_SIZE: Record<ZoomTier, number> = { overview: 20, region: 20, detail: 24 };
 // Breite des böenfarbigen Pfeilrands (Bildschirmpixel). Bewusst deutlich
 // breiter als früher (knapp 1 px), damit die Böe am Pfeil ablesbar bleibt —
 // Wunsch des Projektbesitzers: die Böe bleibt im Pfeilrand, ZUSÄTZLICH zur
 // Zahl in der Plakette.
 // Mit den kleineren Pfeilen (siehe ARROW_SIZE) im gleichen Verhältnis
 // schmaler geworden (vorher 2 / 2,6 / 3).
-const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 1.6, region: 2.1, detail: 2.4 };
+const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2.1, region: 2.1, detail: 2.4 };
 // Dunkler Umriss AUSSEN um den Böenrand. Ohne ihn verschwanden hellblaue und
 // gelbe Pfeile auf dem hellgrauen Relief, und bei gleicher Farbe von Mittelwind
 // und Böe war gar kein Rand zu sehen. Der Umriss macht jede Farbe der Skala auf

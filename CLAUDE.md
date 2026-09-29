@@ -142,7 +142,7 @@ also alle 3 h, wirklich neue Werte).
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
   echte Kacheln hat.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
-  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (12-px-Pfeile,
+  alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (20-px-Pfeile, wie Region,
   keine Zahlen), Region Zoom 9–11 (20 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
   (`DETAIL_MIN_ZOOM`, 24 px + Stationsname und Höhe). Feste Größen je Stufe
   (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
