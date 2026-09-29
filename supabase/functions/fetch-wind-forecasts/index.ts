@@ -28,6 +28,11 @@
 // Takt bringt einen neuen Lauf nur schneller auf die Seite.
 // Erzwingen lässt sich ein Abruf mit dem Body {"force": true} (z. B. nach
 // einer Änderung der Stationsliste).
+// RÜCKFALL: Ist die Metadaten-Datei nicht lesbar (so geschehen beim ersten
+// Lauf am 29.09.2026), wird NICHT einfach abgefragt — sonst würde jeder
+// Cron-Anstoß alle Stationen abfragen und das Kontingent sprengen. Dann gilt
+// eine reine Zeitregel: abgefragt wird nur, wenn der letzte Abruf mindestens
+// MIN_REFETCH_WITHOUT_META_MS zurückliegt (höchstens ~8-mal am Tag).
 //
 // --- KONTINGENT ---
 // Open-Meteo zählt kostenlos 10.000 "Aufrufe" pro Tag. Laut Quellcode von
@@ -113,6 +118,24 @@ const MODEL_API = "meteoswiss_icon_ch1";
 const MODEL_META_URL =
   Deno.env.get("OPEN_METEO_META_URL") ??
   `${OPEN_METEO_BASE}/data/${MODEL_API}/static/meta.json`;
+
+// Ostrand des ICON-CH1-Gebiets in Österreich (Längengrad). Am 29.09.2026 für
+// alle GeoSphere-Stationen einzeln bei Open-Meteo nachgeprüft: Poysdorf
+// (16,637°) liefert noch Werte, alle 10 Stationen ab Lutzmannsburg (16,646°)
+// nicht mehr — "No data is available for this location" (u. a. Neusiedl am
+// See, Podersdorf, Andau, Hohenau, Gänserndorf). Wien, Eisenstadt und
+// Schwechat liegen noch drin. Diese Stationen werden gar nicht erst
+// abgefragt, sonst reißt jede einzelne ihren ganzen 50er-Block mit (siehe
+// fetchWithSplit unten).
+const ICON_CH1_MAX_LNG = 16.64;
+
+function insideIconCh1(station: Station): boolean {
+  return station.lng <= ICON_CH1_MAX_LNG;
+}
+
+// Zeitregel, falls die Metadaten nicht lesbar sind (s. o.): knapp unter dem
+// 3-Stunden-Takt des Modells, damit ein Anstoß alle 3 h sicher durchkommt.
+const MIN_REFETCH_WITHOUT_META_MS = 170 * 60 * 1000;
 
 // Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
@@ -333,9 +356,9 @@ async function loadSlfStations(): Promise<Station[]> {
 // hätten. Seit nur noch bei neuen Modellläufen abgefragt wird (8× statt
 // 24× am Tag, s. o.), ist dafür Platz. Die Metadaten sagen nicht, welche
 // Station Wind misst; das gute Dutzend ohne Windsensor bekommt eine
-// Prognose, die nie angezeigt wird (wie beim SLF). Liegt eine Station
-// außerhalb des ICON-CH1-Gebiets (ganz im Osten Österreichs möglich),
-// liefert Open-Meteo leere Werte, die unten übersprungen werden.
+// Prognose, die nie angezeigt wird (wie beim SLF). Die 10 Stationen ganz im
+// Osten (Burgenland/Weinviertel) liegen außerhalb des ICON-CH1-Gebiets und
+// werden über ICON_CH1_MAX_LNG vorab aussortiert.
 interface GeoSphereStationMeta {
   id: string;
   lat?: number;
@@ -443,7 +466,10 @@ async function fetchForecastBatch(
 async function loadModelRun(): Promise<{ runIso: string; availableMs: number } | null> {
   try {
     const res = await fetch(MODEL_META_URL);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`ICON-CH1-Metadaten: Status ${res.status} (${MODEL_META_URL})`);
+      return null;
+    }
     const meta = (await res.json()) as {
       last_run_initialisation_time?: number;
       last_run_availability_time?: number;
@@ -452,13 +478,15 @@ async function loadModelRun(): Promise<{ runIso: string; availableMs: number } |
       typeof meta.last_run_initialisation_time !== "number" ||
       typeof meta.last_run_availability_time !== "number"
     ) {
+      console.error("ICON-CH1-Metadaten: unerwartetes Format", Object.keys(meta ?? {}));
       return null;
     }
     return {
       runIso: new Date(meta.last_run_initialisation_time * 1000).toISOString(),
       availableMs: meta.last_run_availability_time * 1000,
     };
-  } catch {
+  } catch (err) {
+    console.error("ICON-CH1-Metadaten nicht abrufbar:", err);
     return null;
   }
 }
@@ -522,16 +550,23 @@ export async function handleRequest(request: Request): Promise<Response> {
     // leerer oder kein JSON-Body (so ruft der Cron-Job auf) — kein force
   }
   const modelRun = await loadModelRun();
-  if (!force && modelRun) {
+  if (!force) {
     const lastFetchedMs = await loadLastFetchedMs(supabaseUrl, supabaseHeaders);
-    if (lastFetchedMs !== null && lastFetchedMs >= modelRun.availableMs) {
-      return json({
-        ok: true,
-        skipped: true,
-        reason: "Kein neuer ICON-CH1-Lauf seit dem letzten Abruf",
-        modelRun: modelRun.runIso,
-        lastFetched: new Date(lastFetchedMs).toISOString(),
-      });
+    if (lastFetchedMs !== null) {
+      const upToDate = modelRun
+        ? lastFetchedMs >= modelRun.availableMs
+        : Date.now() - lastFetchedMs < MIN_REFETCH_WITHOUT_META_MS;
+      if (upToDate) {
+        return json({
+          ok: true,
+          skipped: true,
+          reason: modelRun
+            ? "Kein neuer ICON-CH1-Lauf seit dem letzten Abruf"
+            : "Metadaten nicht lesbar, letzter Abruf jünger als 170 min",
+          modelRun: modelRun?.runIso ?? null,
+          lastFetched: new Date(lastFetchedMs).toISOString(),
+        });
+      }
     }
   }
 
@@ -560,6 +595,11 @@ export async function handleRequest(request: Request): Promise<Response> {
   } catch (err) {
     console.error("GeoSphere-Stationsliste nicht abrufbar:", err);
   }
+  // Stationen außerhalb des Modellgebiets gar nicht erst abfragen (siehe
+  // ICON_CH1_MAX_LNG).
+  const beforeFilter = stations.length;
+  stations = stations.filter(insideIconCh1);
+  const outsideFiltered = beforeFilter - stations.length;
   if (stations.length === 0) {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
   }
@@ -573,17 +613,45 @@ export async function handleRequest(request: Request): Promise<Response> {
   let skippedNullHours = 0;
   const batchErrors: string[] = [];
 
-  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
-    const batch = stations.slice(i, i + BATCH_SIZE);
+  const outsideModel: string[] = [];
+
+  // Ein Block wird im Fehlerfall halbiert und erneut versucht: Open-Meteo
+  // lehnt die GANZE Anfrage ab ("No data is available for this location"),
+  // sobald auch nur EINE Station außerhalb des ICON-CH1-Gebiets liegt — am
+  // 29.09.2026 fielen so 4 von 6 GeoSphere-Blöcken (200 Stationen) komplett
+  // aus. Durch das Halbieren bleiben am Ende nur die wirklich betroffenen
+  // Stationen ohne Prognose (in der Antwort unter "outsideModel"). Kosten:
+  // gezählt wird je Station, die zusätzlichen kleinen Anfragen fallen kaum
+  // ins Gewicht. Die bekannten Außen-Stationen filtert ohnehin schon
+  // insideIconCh1() vorab heraus, das Halbieren ist das Sicherheitsnetz.
+  async function fetchWithSplit(batch: Station[]): Promise<void> {
     try {
       const result = await fetchForecastBatch(batch, fetchedAt);
       rows.push(...result.rows);
       skippedNullHours += result.skippedNullHours;
     } catch (err) {
-      const message = `Batch ab Station ${batch[0].code}: ${(err as Error).message}`;
-      console.error(message);
-      batchErrors.push(message);
+      const message = (err as Error).message;
+      if (/No data is available/i.test(message)) {
+        if (batch.length === 1) {
+          outsideModel.push(batch[0].code);
+          return;
+        }
+        const half = Math.ceil(batch.length / 2);
+        await fetchWithSplit(batch.slice(0, half));
+        await fetchWithSplit(batch.slice(half));
+        return;
+      }
+      const full = `Batch ab Station ${batch[0].code}: ${message}`;
+      console.error(full);
+      batchErrors.push(full);
     }
+  }
+
+  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
+    await fetchWithSplit(stations.slice(i, i + BATCH_SIZE));
+  }
+  if (outsideModel.length > 0) {
+    console.error(`Außerhalb des ICON-CH1-Gebiets (${outsideModel.length}):`, outsideModel.join(","));
   }
 
   // Laufzeit an alle Zeilen hängen. Die Metadaten wurden oben VOR dem Abruf
@@ -646,6 +714,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     stations: stations.length,
     saved: rows.length,
     skippedNullHours,
+    outsideFiltered,
+    outsideModel,
     batchErrors,
     cleanupBefore: cutoff,
     cleanupOk,
