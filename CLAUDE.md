@@ -299,8 +299,9 @@ Projektbesitzers entfernt:
 - **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,
   keine Doppelung), sondern stationsweise unten im Verlaufsbalken als
   „Quelle:"-Link (`SOURCE_INFO`). Offener Punkt: Die OpenWindMap-
-  Community-Lizenz verlangt einen sichtbaren Credit mit Link — der ist damit
-  nur sichtbar, wenn eine Pioupiou-Station geöffnet ist. Beim Thema erwähnen,
+  Community-Lizenz verlangt einen sichtbaren Credit mit Link, SLF und
+  GeoSphere Austria stehen unter CC BY 4.0 — diese Nennungen sind damit nur
+  sichtbar, wenn eine Station der jeweiligen Quelle geöffnet ist. Beim Thema erwähnen,
   die Fußzeile aber nicht ungefragt zurückbringen.
 
 ## CARTO-Ortsnamen brauchen einen Schlüssel
