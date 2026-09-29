@@ -262,6 +262,68 @@ export function isWindanzeigerStation(station: WindStation): boolean {
 /** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
 export type BaseLayer = "standard" | "relief";
 
+/**
+ * Zugangsschlüssel für die CARTO-Ortsnamen (Ebene "Beschriftung" über dem
+ * Relief). Seit Sept. 2026 liefert CARTO ohne Schlüssel nur noch Kacheln mit
+ * dem Wasserzeichen "API KEY REQUIRED". Der Schlüssel ist für nicht-
+ * kommerzielle Nutzung kostenlos (https://carto.com/basemaps/apikey/).
+ *
+ * Er steht NICHT im Code, sondern als Umgebungsvariable
+ * NEXT_PUBLIC_CARTO_API_KEY in Vercel. Er ist kein Geheimnis im engeren Sinn
+ * — er steht zwangsläufig in jeder Kachel-Adresse, die der Browser lädt —,
+ * so lässt er sich aber ohne Code-Änderung tauschen. Wichtig: NEXT_PUBLIC_-
+ * Variablen werden beim Bauen eingesetzt; nach dem Eintragen in Vercel muss
+ * also einmal neu deployt werden.
+ *
+ * Fehlt der Schlüssel, nimmt die Karte ersatzweise die Esri-Ortsnamen
+ * (ohne Schlüssel nutzbar, aber nur italienische Namen) — siehe WindMap.tsx.
+ */
+export const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || "";
+
+type SourceLink = { label: string; url: string; note?: string };
+
+/**
+ * Quellenangaben der Kartenkacheln je Kartenhintergrund.
+ *
+ * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
+ * der Karte (die hat auf dem Handy zwei Zeilen belegt und die
+ * "Zuletzt aktualisiert"-Plakette überdeckt), sondern ganz unten im Menü-Popup
+ * unter "Quellen" (WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
+ * attributionControl={false} abgeschaltet (WindMap.tsx).
+ *
+ * Wichtig: Die Höhenlinien des Landes stehen unter CC BY 4.0 — die Nennung
+ * ist Pflicht und darf hier nicht wegfallen, solange die Ebene angezeigt wird.
+ * CARTO verlangt laut seinen Bedingungen "© OpenStreetMap contributors,
+ * © CARTO"; Gleiches gilt sinngemäß für OpenStreetMap (ODbL) und Esri.
+ * Die Beschriftungs-Zeile folgt automatisch der tatsächlich genutzten Quelle
+ * (CARTO mit Schlüssel, sonst Esri).
+ */
+export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
+  standard: [
+    {
+      label: "© OpenStreetMap-Mitwirkende",
+      url: "https://www.openstreetmap.org/copyright",
+    },
+  ],
+  relief: [
+    { label: "Relief © Esri", url: "https://www.esri.com" },
+    {
+      label: "Höhenlinien © Autonome Provinz Bozen – Südtirol",
+      url: "https://geoportal.buergernetz.bz.it",
+      note: "CC BY 4.0",
+    },
+    CARTO_API_KEY
+      ? {
+          label: "Beschriftung © OpenStreetMap-Mitwirkende, © CARTO",
+          url: "https://carto.com/attributions",
+        }
+      : {
+          label: "Beschriftung © Esri, HERE, Garmin, OpenStreetMap-Mitwirkende",
+          url: "https://www.esri.com",
+        },
+  ],
+};
+
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer

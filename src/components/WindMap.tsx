@@ -14,6 +14,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
+  CARTO_API_KEY,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
@@ -95,10 +96,14 @@ const CONTOUR_MIN_ZOOM = 13;
 // (Klasse .hoehenlinien-ebene) treten sie deutlich zurück.
 const CONTOUR_OPACITY = 0.5;
 // Die Geodaten des Landes stehen unter CC BY: Quellenangabe ist Pflicht.
-// Sie steht in der Leaflet-Zeile unten rechts, gleich neben Esri und CARTO —
-// die frühere Fußzeile bleibt damit weiterhin draußen.
-const CONTOUR_ATTRIBUTION =
-  'Höhenlinien &copy; <a href="https://geoportal.buergernetz.bz.it">Autonome Provinz Bozen – Südtirol</a> (CC BY 4.0)';
+// Sie steht (wie Esri, CARTO und OpenStreetMap) seit Sept. 2026 im Menü-Popup
+// unter "Quellen" — siehe MAP_SOURCES in src/lib/wind.ts.
+// Ortsnamen-Ebenen über dem Relief (siehe Kommentar im JSX): CARTO braucht
+// seit Sept. 2026 einen Schlüssel (CARTO_API_KEY), Esri ist der Ersatz ohne.
+const CARTO_LABELS_URL =
+  "https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
+const ESRI_LABELS_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
 // Durchsichtiger 1×1-Punkt für Kacheln, die der Landesserver nicht liefert
 // (Ausfall, Zeitüberschreitung, Gebiet außerhalb Südtirols). Damit ist eine
 // fehlende Höhenlinien-Kachel schlicht LEER und kein sichtbarer Fehler — die
@@ -568,11 +573,15 @@ export default function WindMap({
         zoom={SOUTH_TYROL_ZOOM}
         maxZoom={MAP_MAX_ZOOM}
         zoomControl={false}
+        // Leaflets Quellen-Zeile unten rechts ist aus: Sie belegte auf dem
+        // Handy zwei Zeilen und schob sich über "Zuletzt aktualisiert". Die
+        // Quellenangaben stehen stattdessen im Menü-Popup (MAP_SOURCES in
+        // src/lib/wind.ts) — NICHT ersatzlos streichen, sie sind Pflicht.
+        attributionControl={false}
         className="h-full w-full"
       >
         {/* Die key-Attribute sorgen dafür, dass beim Umschalten die alten
-            Kachel-Ebenen komplett entfernt und neue angelegt werden (inkl.
-            korrekter Quellenangabe unten rechts).
+            Kachel-Ebenen komplett entfernt und neue angelegt werden.
 
             Die Kachel-Adressen stehen bewusst OHNE das früher übliche
             "{s}."-Kürzel (a./b./c.-Unterdomains). Das stammt noch aus der
@@ -584,14 +593,12 @@ export default function WindMap({
         {baseLayer === "standard" ? (
           <TileLayer
             key="osm"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
             url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
         ) : (
           <>
             <TileLayer
               key="esri-hillshade"
-              attribution='Tiles &copy; <a href="https://www.esri.com">Esri</a>'
               url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
               zIndex={Z_HILLSHADE}
             />
@@ -610,19 +617,32 @@ export default function WindMap({
               format="image/png"
               transparent
               version="1.3.0"
-              attribution={CONTOUR_ATTRIBUTION}
               minZoom={CONTOUR_MIN_ZOOM}
               opacity={CONTOUR_OPACITY}
               className="hoehenlinien-ebene"
               errorTileUrl={TRANSPARENT_TILE}
               zIndex={Z_CONTOURS}
             />
-            <TileLayer
-              key="carto-labels"
-              attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-              zIndex={Z_LABELS}
-            />
+            {/* Ortsnamen obenauf. Mit CARTO-Schlüssel (Umgebungsvariable,
+                siehe CARTO_API_KEY in wind.ts) die CARTO-Namen — zweisprachig
+                deutsch/italienisch. Ohne Schlüssel liefert CARTO seit
+                Sept. 2026 nur "API KEY REQUIRED"-Wasserzeichen; dann
+                ersatzweise die Esri-Ortsnamen (kein Schlüssel nötig, aber nur
+                italienische Namen). Unterschiedliche key-Attribute, damit
+                Leaflet beim Wechsel die Ebene sauber neu anlegt. */}
+            {CARTO_API_KEY ? (
+              <TileLayer
+                key="carto-labels"
+                url={`${CARTO_LABELS_URL}?key=${encodeURIComponent(CARTO_API_KEY)}`}
+                zIndex={Z_LABELS}
+              />
+            ) : (
+              <TileLayer
+                key="esri-labels"
+                url={ESRI_LABELS_URL}
+                zIndex={Z_LABELS}
+              />
+            )}
           </>
         )}
         <GeoJSON
