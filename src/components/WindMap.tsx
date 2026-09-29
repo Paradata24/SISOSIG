@@ -65,11 +65,20 @@ const SOUTH_TYROL_ZOOM = 9;
 // würde die Karte weiterzoomen lassen und nur die Kacheln vergrößert
 // stehenlassen.
 //
-// 15 gilt für BEIDE Basiskarten, obwohl die Standard-Karte (OpenStreetMap,
-// bis 19) und die Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll
-// sich beim Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht
-// Stufe 15 bequem (rund 3,5 m je Bildpunkt).
+// 15 gilt für BEIDE Basiskarten, obwohl OpenTopoMap (bis 17) und die
+// Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll sich beim
+// Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht Stufe 15
+// bequem (rund 3,5 m je Bildpunkt).
 const MAP_MAX_ZOOM = 15;
+
+// --- OpenTopoMap (Standardkarte) ---
+// Frei nutzbare Topografie-Karte auf Basis von OpenStreetMap und SRTM-
+// Höhendaten (CC BY-SA, Quellenangabe im Menü unter "Quellen"). Ohne
+// "{s}."-Unterdomain, siehe Kommentar im JSX weiter unten. OpenTopoMap
+// liefert nur bis Zoom 17; die eigene Obergrenze der Karte (MAP_MAX_ZOOM)
+// liegt darunter, der Wert hier schützt nur vor einer späteren Änderung.
+const TOPO_URL = "https://tile.opentopomap.org/{z}/{x}/{y}.png";
+const TOPO_MAX_NATIVE_ZOOM = 17;
 
 // --- Höhenlinien-Ebene (nur bei "Relief (Grau)") ---
 // Kartendienst des Landes Südtirol (Geoportal). Die Linien liegen als
@@ -181,13 +190,22 @@ function shouldShowLabels(zoom: number): boolean {
   return zoom >= LABEL_MIN_ZOOM;
 }
 
-// Kantenlänge der Pfeile je Zoomstufe (Bildschirmpixel).
-const ARROW_SIZE: Record<ZoomTier, number> = { overview: 16, region: 26, detail: 32 };
+// Kantenlänge der Pfeile je Zoomstufe (Bildschirmpixel). Sept. 2026 auf
+// Wunsch des Projektbesitzers um rund ein Viertel verkleinert (vorher
+// 16 / 26 / 32). Die Größe springt bewusst nur an den Stufengrenzen
+// (Zoom 9 und 12), dazwischen bleibt sie fest.
+// Übersicht (bis Zoom 8) und Region (Zoom 9–11) haben seit Sept. 2026 auf
+// Wunsch des Projektbesitzers dieselbe, gut lesbare Größe — beim Wechsel von
+// Zoom 8 auf 9 springt der Pfeil also nicht mehr. Der Unterschied der beiden
+// Stufen ist nur noch das Ausdünnen in der Übersicht (siehe unten).
+const ARROW_SIZE: Record<ZoomTier, number> = { overview: 20, region: 20, detail: 24 };
 // Breite des böenfarbigen Pfeilrands (Bildschirmpixel). Bewusst deutlich
 // breiter als früher (knapp 1 px), damit die Böe am Pfeil ablesbar bleibt —
 // Wunsch des Projektbesitzers: die Böe bleibt im Pfeilrand, ZUSÄTZLICH zur
 // Zahl in der Plakette.
-const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2, region: 2.6, detail: 3 };
+// Mit den kleineren Pfeilen (siehe ARROW_SIZE) im gleichen Verhältnis
+// schmaler geworden (vorher 2 / 2,6 / 3).
+const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2.1, region: 2.1, detail: 2.4 };
 // Dunkler Umriss AUSSEN um den Böenrand. Ohne ihn verschwanden hellblaue und
 // gelbe Pfeile auf dem hellgrauen Relief, und bei gleicher Farbe von Mittelwind
 // und Böe war gar kein Rand zu sehen. Der Umriss macht jede Farbe der Skala auf
@@ -719,10 +737,16 @@ export default function WindMap({
             Kacheln parallel — drei Unterdomains bedeuten dann nur drei
             getrennte Verbindungsaufbauten (langsamer, vor allem im
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
-        {baseLayer === "standard" ? (
+        {baseLayer === "topo" ? (
+          // OpenTopoMap (Standardkarte): bringt Höhenlinien, Schummerung und
+          // Ortsnamen schon selbst mit, deshalb keine weiteren Ebenen darüber.
+          // Die Klasse .topo-ebene (globals.css) macht daraus eine sehr
+          // helle Graustufenkarte, damit die Windfarben leuchten.
           <TileLayer
-            key="osm"
-            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            key="opentopomap"
+            url={TOPO_URL}
+            className="topo-ebene"
+            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
           />
         ) : (
           <>
@@ -733,11 +757,10 @@ export default function WindMap({
               opacity={HILLSHADE_OPACITY}
             />
             {/* Höhenlinien des Landes Südtirol, nur bei "Relief (Grau)":
-                Bei "Standard" (OpenStreetMap) sind Höhenlinien nicht
-                erwünscht — die Karte ist dort ohnehin schon dicht bedruckt.
-                Weil dieser Zweig nur im Relief-Fall gerendert wird, ist die
-                Ebene bei "Standard" gar nicht erst vorhanden und fragt auch
-                nichts ab.
+                Bei "OpenTopoMap" sind Höhenlinien schon im Kartenbild
+                enthalten. Weil dieser Zweig nur im Relief-Fall gerendert
+                wird, ist die Ebene bei "OpenTopoMap" gar nicht erst
+                vorhanden und fragt auch nichts ab.
                 Fällt der Landesserver aus, bleiben die Kacheln dank
                 errorTileUrl einfach leer (siehe TRANSPARENT_TILE oben). */}
             <WMSTileLayer

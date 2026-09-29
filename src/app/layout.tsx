@@ -43,11 +43,11 @@ export default function RootLayout({
           (DNS-Auflösung + Verschlüsselungs-Handschlag), parallel zum Laden
           des JavaScripts. Die ersten Kacheln erscheinen dadurch spürbar
           früher, vor allem im Mobilfunknetz.
-          Reihenfolge = Reliefkarte (Standardansicht) zuerst.
+          Reihenfolge = OpenTopoMap (Standardansicht) zuerst.
         */}
-        <link rel="preconnect" href="https://server.arcgisonline.com" />
-        <link rel="preconnect" href="https://basemaps.cartocdn.com" />
-        <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+        <link rel="preconnect" href="https://tile.opentopomap.org" />
+        <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
+        <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

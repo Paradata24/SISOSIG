@@ -260,7 +260,7 @@ export function isWindanzeigerStation(station: WindStation): boolean {
 // und Filterlogik nie auseinanderlaufen können.
 
 /** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
-export type BaseLayer = "standard" | "relief";
+export type BaseLayer = "topo" | "relief";
 
 /**
  * Zugangsschlüssel für die CARTO-Ortsnamen (Ebene "Beschriftung" über dem
@@ -294,15 +294,22 @@ type SourceLink = { label: string; url: string; note?: string };
  * Wichtig: Die Höhenlinien des Landes stehen unter CC BY 4.0 — die Nennung
  * ist Pflicht und darf hier nicht wegfallen, solange die Ebene angezeigt wird.
  * CARTO verlangt laut seinen Bedingungen "© OpenStreetMap contributors,
- * © CARTO"; Gleiches gilt sinngemäß für OpenStreetMap (ODbL) und Esri.
+ * © CARTO"; Gleiches gilt sinngemäß für Esri. OpenTopoMap steht unter
+ * CC BY-SA und verlangt "Kartendaten: © OpenStreetMap-Mitwirkende, SRTM |
+ * Kartendarstellung: © OpenTopoMap" — beides muss sichtbar bleiben.
  * Die Beschriftungs-Zeile folgt automatisch der tatsächlich genutzten Quelle
  * (CARTO mit Schlüssel, sonst Esri).
  */
 export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
-  standard: [
+  topo: [
     {
-      label: "© OpenStreetMap-Mitwirkende",
+      label: "Kartendaten © OpenStreetMap-Mitwirkende, SRTM",
       url: "https://www.openstreetmap.org/copyright",
+    },
+    {
+      label: "Kartendarstellung © OpenTopoMap",
+      url: "https://opentopomap.org",
+      note: "CC BY-SA",
     },
   ],
   relief: [

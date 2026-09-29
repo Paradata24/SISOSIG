@@ -1,7 +1,7 @@
 # SISOSIG – Südtirol Live-Wind
 
 Eine Website, die Live-Windwerte Südtiroler Wetterstationen auf einer Karte
-anzeigt (Leaflet + OpenStreetMap).
+anzeigt (Leaflet + OpenTopoMap).
 
 ## Lokal starten
 
@@ -608,7 +608,7 @@ Seit Sept. 2026 zeigt die Karte auch die rund 200 automatischen
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz
-Bozen als auch die OpenStreetMap-Kartenkacheln und die Pioupiou-API
+Bozen als auch die Kartenkacheln und die Pioupiou-API
 (`api.pioupiou.fr`) durch die Netzwerk-Richtlinie der Umgebung blockiert
 (nur eine begrenzte Liste an Hosts ist erlaubt). Lokal auf dem eigenen
 Rechner oder nach einem Deployment (z. B. auf Vercel) sind alle drei

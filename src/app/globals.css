@@ -50,6 +50,18 @@ body {
   filter: grayscale(100%) contrast(65%);
 }
 
+/* OpenTopoMap-Ebene der Karte (WindMap.tsx, Standardkarte).
+   Die Originalkarte ist bunt (grüne Wälder, braune Höhenlinien, gelbe
+   Straßen) und würde mit den farbigen Windpfeilen konkurrieren. Deshalb:
+   - grayscale: nimmt alle Farbe heraus
+   - contrast: drückt die Helligkeitsunterschiede zusammen (Schrift und
+     Linien werden blasser, Flächen gleichmäßiger)
+   - brightness: hellt das Ganze danach auf — "sehr helles Grau"
+   Die drei Werte sind die Stellschrauben, falls es heller/dunkler sein soll. */
+.topo-ebene {
+  filter: grayscale(100%) contrast(30%) brightness(165%);
+}
+
 /* Windpfeile der Karte (WindMap.tsx, className der Marker-Icons).
    Der Icon-Kasten ist breiter als der Pfeil, damit Zahlen-Plakette und
    Stationsname hineinpassen. Damit er Nachbarstationen keine Klicks
