@@ -181,8 +181,12 @@ OpenWindMap/Pioupiou-Netz, Historie und Prognose in Supabase.
   Projektbesitzers.
 
 **Prognosemodelle**
-- Gezeichnet wird nur **ICON-CH1** (rot). **ICON-D2** wird weiter gesammelt,
-  aber nicht angezeigt. **AROME** ist komplett entfernt.
+- Gezeichnet wird nur **ICON-CH1** — seit Sept. 2026 **dunkelgrau** statt
+  rot, beide Kurven **gestrichelt**, Fläche dazwischen blasser als die
+  Messfläche (`CH1_COLOR`, `FORECAST_DASH`, `FORECAST_BAND_OPACITY` in
+  `src/components/WindHistoryPanel.tsx`). Die Prognose-Windrichtung steht als
+  Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **ICON-D2** wird
+  weiter gesammelt, aber nicht angezeigt. **AROME** ist komplett entfernt.
 
 ## Nicht wieder einführen (ohne Rücksprache)
 
@@ -194,6 +198,9 @@ Projektbesitzers entfernt:
 - Fläche zwischen Mess- und Prognosekurve („Vergleichsfläche")
 - Gestrichelte Schwellenlinien (5/15/25 km/h) im Diagramm
 - Punkte auf den Kurven (Mess- und Prognosepunkte)
+- Prognose-Block unter den Messwerten (ICON-CH1-Zahlen in Quadraten mit
+  Pfeil daneben) und die wiederholte Uhrzeit-Zeile darüber — ersetzt durch
+  die Prognose-Pfeile oben im Diagramm, damit das Panel flacher ist
 - Farbiger Rahmen und runde Ecken an den Werte-Quadraten
 - Bernsteinfarbene Plakette „Verlauf: HH:MM Uhr" auf der Karte
 - Legenden-Overlay auf der Karte, Leaflets eigene Bedienelemente
