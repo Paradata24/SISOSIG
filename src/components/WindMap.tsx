@@ -186,13 +186,10 @@ const GUST_STROKE_PX: Record<ZoomTier, number> = { overview: 2, region: 2.6, det
 // und Böe war gar kein Rand zu sehen. Der Umriss macht jede Farbe der Skala auf
 // jedem Untergrund sichtbar, ohne die Farbskala selbst anzufassen.
 const OUTLINE_PX = 1.1;
-// Pfeilform im 40er-Raster des SVG: Spitze oben, Kerbe hinten.
-const ARROW_PATH = "M20 1 L32 36 L20 26 L8 36 Z";
-// Ecken-Form der Pfeilränder: "miter" = spitze Ecken. Die Grenze 3,4 sorgt
-// dafür, dass nur die Spitze spitz bleibt; die beiden hinteren Ecken sind
-// noch schärfer und würden als lange Stacheln herausstehen — dort schneidet
-// der Browser die Ecke deshalb gerade ab.
-const ARROW_MITER_LIMIT = 3.4;
+// Pfeilform im 40er-Raster des SVG: Spitze oben, Kerbe hinten, runde Ecken.
+// Eine spitzere Variante wurde im Sept. 2026 ausprobiert und vom
+// Projektbesitzer wieder verworfen — die Form bleibt so.
+const ARROW_PATH = "M20 3 L34 34 L20 26 L6 34 Z";
 const OUTLINE_COLOR = "#1f2937";
 // Schriftgröße der Zahlen-Plakette (Mittelwind; die Böe steht eine Spur
 // kleiner daneben). Früher 7 px in der Startansicht.
@@ -264,8 +261,6 @@ function createWindIcon(
   const toUnits = 40 / arrowSize;
   const gustWidth = GUST_STROKE_PX[tier] * toUnits;
   const outlineWidth = gustWidth + 2 * OUTLINE_PX * toUnits;
-  // Schlanker, spitzer Pfeil (Wunsch des Projektbesitzers, Sept. 2026;
-  // vorher "M20 3 L34 34 L20 26 L6 34 Z", also 28 statt 24 breit).
   const arrowPath = ARROW_PATH;
 
   const boxWidth = Math.max(arrowSize, ICON_BOX_WIDTH[tier]);
@@ -289,8 +284,8 @@ function createWindIcon(
     <div style="display: flex; flex-direction: column; align-items: center; width: ${boxWidth}px; font-family: var(--font-barlow-semi-condensed), Arial, sans-serif;">
       <div style="transform: rotate(${rotation}deg); width: ${arrowSize}px; height: ${arrowSize}px; pointer-events: auto; cursor: pointer;">
         <svg width="${arrowSize}" height="${arrowSize}" viewBox="0 0 40 40" style="overflow: visible;" xmlns="http://www.w3.org/2000/svg">
-          <path d="${arrowPath}" fill="none" stroke="${OUTLINE_COLOR}" stroke-width="${outlineWidth}" stroke-linejoin="miter" stroke-miterlimit="${ARROW_MITER_LIMIT}" />
-          <path d="${arrowPath}" fill="${fillColor}" stroke="${gustColor}" stroke-width="${gustWidth}" stroke-linejoin="miter" stroke-miterlimit="${ARROW_MITER_LIMIT}" />
+          <path d="${arrowPath}" fill="none" stroke="${OUTLINE_COLOR}" stroke-width="${outlineWidth}" stroke-linejoin="round" />
+          <path d="${arrowPath}" fill="${fillColor}" stroke="${gustColor}" stroke-width="${gustWidth}" stroke-linejoin="round" />
         </svg>
       </div>
       ${label}

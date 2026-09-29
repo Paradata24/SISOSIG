@@ -151,8 +151,9 @@ also alle 3 h, wirklich neue Werte).
     Zahlen, Ausdünnen). Die früheren Sonderregeln bei aktivem Filter (Zahlen
     immer sichtbar, alles 25 % größer) hat der Projektbesitzer im Sept. 2026
     ausdrücklich abgeschafft.
-  - **Pfeil-Aufbau:** schlanke, spitze Form (`ARROW_PATH`, spitze Ecke nur
-    vorne über `ARROW_MITER_LIMIT`), dunkler Umriss außen (`OUTLINE_PX`) → Rand in
+  - **Pfeil-Aufbau:** bisherige Pfeilform mit runden Ecken (`ARROW_PATH`;
+    eine spitzere Form wurde ausprobiert und vom Projektbesitzer verworfen),
+    dunkler Umriss außen (`OUTLINE_PX`) → Rand in
     **Böenfarbe** (`GUST_STROKE_PX`) → Fläche in Mittelwindfarbe. Der
     Böenrand bleibt ausdrücklich erhalten (Wunsch des Projektbesitzers), auch
     wenn die Böe zusätzlich in der Plakette steht.
