@@ -162,6 +162,7 @@ Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
 | `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
+| `NEXT_PUBLIC_CARTO_API_KEY` | kostenloser CARTO-Basemaps-Schlüssel (per E-Mail von https://carto.com/basemaps/apikey/) | Ortsnamen über dem Relief (zweisprachig). Optional: ohne Schlüssel nimmt die Karte die Esri-Ortsnamen (nur italienisch) |
 
 Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
 Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.

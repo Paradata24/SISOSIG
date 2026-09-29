@@ -7,11 +7,13 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import {
   buildTimelineFrame,
   buildTimelineSlots,
   getStationFilterLabel,
+  DATA_SOURCES,
   GRID_MS,
   MAP_SOURCES,
   STATION_FILTER_ORDER,
@@ -268,37 +270,31 @@ export default function WindApp() {
                   </button>
                 ))}
               </div>
-              {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
-                  rechts auf der Karte, jetzt hier ganz unten im Popup (siehe
-                  MAP_SOURCES in wind.ts). Richtet sich nach dem gewählten
-                  Kartenhintergrund. Bewusst klein und grau: Pflichtangabe,
+              {/* Quellenangaben — früher als Leaflet-Zeile unten rechts auf
+                  der Karte bzw. (OpenWindMap) in der entfernten Fußzeile, jetzt
+                  hier ganz unten im Popup. Oben die Winddaten (DATA_SOURCES,
+                  u. a. der Pflicht-Credit für OpenWindMap), darunter die Karte
+                  (MAP_SOURCES, richtet sich nach dem gewählten Hintergrund) —
+                  beides in wind.ts. Bewusst klein und grau: Pflichtangabe,
                   aber keine Bedienung. */}
               <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 Quellen
               </p>
               <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
-                {MAP_SOURCES[baseLayer].map((source) => (
+                {DATA_SOURCES.map((source) => (
                   <li key={source.url}>
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline hover:text-zinc-700 dark:hover:text-zinc-200"
-                    >
-                      {source.label}
-                    </a>
+                    Winddaten:{" "}
+                    <SourceLink url={source.url}>{source.label}</SourceLink>
+                  </li>
+                ))}
+                {MAP_SOURCES[baseLayer].map((source) => (
+                  <li key={source.label}>
+                    <SourceLink url={source.url}>{source.label}</SourceLink>
                     {source.note ? ` (${source.note})` : null}
                   </li>
                 ))}
                 <li>
-                  <a
-                    href="https://leafletjs.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-zinc-700 dark:hover:text-zinc-200"
-                  >
-                    Leaflet
-                  </a>
+                  <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
                 </li>
               </ul>
             </div>
@@ -323,5 +319,19 @@ export default function WindApp() {
         status={timelineStatus}
       />
     </>
+  );
+}
+
+// Ein Link in der Quellenliste des Menü-Popups (öffnet in neuem Tab).
+function SourceLink({ url, children }: { url: string; children: ReactNode }) {
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline hover:text-zinc-700 dark:hover:text-zinc-200"
+    >
+      {children}
+    </a>
   );
 }

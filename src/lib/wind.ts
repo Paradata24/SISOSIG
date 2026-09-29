@@ -218,6 +218,26 @@ export function isWindanzeigerStation(station: WindStation): boolean {
 export type BaseLayer = "standard" | "relief";
 
 /**
+ * Zugangsschlüssel für die CARTO-Ortsnamen (Ebene "Beschriftung" über dem
+ * Relief). Seit Sept. 2026 liefert CARTO ohne Schlüssel nur noch Kacheln mit
+ * dem Wasserzeichen "API KEY REQUIRED". Der Schlüssel ist für nicht-
+ * kommerzielle Nutzung kostenlos (https://carto.com/basemaps/apikey/).
+ *
+ * Er steht NICHT im Code, sondern als Umgebungsvariable
+ * NEXT_PUBLIC_CARTO_API_KEY in Vercel. Er ist kein Geheimnis im engeren Sinn
+ * — er steht zwangsläufig in jeder Kachel-Adresse, die der Browser lädt —,
+ * so lässt er sich aber ohne Code-Änderung tauschen. Wichtig: NEXT_PUBLIC_-
+ * Variablen werden beim Bauen eingesetzt; nach dem Eintragen in Vercel muss
+ * also einmal neu deployt werden.
+ *
+ * Fehlt der Schlüssel, nimmt die Karte ersatzweise die Esri-Ortsnamen
+ * (ohne Schlüssel nutzbar, aber nur italienische Namen) — siehe WindMap.tsx.
+ */
+export const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || "";
+
+type SourceLink = { label: string; url: string; note?: string };
+
+/**
  * Quellenangaben der Kartenkacheln je Kartenhintergrund.
  *
  * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
@@ -228,12 +248,12 @@ export type BaseLayer = "standard" | "relief";
  *
  * Wichtig: Die Höhenlinien des Landes stehen unter CC BY 4.0 — die Nennung
  * ist Pflicht und darf hier nicht wegfallen, solange die Ebene angezeigt wird.
- * Gleiches gilt sinngemäß für OpenStreetMap (ODbL), Esri und CARTO.
+ * CARTO verlangt laut seinen Bedingungen "© OpenStreetMap contributors,
+ * © CARTO"; Gleiches gilt sinngemäß für OpenStreetMap (ODbL) und Esri.
+ * Die Beschriftungs-Zeile folgt automatisch der tatsächlich genutzten Quelle
+ * (CARTO mit Schlüssel, sonst Esri).
  */
-export const MAP_SOURCES: Record<
-  BaseLayer,
-  { label: string; url: string; note?: string }[]
-> = {
+export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
   standard: [
     {
       label: "© OpenStreetMap-Mitwirkende",
@@ -247,9 +267,31 @@ export const MAP_SOURCES: Record<
       url: "https://geoportal.buergernetz.bz.it",
       note: "CC BY 4.0",
     },
-    { label: "Beschriftung © CARTO", url: "https://carto.com/attributions" },
+    CARTO_API_KEY
+      ? {
+          label: "Beschriftung © OpenStreetMap-Mitwirkende, © CARTO",
+          url: "https://carto.com/attributions",
+        }
+      : {
+          label: "Beschriftung © Esri, HERE, Garmin, OpenStreetMap-Mitwirkende",
+          url: "https://www.esri.com",
+        },
   ],
 };
+
+/**
+ * Quellen der Winddaten für den Abschnitt "Quellen" im Menü-Popup.
+ *
+ * Die Community-Lizenz von OpenWindMap verlangt einen sichtbaren Credit MIT
+ * Link auf openwindmap.org — früher stand er in der (entfernten) Fußzeile,
+ * seit Sept. 2026 hier. Nicht entfernen, solange Pioupiou-Stationen angezeigt
+ * werden. Beschriftung und Link kommen aus SOURCE_INFO, damit Menü und
+ * Verlaufsbalken dieselbe Angabe zeigen.
+ */
+export const DATA_SOURCES: SourceLink[] = [
+  SOURCE_INFO.bolzano,
+  SOURCE_INFO.openwindmap,
+];
 
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":

@@ -211,7 +211,7 @@ Projektbesitzers entfernt:
 - Legenden-Overlay auf der Karte, Leaflets eigene Bedienelemente
   (Zoom-Buttons, Layer-Umschalter, Quellen-Zeile unten rechts) und der
   frühere Filter oben links
-- Fußzeile mit dem OpenWindMap-Credit (siehe „Offener Punkt")
+- Fußzeile mit dem OpenWindMap-Credit (der Credit steht jetzt im Menü, siehe „Quellenangaben")
 - `{s}.`-Subdomains in den Kachel-URLs
 
 ## Fallen, die man einer einzelnen Datei nicht ansieht
@@ -258,10 +258,21 @@ Projektbesitzers entfernt:
   normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL` und
   `OPEN_METEO_BASE_URL` lässt sich auf einen lokalen Mock umbiegen.
 
-## Offener Punkt: Quellenangabe OpenWindMap
+## Quellenangaben (Lizenzpflicht)
 
-Die Community-Lizenz von OpenWindMap verlangt einen sichtbaren Credit mit
-Link. Er stand in der Fußzeile, die entfernt wurde; der Projektbesitzer will
-das später anders lösen. Aktuell gibt es ihn nur stationsweise als
-„Quelle:"-Link im Verlaufsbalken (`SOURCE_INFO` in `src/lib/wind.ts`). Beim
-Thema erwähnen, die Fußzeile aber nicht ungefragt zurückbringen.
+Alle Pflicht-Credits stehen seit Sept. 2026 **ganz unten im Menü-Popup unter
+„Quellen"** (`DATA_SOURCES` und `MAP_SOURCES` in `src/lib/wind.ts`):
+Winddaten (Land Südtirol, **OpenWindMap mit Link** — verlangt deren
+Community-Lizenz) und die Kartenquellen des gewählten Hintergrunds. Die
+frühere Fußzeile bleibt draußen; Einträge dort nicht entfernen.
+
+## CARTO-Ortsnamen brauchen einen Schlüssel
+
+Seit Sept. 2026 liefert CARTO (`basemaps.cartocdn.com`) ohne Schlüssel nur
+Kacheln mit dem Wasserzeichen „API KEY REQUIRED". Der Schlüssel ist für
+nicht-kommerzielle Nutzung kostenlos und steht als Umgebungsvariable
+`NEXT_PUBLIC_CARTO_API_KEY` in Vercel (nach dem Eintragen neu deployen).
+**Ohne Schlüssel** nimmt die Karte automatisch die Esri-Ortsnamen
+(`World_Light_Gray_Reference`, keine Anmeldung nötig, aber nur italienische
+Namen) — so gibt es nie Wasserzeichen. Umschaltung in `src/components/WindMap.tsx`
+(`CARTO_API_KEY` aus `src/lib/wind.ts`), die Quellenzeile folgt automatisch.
