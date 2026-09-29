@@ -605,6 +605,51 @@ Seit Sept. 2026 zeigt die Karte auch die rund 200 automatischen
   Böen ist trotzdem abrufbar.
 - **Mock-Server für lokale Tests:** `SLF_API_BASE_URL`.
 
+## MeteoSchweiz, Lawinenwarndienst Tirol, DWD und Bälmeten (Windanzeiger)
+
+Seit Sept. 2026 (Wunsch des Projektbesitzers, für den Filter „Windanzeiger")
+kommen vier weitere Quellen dazu. Alle laufen wie die übrigen additiv: Fällt
+eine aus, zeigt die Karte die anderen weiter. Für ALLE diese Stationen gibt es
+**keine Prognose-Kurve** (die Edge Function `fetch-wind-forecasts` kennt sie
+nicht; das ist kein Fehler, siehe auch die Ost-Stationen von GeoSphere). Wer
+sie nachrüsten will, muss die Stationslisten in der Edge Function ergänzen und
+sie neu deployen.
+
+- **MeteoSchweiz** (`src/lib/meteoswiss.ts`, Codes `meteoswiss-<Kürzel>`, z. B.
+  `meteoswiss-SAE` = Säntis): **alle** ~150 SwissMetNet-Stationen mit Wind.
+  Eine einzige kleine Datei mit den jüngsten 10-Minuten-Werten aller
+  Stationen (`…/ch.meteoschweiz.messwerte-aktuell/VQHA80.csv`, Zeitstempel UTC,
+  km/h) plus die Stationsliste (`…/ch.meteoschweiz.ogd-smn/ogd-smn_meta_stations.csv`,
+  6 h gecacht). Ohne Anmeldung. Quellenangabe „MeteoSchweiz" steht im
+  Verlaufsbalken (`SOURCE_INFO`). Die genauen Lizenzbedingungen von
+  MeteoSchweiz sollten vom Projektbesitzer einmal gegengelesen werden.
+  Mock/Umbiegen: `METEOSWISS_CURRENT_URL`, `METEOSWISS_META_URL`.
+- **Lawinenwarndienst Tirol** (`src/lib/lwdtirol.ts`, Code `lwdtirol-ISEE1`):
+  nur die Stationen in `LWD_TIROL_STATIONS` (derzeit **Hafelekar**). Quelle: die
+  GeoJSON-Datei `lawine.tirol.gv.at/data/produkte/ogd.geojson` (Land Tirol,
+  CC BY 4.0, km/h laut Datensatzbeschreibung auf data.gv.at). Weitere Stationen:
+  Nummer aus dem Feld „LWD-Nummer" der Datei eintragen. Umbiegen: `LWD_TIROL_URL`.
+- **Deutscher Wetterdienst** (`src/lib/dwd.ts`, Code `dwd-05792`): nur die
+  Stationen in `DWD_STATIONS` (derzeit die **Zugspitze**). Quelle: zwei kleine
+  ZIP-Dateien der 10-Minuten-Werte (`…/CDC/observations_germany/climate/10_minutes/`,
+  Mittelwind/Richtung und Böe). Die ZIP-Dateien liest ein eigener kleiner Leser
+  in `dwd.ts` (keine zusätzliche Bibliothek). **Stand 29.09.2026: Die Zugspitze
+  liefert beim DWD seit dem 25.09.2026 keine neuen Werte** (Enddatum in der
+  DWD-Stationsliste) — sie erscheint deshalb grau, bis der DWD wieder
+  veröffentlicht; sobald das der Fall ist, wird sie von selbst wieder farbig.
+  Umbiegen: `DWD_CDC_BASE_URL`.
+- **Bälmeten** (Paradeltaclub Uri, OpenWindMap-Station 1535, Code
+  `pioupiou-1535`): Ausnahme in `EXTRA_STATIONS` in `src/lib/pioupiou.ts`,
+  weil die Station außerhalb der Südtirol-Bounding-Box liegt. Die Höhe (2414 m)
+  steht dort fest im Code.
+
+**Windanzeiger:** Diese Stationen (und die österreichischen GeoSphere-Gipfel)
+sind über ihren Stationscode in `WINDANZEIGER_STATION_CODES`
+(`src/lib/wind.ts`) ausgewählt, nicht über den Namen — Namen würden Fehltreffer
+erzeugen (SLF „Titlisboden" enthält „Titlis"). **Nicht** dabei sind bewusst
+Robiei (das MeteoSchweiz-Kürzel `ROB` ist Poschiavo/Robbia im Tal, eine andere
+Station), Talstationen, Startplatz-Stationen und der Gaisberg.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz

@@ -17,10 +17,12 @@ export interface WindStation {
   stale: boolean;
   /**
    * Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk, die
-   * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts) oder GeoSphere
-   * Austria (früher ZAMG, siehe src/lib/geosphere.ts)
+   * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts), GeoSphere
+   * Austria (früher ZAMG, siehe src/lib/geosphere.ts), MeteoSchweiz
+   * (src/lib/meteoswiss.ts), der Lawinenwarndienst Tirol (src/lib/lwdtirol.ts)
+   * oder der Deutsche Wetterdienst (src/lib/dwd.ts)
    */
-  source: "bolzano" | "openwindmap" | "slf" | "geosphere";
+  source: "bolzano" | "openwindmap" | "slf" | "geosphere" | "meteoswiss" | "lwdtirol" | "dwd";
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -37,6 +39,21 @@ export const SOURCE_INFO: Record<
   },
   // Lizenz CC BY 4.0: Dieser Link ist die Pflicht-Quellenangabe, nicht entfernen.
   geosphere: { label: "GeoSphere Austria (CC BY 4.0)", url: "https://data.hub.geosphere.at" },
+  // MeteoSchweiz-Open-Data: Die Nennung "Quelle: MeteoSchweiz" ist Pflicht, nicht entfernen.
+  meteoswiss: {
+    label: "MeteoSchweiz (Open Data)",
+    url: "https://www.meteoswiss.admin.ch/services-and-publications/service/open-data.html",
+  },
+  // Lizenz CC BY 4.0 — die Nennung ist Pflicht, nicht entfernen.
+  lwdtirol: {
+    label: "Lawinenwarndienst Tirol – Land Tirol (CC BY 4.0)",
+    url: "https://lawine.tirol.gv.at",
+  },
+  // DWD-Open-Data: "Datenbasis: Deutscher Wetterdienst" ist Pflicht, nicht entfernen.
+  dwd: {
+    label: "Datenbasis: Deutscher Wetterdienst",
+    url: "https://www.dwd.de/DE/leistungen/opendata/opendata.html",
+  },
 };
 
 /**
@@ -57,6 +74,9 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
   openwindmap: 10,
   slf: 30,
   geosphere: 10,
+  meteoswiss: 10,
+  lwdtirol: 10,
+  dwd: 10,
 };
 
 /**
@@ -213,8 +233,10 @@ export function buildTimelineFrame(
  * Teilstring gegen den Stationsnamen geprüft, damit kleine Schreibweise-
  * Unterschiede der Datenquelle (z. B. "Ritten Rittner Horn" vs. "Rittnerhorn",
  * oder "Pisciadù" mit Akzent) kein Problem sind.
- * Zum Hinzufügen einer Station hier einfach einen weiteren Namensbestandteil
- * ergänzen.
+ * Zum Hinzufügen einer Südtiroler Station hier einfach einen weiteren
+ * Namensbestandteil ergänzen. Für Stationen der anderen Quellen (Schweiz,
+ * Österreich, ...) gilt stattdessen die Liste WINDANZEIGER_STATION_CODES
+ * unten.
  */
 export const WINDANZEIGER_STATION_NAMES: string[] = [
   "rittner horn", // Ritten Rittner Horn
@@ -229,6 +251,63 @@ export const WINDANZEIGER_STATION_NAMES: string[] = [
   "dannelspitz", // Pfunders Dannelspitz (ohne End-"e", damit auch
   // "Dannelspitze" gefunden wird)
 ];
+
+/**
+ * Zweite Hälfte des "Windanzeigers": Stationen, die über ihren exakten
+ * STATIONSCODE ausgewählt werden statt über den Namen. Für die Stationen der
+ * Schweiz, Österreichs usw., weil ein Namensbestandteil dort Fehltreffer
+ * erzeugen würde (der SLF-Standort "Titlisboden" enthält "Titlis", ist aber
+ * nicht die MeteoSchweiz-Station Titlis) und die Datenquellen die Namen in
+ * unterschiedlicher Schreibweise liefern ("SCHOECKL", "Gütsch, Andermatt").
+ *
+ * Die Codes setzen sich aus Quelle und Kürzel/Nummer zusammen. Ausgewählt sind
+ * exponierte Gipfel-, Grat- und Passstationen, die den Höhenwind zuverlässig
+ * abbilden; Talstationen, Startplatz-Stationen und der Gaisberg sind
+ * ausdrücklich NICHT dabei (zu stark von Talwind, Thermik und Lee geprägt).
+ * Zum Hinzufügen einer Station hier den Code samt Namen als Kommentar ergänzen.
+ */
+export const WINDANZEIGER_STATION_CODES: string[] = [
+  // --- Schweiz: MeteoSchweiz (Kürzel = Code nach "meteoswiss-") ---
+  "meteoswiss-SAE", // Säntis, 2501 m
+  "meteoswiss-PIL", // Pilatus, 2105 m
+  "meteoswiss-GUE", // Gütsch, Andermatt, 2286 m
+  "meteoswiss-JUN", // Jungfraujoch, 3571 m
+  "meteoswiss-TIT", // Titlis, 3045 m
+  "meteoswiss-EGH", // Eggishorn, 2892 m
+  "meteoswiss-GOR", // Gornergrat, 3129 m
+  "meteoswiss-ATT", // Les Attelas, 2734 m
+  "meteoswiss-DIA", // Les Diablerets, 2964 m
+  "meteoswiss-GSB", // Col du Grand St-Bernard, 2472 m
+  "meteoswiss-WFJ", // Weissfluhjoch, 2691 m
+  "meteoswiss-COV", // Piz Corvatsch, 3294 m
+  "meteoswiss-CMA", // Crap Masegn, 2468 m
+  "meteoswiss-PMA", // Piz Martegnas, 2668 m
+  "meteoswiss-NAS", // Naluns / Schlivera, 2380 m
+  "meteoswiss-BEH", // Passo del Bernina, 2260 m
+  "meteoswiss-MTR", // Matro, 2171 m
+  "meteoswiss-CIM", // Cimetta, 1661 m
+  "meteoswiss-GEN", // Monte Generoso, 1600 m
+  "meteoswiss-CHA", // Chasseral, 1594 m
+  "meteoswiss-DOL", // La Dôle, 1670 m
+  // (Robiei fehlt bewusst: Das Kürzel "ROB" bei MeteoSchweiz ist Poschiavo /
+  // Robbia im Tal, 1078 m — eine andere Station.)
+  // --- Schweiz: Vereinsstation, über OpenWindMap/Pioupiou (siehe pioupiou.ts) ---
+  "pioupiou-1535", // Bälmeten (Paradeltaclub Uri), 2414 m
+  // --- Österreich: GeoSphere Austria (Nummer nach "geosphere-") ---
+  "geosphere-11126", // Patscherkofel, 2251 m
+  "geosphere-11343", // Sonnblick, 3109 m
+  "geosphere-11138", // Rudolfshütte, 2317 m
+  "geosphere-11340", // Schmittenhöhe, 1956 m
+  "geosphere-11155", // Feuerkogel, 1618 m
+  "geosphere-11265", // Villacher Alpe (Dobratsch), 2117 m
+  "geosphere-11241", // Schöckl, 1443 m
+  // --- Österreich: Lawinenwarndienst Tirol (siehe lwdtirol.ts) ---
+  "lwdtirol-ISEE1", // Hafelekar (Nordkette), 2270 m
+  // --- Deutschland: Deutscher Wetterdienst (siehe dwd.ts) ---
+  "dwd-05792", // Zugspitze, 2956 m (Föhnindikator für Tirol)
+];
+
+const WINDANZEIGER_CODES = new Set(WINDANZEIGER_STATION_CODES);
 
 /**
  * Klein schreiben und für den Namensvergleich vereinheitlichen: Akzente und
@@ -251,6 +330,7 @@ const WINDANZEIGER_NEEDLES = WINDANZEIGER_STATION_NAMES.map(normalizeStationName
 
 /** true, wenn die Station Teil des kuratierten "Windanzeiger"-Filters ist. */
 export function isWindanzeigerStation(station: WindStation): boolean {
+  if (WINDANZEIGER_CODES.has(station.stationCode)) return true;
   const name = normalizeStationName(station.stationName);
   return WINDANZEIGER_NEEDLES.some((needle) => name.includes(needle));
 }

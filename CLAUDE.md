@@ -65,7 +65,9 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 - **Zeitbalken** = der Schieberegler unter der Karte, mit dem man die ganze
   Karte durch die letzten 12 h blättert (`src/components/TimeSlider.tsx`)
 - **Windanzeiger** = die vom Besitzer ausgewählte Stationsliste im
-  Stationsfilter (`WINDANZEIGER_STATION_NAMES` in `src/lib/wind.ts`)
+  Stationsfilter (Südtirol über Namen: `WINDANZEIGER_STATION_NAMES`, alle
+  anderen Quellen über Stationscodes: `WINDANZEIGER_STATION_CODES`, beide in
+  `src/lib/wind.ts`)
 
 ## Commands
 
@@ -82,8 +84,10 @@ direktes Aufrufen der API-Routen (`curl`).
 ## Landkarte
 
 Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
-OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz) und GeoSphere
-Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
+OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz), MeteoSchweiz
+(alle SwissMetNet-Stationen) und GeoSphere Austria (TAWES, ganz Österreich)
+sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
+und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
 (12 h für alle Stationen, nur bei Bedarf) und `/api/history` + `/api/forecast`
@@ -98,6 +102,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
 | `src/lib/geosphere.ts` | Alle österreichischen Stationen mit Wind von GeoSphere Austria (früher ZAMG) |
+| `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
+| `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
+| `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen, Pioupiou, SLF, GeoSphere), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
@@ -269,6 +276,16 @@ also alle 3 h, wirklich neue Werte).
   einzige solche Station lässt die GANZE 50er-Anfrage scheitern. Deshalb
   Vorfilter plus Halbieren gescheiterter Blöcke (`fetchWithSplit`). Diese
   Stationen haben keine Prognose-Kurve, das ist kein Fehler.
+
+**Windanzeiger-Quellen (Sept. 2026)**
+- Die neuen Quellen (MeteoSchweiz, LWD Tirol, DWD, Bälmeten über
+  `EXTRA_STATIONS` in `pioupiou.ts`) haben **keine Prognose-Kurve** — die Edge
+  Function kennt sie nicht (Details in `README.md`).
+- Der Windanzeiger wählt sie über **Stationscodes** aus, nicht über Namen
+  (Fehltreffer, z. B. SLF „Titlisboden" ↔ MeteoSchweiz „Titlis"). Robiei ist
+  bewusst nicht dabei: MeteoSchweiz-Kürzel `ROB` = Poschiavo/Robbia im Tal.
+- **Zugspitze (DWD) liefert seit 25.09.2026 keine Werte** (Ausfall beim DWD);
+  sie ist grau, bis der DWD wieder veröffentlicht. Kein Fehler im Code.
 
 ## Nicht wieder einführen (ohne Rücksprache)
 
