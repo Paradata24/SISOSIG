@@ -21,7 +21,7 @@ import {
   type TimelinePayload,
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
-import TimeSlider, { type TimelineStatus } from "@/components/TimeSlider";
+import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
 // Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
@@ -52,7 +52,10 @@ export default function WindApp() {
   // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
   const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
-  const [timelineStatus, setTimelineStatus] = useState<TimelineStatus>("idle");
+  // Startwert "loading": Die Daten werden gleich beim Seitenaufruf geholt
+  // (siehe ensureTimeline). Bei späterem Auffrischen bleibt der Status
+  // bewusst "ready" — die bisherigen Daten gelten bis dahin weiter.
+  const [timelineStatus, setTimelineStatus] = useState<TimelineStatus>("loading");
   // Beide bewusst als ref und nicht als state: ensureTimeline wird beim
   // schnellen Ziehen sehr oft hintereinander aufgerufen, teils noch bevor React
   // ein Neuzeichnen hinter sich hat. Ein state-Wert wäre in diesen Aufrufen
@@ -88,40 +91,60 @@ export default function WindApp() {
   const clampedTime =
     selectedTime !== null && selectedTime < slots[0] ? slots[0] : selectedTime;
 
-  // Die Verlaufsdaten werden BEWUSST erst beim ersten Anfassen des Balkens
-  // geholt, nicht schon beim Seitenaufruf: die meisten Besucher wollen nur die
-  // Live-Karte, und die rund 20 KB sollen sie nicht kosten. Danach wird nur
-  // nachgeladen, wenn der Datenstand älter als ein Rasterschritt ist.
-  const ensureTimeline = useCallback(async () => {
+  // Die Verlaufsdaten werden seit dem Umbau des Zeitbalkens (Sept. 2026)
+  // gleich beim Seitenaufruf geholt und alle 10 min (neuer Rasterschritt)
+  // aufgefrischt: Der Farbstrich im Zeitbalken braucht sie, um ohne Anfassen
+  // zu zeigen, wann es windig war (früher erst beim ersten Anfassen, um die
+  // rund 20 KB zu sparen). Nachgeladen wird nur, wenn der Datenstand älter
+  // als ein Rasterschritt ist; /api/timeline ist außerdem 60 s zwischen-
+  // gespeichert.
+  // Als Promise-Kette statt async/await geschrieben: So ist auch für die
+  // Lint-Regel erkennbar, dass alle setState-Aufrufe erst nach der Antwort
+  // passieren (sonst meldet sie den Aufruf im Effekt unten fälschlich).
+  const ensureTimeline = useCallback(() => {
     if (timelineLoading.current) return;
     // Bereits geholt und noch keinen Rasterschritt alt: nichts zu tun.
     if (timelineFetchedAt.current && Date.now() - timelineFetchedAt.current <= GRID_MS) {
       return;
     }
     timelineLoading.current = true;
-    setTimelineStatus("loading");
-    try {
-      const res = await fetch("/api/timeline");
-      const data = await res.json();
-      if (!res.ok) {
-        setTimelineStatus("error");
-        return;
-      }
-      setTimeline(data as TimelinePayload);
-      setTimelineStatus("ready");
-      timelineFetchedAt.current = Date.now();
-    } catch {
-      setTimelineStatus("error");
-    } finally {
-      // Auch nach einem Fehlschlag wieder freigeben, damit ein zweites
-      // Anfassen des Balkens es erneut versucht (timelineFetchedAt bleibt in
-      // dem Fall auf 0, die Sperre oben greift also nicht).
-      timelineLoading.current = false;
-    }
+    fetch("/api/timeline")
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) {
+          setTimelineStatus("error");
+          return;
+        }
+        setTimeline(data as TimelinePayload);
+        setTimelineStatus("ready");
+        timelineFetchedAt.current = Date.now();
+      })
+      .catch(() => setTimelineStatus("error"))
+      .finally(() => {
+        // Auch nach einem Fehlschlag wieder freigeben, damit der nächste
+        // Anlauf (neuer Rasterschritt, Refresh) es erneut versucht
+        // (timelineFetchedAt bleibt dann auf 0, die Sperre oben greift nicht).
+        timelineLoading.current = false;
+      });
   }, []);
 
-  // Refresh: zurück auf "live", neue Live-Werte holen und den Zeitbalken-
-  // Datenstand verwerfen, damit er beim nächsten Anfassen frisch lädt. Wird
+  // Beim Start und bei jedem neuen Rasterschritt (Slot-Liste rückt weiter)
+  // die Verlaufsdaten holen bzw. auffrischen.
+  useEffect(() => {
+    ensureTimeline();
+  }, [slots, ensureTimeline]);
+
+  // Welche Stationen gerade im Kartenausschnitt sichtbar sind (meldet
+  // WindMap nach jedem Verschieben/Zoomen). Daraus entsteht der Farbstrich
+  // im Zeitbalken — er zeigt also immer das Gebiet, das man gerade ansieht.
+  const [viewportCodes, setViewportCodes] = useState<string[] | null>(null);
+  const stripColors = useMemo(
+    () => buildStripColors(timeline, slots, viewportCodes),
+    [timeline, slots, viewportCodes],
+  );
+
+  // Refresh: zurück auf "aktuell", neue Live-Werte holen und die Zeitbalken-
+  // Daten sofort frisch laden. Wird
   // gerade (noch) geladen, bleibt der laufende Abruf einfach bestehen.
   // Hinweis: "frischer" als der Wetterdienst selbst geht es nicht — die
   // Stationen messen nur alle 5–10 min und /api/wind wird bis zu 60 s
@@ -129,12 +152,13 @@ export default function WindApp() {
   const handleRefresh = useCallback(() => {
     setSelectedTime(null);
     timelineFetchedAt.current = 0;
+    ensureTimeline();
     setRefreshToken((n) => n + 1);
     setRefreshSpinning(true);
     window.setTimeout(() => setRefreshSpinning(false), 700);
-  }, []);
+  }, [ensureTimeline]);
 
-  // Beim schnellen Ziehen feuert der Regler viele Male pro Sekunde. Mit
+  // Beim schnellen Wischen feuert der Zeitbalken viele Male pro Sekunde. Mit
   // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
   // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
   const deferredTime = useDeferredValue(clampedTime);
@@ -302,16 +326,18 @@ export default function WindApp() {
           stationFilter={stationFilter}
           historyFrame={historyFrame}
           refreshToken={refreshToken}
+          onViewportStationsChange={setViewportCodes}
         />
       </main>
-      {/* Eigene Zeile UNTER der Karte und ÜBER der Fußzeile — die Fußzeile mit
-          dem OpenWindMap-Hinweis muss sichtbar bleiben (Lizenzbedingung). */}
+      {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Ein
+          geöffneter Verlaufsbalken liegt direkt darüber am unteren Kartenrand;
+          seine Zeitmarke steht über der Mittellinie des Zeitbalkens. */}
       <TimeSlider
         slots={slots}
         selectedTime={clampedTime}
         onChange={setSelectedTime}
-        onEngage={ensureTimeline}
         status={timelineStatus}
+        stripColors={stripColors}
       />
     </>
   );

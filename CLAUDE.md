@@ -62,8 +62,9 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 ## Begriffe des Projektbesitzers
 - **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm einer Station
   (`src/components/WindHistoryPanel.tsx`)
-- **Zeitbalken** = der Schieberegler unter der Karte, mit dem man die ganze
-  Karte durch die letzten 12 h blättert (`src/components/TimeSlider.tsx`)
+- **Zeitbalken** = das wischbare Zeitband unter der Karte, mit dem man die
+  ganze Karte durch die letzten 12 h blättert (`src/components/TimeSlider.tsx`;
+  früher ein Schieberegler)
 - **Windanzeiger** = die vom Besitzer ausgewählte Stationsliste im
   Stationsfilter (Südtirol über Namen: `WINDANZEIGER_STATION_NAMES`, alle
   anderen Quellen über Stationscodes: `WINDANZEIGER_STATION_CODES`, beide in
@@ -115,7 +116,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
-| `src/components/TimeSlider.tsx` | Zeitbalken |
+| `src/components/TimeSlider.tsx` | Zeitbalken (wischbares Zeitband, Abspielen, Farbstrich des Kartenausschnitts) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
 | `supabase/*.sql` | Tabellen-Schemas, Cron, einmalige Migrations-/Aufräumskripte |
 | `src/data/staatsgrenzen.json` | Staatsgrenzen-Overlay der Karte |
@@ -218,6 +219,22 @@ also alle 3 h, wirklich neue Werte).
   Quellen-Zeile unten rechts ist per `attributionControl={false}`
   abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
   Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
+- **Zeitbalken als wischbares Zeitband** (Umbau Sept. 2026, vom
+  Projektbesitzer aus mehreren Vorschau-Varianten gewählt — Variante „Nur
+  Zeitachse"): Zeitachse im selben Maßstab wie der Verlaufsbalken
+  (`TIMELINE_STEP_PX` in `src/lib/wind.ts`), man wischt das Band, eine feste
+  Linie in der Mitte zeigt die Uhrzeit der Karte. Darunter ein Farbstrich
+  (Windfarbe der windigsten 10 % der Stationen **im sichtbaren
+  Kartenausschnitt**, `STRIP_QUANTILE`; WindMap meldet die Stationen über
+  `onViewportStationsChange`). Dazu Abspielknopf und Knopf „Aktuell".
+  - Farben **schwarz/grau wie der Menü-Knopf**, kein Grün (Wunsch des
+    Projektbesitzers). Auch die Zeitmarke im Verlaufsbalken ist schwarz
+    (früher bernsteinfarben); sie steht über der Mittellinie des Zeitbalkens,
+    weil das Diagramm beim Wischen mitscrollt.
+  - Der Zustand „jetzt" heißt **„Aktuell"**, nicht „Live" oder „Jetzt"
+    (Wunsch des Projektbesitzers).
+  - Die Verlaufsdaten (`/api/timeline`) werden dafür **gleich beim
+    Seitenaufruf** und alle 10 min geladen (früher erst beim ersten Anfassen).
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere

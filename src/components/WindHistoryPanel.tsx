@@ -877,8 +877,33 @@ export default function WindHistoryPanel({
     if (!el || !entries || entries.length === 0) return;
     if (centeredForRef.current === station.stationCode) return;
     centeredForRef.current = station.stationCode;
-    el.scrollLeft = Math.max(0, x(now) - el.clientWidth / 2);
-  }, [entries, x, now, station.stationCode]);
+    // Ist im Zeitbalken eine frühere Uhrzeit gewählt, steht stattdessen sie
+    // in der Mitte (über der Mittellinie des Zeitbalkens).
+    el.scrollLeft = Math.max(0, x(deferredMarkerTime ?? now) - el.clientWidth / 2);
+  }, [entries, x, now, station.stationCode, deferredMarkerTime]);
+
+  // followMarker: Wischt man im Zeitbalken unter der Karte, läuft das
+  // Diagramm mit — die gewählte Zeit (bzw. "jetzt") steht dann in der Mitte,
+  // genau über der Mittellinie des Zeitbalkens. Beide Balken haben am Handy
+  // denselben Zeitmaßstab und wirken so wie eine gemeinsame Zeitachse. Nur
+  // bei einer ÄNDERUNG der Zeit, damit eigenes Scrollen im Diagramm (z. B. um
+  // die Prognose anzusehen) nicht sofort zurückspringt. An den Rändern
+  // begrenzt der Browser den Wert selbst.
+  const followedTimeRef = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !entries || entries.length === 0) return;
+    const target = deferredMarkerTime ?? null;
+    if (followedTimeRef.current === undefined) {
+      // Erster Durchlauf: nur merken (die Startposition setzt der Effekt oben).
+      followedTimeRef.current = target;
+      if (target === null) return;
+    } else if (followedTimeRef.current === target) {
+      return;
+    }
+    followedTimeRef.current = target;
+    el.scrollLeft = Math.max(0, x(target ?? now) - el.clientWidth / 2);
+  }, [deferredMarkerTime, entries, x, now]);
 
   // absolute (nicht fixed): Das Panel sitzt am unteren Rand des KARTENbereichs,
   // also über dem Zeitbalken und der Fußzeile — beide bleiben sichtbar und
@@ -1044,15 +1069,18 @@ export default function WindHistoryPanel({
               </text>
 
               {/* Zeitmarke: Steht der Zeitbalken unter der Karte nicht auf
-                  "jetzt", zeigt diese Linie, welchen Zeitpunkt die Karte
-                  gerade darstellt. */}
+                  "aktuell", zeigt diese Linie, welchen Zeitpunkt die Karte
+                  gerade darstellt. Schwarz wie die Mittellinie des
+                  Zeitbalkens (früher bernsteinfarben); das Diagramm scrollt
+                  so mit, dass beide Linien übereinander stehen (siehe
+                  followMarker unten). */}
               {deferredMarkerTime !== null && deferredMarkerTime >= minT && (
                 <line
                   x1={x(deferredMarkerTime)}
                   y1={chartTop}
                   x2={x(deferredMarkerTime)}
                   y2={chartBottom}
-                  className="stroke-amber-500"
+                  className="stroke-zinc-900 dark:stroke-zinc-100"
                   strokeWidth={2}
                 />
               )}
