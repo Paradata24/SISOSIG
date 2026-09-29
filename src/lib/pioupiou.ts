@@ -26,6 +26,23 @@ export const SOUTH_TYROL_BBOX = {
   lngMax: 12.5,
 };
 
+/**
+ * Einzelne Stationen AUSSERHALB der Südtirol-Bounding-Box, die trotzdem
+ * abgerufen werden (Schlüssel = Pioupiou-Stations-ID). Ausdrücklicher Wunsch
+ * des Projektbesitzers, Sept. 2026: die Vereinsstation des Paradeltaclubs Uri
+ * am Bälmeten (Schweiz) im Windanzeiger. Die Höhe steht hier, weil sie weder
+ * die API noch der Stationsname ("Bälmeten Backup") liefert; sie stammt vom
+ * Projektbesitzer.
+ *
+ * Bewusst KEINE Vergrößerung der Bounding-Box: Sonst kämen alle Pioupiou-
+ * Stationen der Schweiz dazu. Die Edge Function (Prognosen) hat eine eigene
+ * Kopie der Box und kennt diese Stationen nicht — sie bekommen keine
+ * Prognose-Kurve.
+ */
+const EXTRA_STATIONS: Record<number, { altitude: number }> = {
+  1535: { altitude: 2414 }, // Bälmeten Backup (Paradeltaclub Uri)
+};
+
 // Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen —
 // dieselbe Regel wie bei den Bozner Stationen (siehe /api/wind). Pioupiou-
 // Stationen sind batteriebetrieben und melden nachts/windstill teils gar
@@ -145,7 +162,8 @@ function round5(value: number): number {
 
 /**
  * Ruft alle Pioupiou/OpenWindMap-Stationen ab und gibt nur jene innerhalb
- * der Südtirol-Bounding-Box mit gültigen Koordinaten zurück, im selben
+ * der Südtirol-Bounding-Box (plus die Ausnahmen in EXTRA_STATIONS) mit
+ * gültigen Koordinaten zurück, im selben
  * WindStation-Format wie die Bozner Stationen (gleiche Farbskala, gleiches
  * stale-Verhalten, gleiche Karten-/Verlaufsbalken-Darstellung).
  */
@@ -170,7 +188,7 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
       !loc?.success ||
       typeof loc.latitude !== "number" ||
       typeof loc.longitude !== "number" ||
-      !inSouthTyrolBbox(loc.latitude, loc.longitude)
+      !(s.id in EXTRA_STATIONS || inSouthTyrolBbox(loc.latitude, loc.longitude))
     ) {
       continue;
     }
@@ -200,7 +218,7 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
       stationName,
       lat: round5(loc.latitude),
       lng: round5(loc.longitude),
-      altitude: parseAltitudeFromName(stationName),
+      altitude: EXTRA_STATIONS[s.id]?.altitude ?? parseAltitudeFromName(stationName),
       direction,
       speedKmh,
       gustKmh,

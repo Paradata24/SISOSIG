@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
+import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
+import { fetchLwdTirolStations } from "@/lib/lwdtirol";
+import { fetchDwdStations } from "@/lib/dwd";
 import { fetchSlfReadingsSince } from "@/lib/slf";
 import type { WindStation } from "@/lib/wind";
 
@@ -171,18 +174,26 @@ export async function POST(request: Request) {
     });
   }
 
-  // 3b) OpenWindMap/Pioupiou- und GeoSphere-Austria-Stationen dazuholen —
+  // 3b) OpenWindMap/Pioupiou-, GeoSphere-Austria-, MeteoSchweiz-, LWD-Tirol- und
+  //     DWD-Stationen dazuholen —
   //     additiv: schlägt ein Abruf fehl, werden trotzdem die übrigen
   //     Messwerte gespeichert statt den ganzen Lauf abzubrechen.
   const extraSources: Array<[string, () => Promise<WindStation[]>]> = [
     ["OpenWindMap", fetchOpenWindMapStations],
     ["GeoSphere", fetchGeoSphereStations],
+    ["MeteoSchweiz", fetchMeteoSwissStations],
+    ["LWD Tirol", fetchLwdTirolStations],
+    ["DWD", fetchDwdStations],
   ];
   for (const [label, fetchStations] of extraSources) {
     try {
       for (const s of await fetchStations()) {
         if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
         if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+        // Längst ausgefallene Station (z. B. Zugspitze beim DWD): Der letzte
+        // Wert wäre älter als die Aufbewahrung und würde nach dem Speichern
+        // sofort wieder gelöscht — gar nicht erst schreiben.
+        if (Date.parse(s.timestamp) < Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000) continue;
         rows.push({
           station_code: s.stationCode,
           measured_at: s.timestamp,

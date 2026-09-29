@@ -3,6 +3,9 @@ import type { WindStation } from "@/lib/wind";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchSlfStations } from "@/lib/slf";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
+import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
+import { fetchLwdTirolStations } from "@/lib/lwdtirol";
+import { fetchDwdStations } from "@/lib/dwd";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
@@ -200,18 +203,44 @@ async function fetchGeoSphereSafely(): Promise<WindStation[]> {
   }
 }
 
+// MeteoSchweiz (Schweiz), Lawinenwarndienst Tirol (Hafelekar) und Deutscher
+// Wetterdienst (Zugspitze) — alle drei additiv wie die Quellen oben. Zu einem
+// Helfer zusammengefasst, weil jede nur eine Zeile Fehlerbehandlung braucht.
+async function fetchAdditionalSafely(
+  label: string,
+  fetchStations: () => Promise<WindStation[]>,
+): Promise<WindStation[]> {
+  try {
+    return await fetchStations();
+  } catch (err) {
+    console.error(`${label}-Stationen nicht abrufbar:`, err);
+    return [];
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedStations = searchParams.get("station");
 
-  const [sensorsResult, stationsByCode, openWindMapStations, slfStations, geoSphereStations] =
-    await Promise.all([
-      fetchSensors(),
-      fetchStationMeta(),
-      fetchOpenWindMapSafely(),
-      fetchSlfSafely(),
-      fetchGeoSphereSafely(),
-    ]);
+  const [
+    sensorsResult,
+    stationsByCode,
+    openWindMapStations,
+    slfStations,
+    geoSphereStations,
+    meteoSwissStations,
+    lwdTirolStations,
+    dwdStations,
+  ] = await Promise.all([
+    fetchSensors(),
+    fetchStationMeta(),
+    fetchOpenWindMapSafely(),
+    fetchSlfSafely(),
+    fetchGeoSphereSafely(),
+    fetchAdditionalSafely("MeteoSchweiz", fetchMeteoSwissStations),
+    fetchAdditionalSafely("LWD Tirol", fetchLwdTirolStations),
+    fetchAdditionalSafely("DWD", fetchDwdStations),
+  ]);
 
   if (sensorsResult.error || !sensorsResult.sensors) {
     return NextResponse.json(
@@ -291,12 +320,15 @@ export async function GET(request: Request) {
     ...openWindMapStations,
     ...slfStations,
     ...geoSphereStations,
+    ...meteoSwissStations,
+    ...lwdTirolStations,
+    ...dwdStations,
   ].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),
   );
 
   // Optional gefiltert über ?station=CODE1,CODE2 (für Tests/Debugging;
-  // funktioniert auch mit Codes wie "pioupiou-413" oder "slf-ZNZ1").
+  // funktioniert auch mit Codes wie "pioupiou-413", "slf-ZNZ1" oder "meteoswiss-SAE").
   if (requestedStations) {
     const wanted = new Set(
       requestedStations.split(",").map((c) => c.trim()).filter(Boolean),
