@@ -146,16 +146,19 @@ also alle 3 h, wirklich neue Werte).
   keine Zahlen), Region Zoom 9–11 (26 px + Zahlen-Plakette), Detail ab Zoom 12
   (`DETAIL_MIN_ZOOM`, 32 px + Stationsname und Höhe). Feste Größen je Stufe
   (`ARROW_SIZE`), kein stufenloses Schrumpfen mehr.
-  - **Zahlen erst ab Zoom 9** (`LABEL_MIN_ZOOM`, = Startansicht Südtirol);
-    bei aktivem Stationsfilter (nicht „Alle") immer sichtbar und alles um 25 %
-    größer. Wunsch des Projektbesitzers.
-  - **Pfeil-Aufbau:** dunkler Umriss außen (`OUTLINE_PX`) → Rand in
+  - **Zahlen erst ab Zoom 9** (`LABEL_MIN_ZOOM`, = Startansicht Südtirol).
+  - **Jeder Stationsfilter folgt denselben Regeln wie „Alle"** (Größen,
+    Zahlen, Ausdünnen). Die früheren Sonderregeln bei aktivem Filter (Zahlen
+    immer sichtbar, alles 25 % größer) hat der Projektbesitzer im Sept. 2026
+    ausdrücklich abgeschafft.
+  - **Pfeil-Aufbau:** schlanke, spitze Form (`ARROW_PATH`, spitze Ecke nur
+    vorne über `ARROW_MITER_LIMIT`), dunkler Umriss außen (`OUTLINE_PX`) → Rand in
     **Böenfarbe** (`GUST_STROKE_PX`) → Fläche in Mittelwindfarbe. Der
     Böenrand bleibt ausdrücklich erhalten (Wunsch des Projektbesitzers), auch
     wenn die Böe zusätzlich in der Plakette steht.
   - **Zahlen-Plakette:** links Mittelwind, rechts Böe, jedes Feld in seiner
     Windfarbe, dünner dunkler Rahmen, eckig.
-  - **Ausdünnen in der Übersicht** (nur bei Filter „Alle"): Überdecken sich
+  - **Ausdünnen in der Übersicht** (bei jedem Filter): Überdecken sich
     zwei Pfeile, bleibt die höher gelegene Station (`THIN_DISTANCE_FACTOR`).
     Rangfolge nur nach Höhe, nicht nach Wind — sonst spränge das Bild beim
     Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
