@@ -211,7 +211,7 @@ Projektbesitzers entfernt:
 - Legenden-Overlay auf der Karte, Leaflets eigene Bedienelemente
   (Zoom-Buttons, Layer-Umschalter, Quellen-Zeile unten rechts) und der
   frühere Filter oben links
-- Fußzeile mit dem OpenWindMap-Credit (der Credit steht jetzt im Menü, siehe „Quellenangaben")
+- Fußzeile mit dem OpenWindMap-Credit (siehe „Quellenangaben")
 - `{s}.`-Subdomains in den Kachel-URLs
 
 ## Fallen, die man einer einzelnen Datei nicht ansieht
@@ -260,11 +260,15 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-Alle Pflicht-Credits stehen seit Sept. 2026 **ganz unten im Menü-Popup unter
-„Quellen"** (`DATA_SOURCES` und `MAP_SOURCES` in `src/lib/wind.ts`):
-Winddaten (Land Südtirol, **OpenWindMap mit Link** — verlangt deren
-Community-Lizenz) und die Kartenquellen des gewählten Hintergrunds. Die
-frühere Fußzeile bleibt draußen; Einträge dort nicht entfernen.
+- **Kartenquellen** (Esri, Höhenlinien des Landes, CARTO/OpenStreetMap)
+  stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
+  `src/lib/wind.ts`).
+- **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,
+  keine Doppelung), sondern stationsweise unten im Verlaufsbalken als
+  „Quelle:"-Link (`SOURCE_INFO`). Offener Punkt: Die OpenWindMap-
+  Community-Lizenz verlangt einen sichtbaren Credit mit Link — der ist damit
+  nur sichtbar, wenn eine Pioupiou-Station geöffnet ist. Beim Thema erwähnen,
+  die Fußzeile aber nicht ungefragt zurückbringen.
 
 ## CARTO-Ortsnamen brauchen einen Schlüssel
 

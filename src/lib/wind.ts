@@ -279,20 +279,6 @@ export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
   ],
 };
 
-/**
- * Quellen der Winddaten für den Abschnitt "Quellen" im Menü-Popup.
- *
- * Die Community-Lizenz von OpenWindMap verlangt einen sichtbaren Credit MIT
- * Link auf openwindmap.org — früher stand er in der (entfernten) Fußzeile,
- * seit Sept. 2026 hier. Nicht entfernen, solange Pioupiou-Stationen angezeigt
- * werden. Beschriftung und Link kommen aus SOURCE_INFO, damit Menü und
- * Verlaufsbalken dieselbe Angabe zeigen.
- */
-export const DATA_SOURCES: SourceLink[] = [
-  SOURCE_INFO.bolzano,
-  SOURCE_INFO.openwindmap,
-];
-
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer
