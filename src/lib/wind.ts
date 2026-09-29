@@ -16,10 +16,11 @@ export interface WindStation {
   /** true, wenn die Station Windsensoren hat, aber keine aktuellen Werte liefert */
   stale: boolean;
   /**
-   * Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk oder die
-   * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts)
+   * Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk, die
+   * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts) oder GeoSphere
+   * Austria (früher ZAMG, siehe src/lib/geosphere.ts)
    */
-  source: "bolzano" | "openwindmap" | "slf";
+  source: "bolzano" | "openwindmap" | "slf" | "geosphere";
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -34,12 +35,14 @@ export const SOURCE_INFO: Record<
     label: "WSL-Institut für Schnee- und Lawinenforschung SLF (IMIS)",
     url: "https://www.slf.ch/de/services-und-produkte/slf-datenservice/",
   },
+  // Lizenz CC BY 4.0: Dieser Link ist die Pflicht-Quellenangabe, nicht entfernen.
+  geosphere: { label: "GeoSphere Austria (CC BY 4.0)", url: "https://data.hub.geosphere.at" },
 };
 
 /**
  * Wie oft eine Quelle einen neuen Messwert liefert (Minuten). Bozen misst
  * alle 10 min, Pioupiou sendet unregelmäßig alle paar Minuten (landet im
- * 10-Minuten-Raster). Die SLF-IMIS-Stationen liefern dagegen nur einen
+ * 10-Minuten-Raster), GeoSphere Austria ebenfalls alle 10 min. Die SLF-IMIS-Stationen liefern dagegen nur einen
  * 30-Minuten-Mittelwert zu :00 und :30 — nachgeprüft im Sept. 2026, auch
  * whiterisk.ch selbst zeigt nichts Feineres.
  *
@@ -53,6 +56,7 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
   bolzano: 10,
   openwindmap: 10,
   slf: 30,
+  geosphere: 10,
 };
 
 /**

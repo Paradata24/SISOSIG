@@ -149,6 +149,22 @@ function getFilterScaleBoost(stationFilter: StationFilter): number {
   return stationFilter === "all" ? 1 : FILTERED_ICON_SCALE_BOOST;
 }
 
+// Ab welcher Zoomstufe die Zahlen (Mittelwind / Böe) unter den Pfeilen
+// stehen. Seit Schweiz (SLF) und ganz Österreich (GeoSphere) dabei sind, hat
+// die Karte ~560 Stationen; herausgezoomt überdeckten sich die Zahlen zu
+// einem unlesbaren Teppich. Darunter zeigt die Karte deshalb nur die farbigen
+// Pfeile (Farbe = Mittelwind, Rand = Böe).
+// 9 = die Startansicht Südtirol (SOUTH_TYROL_ZOOM): Beim Öffnen der Seite sind
+// die Zahlen also wie bisher da, sie verschwinden erst beim Herauszoomen.
+// Bei aktivem Stationsfilter (nicht "Alle") bleiben sie immer sichtbar — dann
+// stehen nur wenige Pfeile auf der Karte, und Platz ist genug (Wunsch des
+// Projektbesitzers, Sept. 2026).
+const LABEL_MIN_ZOOM = SOUTH_TYROL_ZOOM;
+
+function shouldShowLabels(zoom: number, stationFilter: StationFilter): boolean {
+  return stationFilter !== "all" || zoom >= LABEL_MIN_ZOOM;
+}
+
 // Pfeil-Icon (SVG) für eine Windstation. Der Pfeil wird so gedreht, dass er
 // dorthin zeigt, wohin der Wind weht (Windrichtung + 180°, da die Station
 // die Richtung meldet, AUS der der Wind kommt). Die angezeigte Richtung wird
@@ -160,6 +176,7 @@ function createWindIcon(
   speedKmh: number | null,
   gustKmh: number | null,
   scale: number,
+  showLabel: boolean,
 ) {
   const fillColor = getWindColor(speedKmh);
   const strokeColor = getWindColor(gustKmh);
@@ -169,7 +186,7 @@ function createWindIcon(
   const gustLabel = gustKmh !== null ? Math.round(gustKmh) : "–";
 
   const arrowSize = Math.round(ARROW_BASE_SIZE * scale);
-  const labelHeight = Math.round(LABEL_BASE_HEIGHT * scale);
+  const labelHeight = showLabel ? Math.round(LABEL_BASE_HEIGHT * scale) : 0;
   const fontSize = Math.max(5, Math.round(6.5 * scale));
   // Randstärke bewusst 10 % über dem früheren Wert (1,5 bzw. 0,75), damit die
   // Böen-Farbe am Pfeilrand besser ablesbar ist.
@@ -191,9 +208,13 @@ function createWindIcon(
           />
         </svg>
       </div>
-      <div style="margin-top: -2px; font-size: ${fontSize}px; font-weight: 700; line-height: 1.3; color: #1f2937; white-space: nowrap; text-shadow: ${textHalo};">
+      ${
+        showLabel
+          ? `<div style="margin-top: -2px; font-size: ${fontSize}px; font-weight: 700; line-height: 1.3; color: #1f2937; white-space: nowrap; text-shadow: ${textHalo};">
         ${speedLabel} / ${gustLabel}
-      </div>
+      </div>`
+          : ""
+      }
     </div>
   `;
 
@@ -241,14 +262,17 @@ function createStaleIcon(scale: number) {
 // unveränderte Stationen bekommen dasselbe Icon-Objekt zurück, und Leaflet
 // fasst ihren Marker gar nicht erst an.
 // Damit der Speicher nicht unbegrenzt wächst, merken wir uns höchstens so
-// viele Icons. Das reicht bequem für ~150 Stationen auf mehreren Zoomstufen;
+// viele Icons. Das reicht bequem für ~560 Stationen auf mehreren Zoomstufen;
 // darüber hinaus fliegt jeweils das am längsten nicht benutzte Icon raus
 // (Map behält die Einfügereihenfolge, deshalb ist der erste Eintrag der
 // älteste).
 // Beim Schieben des Zeitbalkens laufen deutlich mehr Zustände durch als beim
 // reinen Live-Betrieb (jeder 10-Minuten-Schritt bringt neue Werte), deshalb
-// etwas mehr Platz als früher (400).
-const ICON_CACHE_LIMIT = 800;
+// etwas mehr Platz als früher (400). Seit Schweiz und Österreich dabei sind
+// (~560 statt ~130 Stationen), noch einmal mehr — mit 800 hätte schon eine
+// einzige Aktualisierung aller Stationen den Speicher fast ganz ausgetauscht.
+// Ein Icon ist nur ein kleines Objekt mit etwas HTML-Text, 3.000 sind harmlos.
+const ICON_CACHE_LIMIT = 3000;
 const iconCache = new Map<string, L.DivIcon>();
 
 // Der Schlüssel benutzt bewusst die ANGEZEIGTEN Werte, nicht die rohen: das
@@ -256,16 +280,16 @@ const iconCache = new Map<string, L.DivIcon>();
 // den gerundeten Zahlen ab (die Farben runden intern ebenfalls). Rohwerte wie
 // 137.4° oder 12.3 km/h wären dagegen fast immer verschieden — beim Schieben
 // des Zeitbalkens hätte der Zwischenspeicher dann praktisch nie einen Treffer.
-function iconCacheKey(station: WindStation, scale: number): string {
+function iconCacheKey(station: WindStation, scale: number, showLabel: boolean): string {
   if (station.stale) return `stale|${scale}`;
   const dir = station.direction === null ? "x" : snapDirectionTo8(station.direction);
   const speed = station.speedKmh === null ? "x" : Math.round(station.speedKmh);
   const gust = station.gustKmh === null ? "x" : Math.round(station.gustKmh);
-  return `wind|${dir}|${speed}|${gust}|${scale}`;
+  return `wind|${dir}|${speed}|${gust}|${scale}|${showLabel ? "z" : "-"}`;
 }
 
-function getMarkerIcon(station: WindStation, scale: number): L.DivIcon {
-  const key = iconCacheKey(station, scale);
+function getMarkerIcon(station: WindStation, scale: number, showLabel: boolean): L.DivIcon {
+  const key = iconCacheKey(station, scale, showLabel);
   const cached = iconCache.get(key);
   if (cached) {
     // Neu einsortieren = "zuletzt benutzt", damit der Deckel unten die
@@ -276,7 +300,7 @@ function getMarkerIcon(station: WindStation, scale: number): L.DivIcon {
   }
   const icon = station.stale
     ? createStaleIcon(scale)
-    : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale);
+    : createWindIcon(station.direction, station.speedKmh, station.gustKmh, scale, showLabel);
   iconCache.set(key, icon);
   while (iconCache.size > ICON_CACHE_LIMIT) {
     const oldest = iconCache.keys().next().value;
@@ -313,13 +337,15 @@ function WindMarkers({
     zoomend: () => setZoom(map.getZoom()),
   });
   const scale = getIconScale(zoom) * getFilterScaleBoost(stationFilter);
+  const showLabels = shouldShowLabels(zoom, stationFilter);
   const selectedStation = stations.find(
     (s) => s.stationCode === selectedStationCode && s.lat !== null && s.lng !== null,
   );
   // Radius so bemessen, dass sowohl der Pfeil als auch die Werte-Beschriftung
   // darunter innerhalb des Kreises liegen (Anker sitzt in der Pfeilmitte).
+  // Ohne Zahlen (herausgezoomt) umschließt der Kreis nur den Pfeil.
   const selectionRadius = Math.round(
-    scale * (ARROW_BASE_SIZE / 2 + LABEL_BASE_HEIGHT) + 4,
+    scale * (ARROW_BASE_SIZE / 2 + (showLabels ? LABEL_BASE_HEIGHT : 0)) + 4,
   );
 
   const positionedStations = useMemo(
@@ -348,7 +374,7 @@ function WindMarkers({
         <Marker
           key={station.stationCode}
           position={[station.lat!, station.lng!]}
-          icon={getMarkerIcon(station, scale)}
+          icon={getMarkerIcon(station, scale, showLabels)}
           eventHandlers={handlersByCode.get(station.stationCode)}
         />
       ))}

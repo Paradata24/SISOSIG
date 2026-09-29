@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { WindStation } from "@/lib/wind";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchSlfStations } from "@/lib/slf";
+import { fetchGeoSphereStations } from "@/lib/geosphere";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
@@ -41,11 +42,11 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 //   eigenen 2-Minuten-Zwischenspeicher, siehe dort.
 //
 // --- Gleichzeitige Abrufe ---
-// Die Upstream-Abrufe (/sensors, /stations, Pioupiou, SLF) hängen NICHT
+// Die Upstream-Abrufe (/sensors, /stations, Pioupiou, SLF, GeoSphere) hängen NICHT
 // voneinander ab und werden deshalb mit einem einzigen Promise.all parallel
 // gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
 // die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
-// wie alle drei zusammen.
+// wie alle zusammen.
 const SENSORS_REVALIDATE_S = 60;
 const STATIONS_REVALIDATE_S = 6 * 60 * 60;
 const RESPONSE_CACHE_CONTROL =
@@ -188,16 +189,28 @@ async function fetchSlfSafely(): Promise<WindStation[]> {
   }
 }
 
+// GeoSphere-Austria-Stationen (alle österreichischen Stationen mit Wind, siehe
+// src/lib/geosphere.ts) sind genauso additiv wie OpenWindMap.
+async function fetchGeoSphereSafely(): Promise<WindStation[]> {
+  try {
+    return await fetchGeoSphereStations();
+  } catch (err) {
+    console.error("GeoSphere-Stationen nicht abrufbar:", err);
+    return [];
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedStations = searchParams.get("station");
 
-  const [sensorsResult, stationsByCode, openWindMapStations, slfStations] =
+  const [sensorsResult, stationsByCode, openWindMapStations, slfStations, geoSphereStations] =
     await Promise.all([
       fetchSensors(),
       fetchStationMeta(),
       fetchOpenWindMapSafely(),
       fetchSlfSafely(),
+      fetchGeoSphereSafely(),
     ]);
 
   if (sensorsResult.error || !sensorsResult.sensors) {
@@ -273,7 +286,12 @@ export async function GET(request: Request) {
     .map(buildWindStation)
     .filter((s): s is WindStation => s !== null);
 
-  let stations = [...bolzanoStations, ...openWindMapStations, ...slfStations].sort((a, b) =>
+  let stations = [
+    ...bolzanoStations,
+    ...openWindMapStations,
+    ...slfStations,
+    ...geoSphereStations,
+  ].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),
   );
 
