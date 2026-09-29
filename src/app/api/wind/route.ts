@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { WindStation } from "@/lib/wind";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
+import { fetchSlfStations } from "@/lib/slf";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
@@ -36,8 +37,11 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
 // alte Cache-Daten dafür bedeutungslos.
 //
+//   Die SLF-Stationen (src/lib/slf.ts) haben wegen ihrer Antwortgröße einen
+//   eigenen 2-Minuten-Zwischenspeicher, siehe dort.
+//
 // --- Gleichzeitige Abrufe ---
-// Die drei Upstream-Abrufe (/sensors, /stations, Pioupiou) hängen NICHT
+// Die Upstream-Abrufe (/sensors, /stations, Pioupiou, SLF) hängen NICHT
 // voneinander ab und werden deshalb mit einem einzigen Promise.all parallel
 // gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
 // die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
@@ -174,15 +178,27 @@ async function fetchOpenWindMapSafely(): Promise<WindStation[]> {
   }
 }
 
+// SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv, gleiche Begründung.
+async function fetchSlfSafely(): Promise<WindStation[]> {
+  try {
+    return await fetchSlfStations();
+  } catch (err) {
+    console.error("SLF-Stationen nicht abrufbar:", err);
+    return [];
+  }
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedStations = searchParams.get("station");
 
-  const [sensorsResult, stationsByCode, openWindMapStations] = await Promise.all([
-    fetchSensors(),
-    fetchStationMeta(),
-    fetchOpenWindMapSafely(),
-  ]);
+  const [sensorsResult, stationsByCode, openWindMapStations, slfStations] =
+    await Promise.all([
+      fetchSensors(),
+      fetchStationMeta(),
+      fetchOpenWindMapSafely(),
+      fetchSlfSafely(),
+    ]);
 
   if (sensorsResult.error || !sensorsResult.sensors) {
     return NextResponse.json(
@@ -257,12 +273,12 @@ export async function GET(request: Request) {
     .map(buildWindStation)
     .filter((s): s is WindStation => s !== null);
 
-  let stations = [...bolzanoStations, ...openWindMapStations].sort((a, b) =>
+  let stations = [...bolzanoStations, ...openWindMapStations, ...slfStations].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),
   );
 
   // Optional gefiltert über ?station=CODE1,CODE2 (für Tests/Debugging;
-  // funktioniert auch mit Pioupiou-Codes wie "pioupiou-413").
+  // funktioniert auch mit Codes wie "pioupiou-413" oder "slf-ZNZ1").
   if (requestedStations) {
     const wanted = new Set(
       requestedStations.split(",").map((c) => c.trim()).filter(Boolean),

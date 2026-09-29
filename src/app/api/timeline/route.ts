@@ -4,7 +4,9 @@ import {
   GRID_MS,
   HISTORY_HOURS,
   snapToGrid,
+  SOURCE_INTERVAL_MINUTES,
   TIMELINE_STEP_MINUTES,
+  type WindStation,
   type TimelinePayload,
   type TimelineSeries,
 } from "@/lib/wind";
@@ -39,8 +41,9 @@ export const dynamic = "force-dynamic";
 // seitenweise gelesen.
 const PAGE_SIZE = 1000;
 // Harte Obergrenze, damit die Route bei einer unerwartet großen Tabelle nicht
-// endlos weiterliest. 30 Seiten = 30.000 Zeilen ≈ das Dreifache der Erwartung
-// (~130 Stationen × 73 Zeitpunkte ≈ 9.500).
+// endlos weiterliest. 30 Seiten = 30.000 Zeilen ≈ das Doppelte der Erwartung
+// (~130 Stationen × 73 Zeitpunkte ≈ 9.500, dazu ~200 SLF-Stationen mit nur
+// einem Wert pro halbe Stunde × 25 ≈ 5.000).
 const MAX_PAGES = 30;
 
 // Zwischenspeicherung wie bei /api/history: Neue Messwerte kommen nur alle
@@ -55,6 +58,7 @@ interface MeasurementRow {
   direction: number | null;
   speed_kmh: number | null;
   gust_kmh: number | null;
+  source: string | null;
 }
 
 /** Auf ganze Zahlen runden — kürzeres JSON, und die Karte rundet ohnehin. */
@@ -104,7 +108,7 @@ export async function GET() {
       `${supabaseUrl}/rest/v1/wind_measurements` +
       `?measured_at=gte.${encodeURIComponent(sinceIso)}` +
       `&order=measured_at.asc,station_code.asc` +
-      `&select=station_code,measured_at,direction,speed_kmh,gust_kmh` +
+      `&select=station_code,measured_at,direction,speed_kmh,gust_kmh,source` +
       `&limit=${PAGE_SIZE}&offset=${offset}`;
 
     let res: Response;
@@ -146,7 +150,9 @@ export async function GET() {
   // der kleinere Abstand zum Rasterpunkt.
   const stations: Record<string, TimelineSeries> = {};
   const distances = new Map<string, number[]>();
+  const sourceByStation = new Map<string, string>();
   for (const row of rows) {
+    if (row.source) sourceByStation.set(row.station_code, row.source);
     const t = Date.parse(row.measured_at);
     if (Number.isNaN(t)) continue;
     const idx = Math.round((snapToGrid(t) - start) / GRID_MS);
@@ -178,6 +184,30 @@ export async function GET() {
     series.s[idx] = round0(row.speed_kmh);
     series.g[idx] = round0(row.gust_kmh);
     taken[idx] = dist;
+  }
+
+  // Quellen mit langsamerem Messtakt (SLF: 30 min) haben nur an jedem dritten
+  // Rasterpunkt einen Wert. Damit diese Stationen beim Blättern nicht an
+  // :10/:20/:40/:50 grau werden, bleibt ihr letzter Messwert bis kurz vor dem
+  // nächsten stehen — genau so, wie es die Live-Karte zu diesem Zeitpunkt
+  // gezeigt hätte (der jüngste verfügbare Wert). Erfunden wird nichts: Fehlt
+  // eine Messung, endet das Halten nach einem Takt, und die Station wird grau.
+  for (const [code, series] of Object.entries(stations)) {
+    const source = sourceByStation.get(code) as WindStation["source"] | undefined;
+    const intervalMin = source ? SOURCE_INTERVAL_MINUTES[source] : undefined;
+    if (!intervalMin || intervalMin <= TIMELINE_STEP_MINUTES) continue;
+    const holdSlots = Math.ceil(intervalMin / TIMELINE_STEP_MINUTES) - 1;
+    let lastReal = -Infinity;
+    for (let i = 0; i < times.length; i++) {
+      const empty = series.d[i] === null && series.s[i] === null && series.g[i] === null;
+      if (!empty) {
+        lastReal = i;
+      } else if (i - lastReal <= holdSlots) {
+        series.d[i] = series.d[lastReal];
+        series.s[i] = series.s[lastReal];
+        series.g[i] = series.g[lastReal];
+      }
+    }
   }
 
   const payload: TimelinePayload = {
