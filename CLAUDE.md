@@ -140,6 +140,12 @@ Austria (TAWES, ganz Österreich), Historie und Prognose in Supabase.
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
   echte Kacheln hat.
+- **Zahlen unter den Pfeilen erst ab Zoom 9** (`LABEL_MIN_ZOOM` in
+  `src/components/WindMap.tsx`, = Startansicht Südtirol). Herausgezoomt
+  überdeckten sich die Zahlen der ~560 Stationen (Schweiz + Österreich) zu
+  einem unlesbaren Teppich; dort zeigt die Karte nur die farbigen Pfeile.
+  Bei aktivem Stationsfilter (nicht „Alle") bleiben die Zahlen immer sichtbar.
+  Wunsch des Projektbesitzers, Sept. 2026.
 - **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „Standard".
   Quelle ist der WMS-Dienst des Landes Südtirol
   (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
