@@ -212,7 +212,16 @@ also alle 3 h, wirklich neue Werte).
   steht bei Open-Meteo rund 2 h 20 min nach dem Laufstart bereit (00-UTC-Lauf
   gegen 02:20 UTC). Die Edge Function prüft vorher die Metadaten von
   Open-Meteo und fragt nur ab, wenn ein noch nicht gespeicherter Lauf da ist
-  — 8 statt 24 Abrufe am Tag, egal wie oft der Cron-Job sie anstößt.
+  — 8 statt 24 Abrufe am Tag, egal wie oft der Cron-Job sie anstößt. Ist die
+  Metadaten-Datei nicht lesbar (passiert beim ersten echten Lauf), greift eine
+  Zeitregel: höchstens alle 170 min (`MIN_REFETCH_WITHOUT_META_MS`). Diese
+  Rückfallregel nicht entfernen — ohne sie fragt jeder Cron-Anstoß alles ab.
+- **Ostrand von ICON-CH1: 16,64° Länge** (`ICON_CH1_MAX_LNG` in der Edge
+  Function). Die 10 GeoSphere-Stationen östlich davon (Burgenland,
+  Weinviertel) liefern bei Open-Meteo "No data is available" — und eine
+  einzige solche Station lässt die GANZE 50er-Anfrage scheitern. Deshalb
+  Vorfilter plus Halbieren gescheiterter Blöcke (`fetchWithSplit`). Diese
+  Stationen haben keine Prognose-Kurve, das ist kein Fehler.
 
 ## Nicht wieder einführen (ohne Rücksprache)
 

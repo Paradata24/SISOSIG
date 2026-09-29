@@ -359,7 +359,12 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   Metadaten. Ist der neueste Lauf schon gespeichert, endet sie ohne einen
   einzigen Prognose-Abruf (Antwort `"skipped": true`). So wird nur
   **8-mal am Tag** wirklich abgefragt, egal wie oft der Cron-Job läuft.
-  Erzwingen: POST mit Body `{"force": true}`.
+  Erzwingen: POST mit Body `{"force": true}`. Ist die Metadaten-Datei
+  nicht lesbar, fragt die Funktion höchstens alle 170 Minuten ab.
+- **Modellgebiet:** ICON-CH1 endet im Osten bei etwa 16,64° Länge. Die 10
+  österreichischen Stationen östlich davon (u. a. Neusiedl am See,
+  Podersdorf, Andau, Hohenau) bekommen keine Prognose; sie werden vorab
+  aussortiert, weil Open-Meteo sonst die ganze Anfrage ablehnt.
 - **Kontingent:** Open-Meteo erlaubt kostenlos 10.000 Aufrufe pro Tag,
   gezählt je Station. ~580 Stationen × 8 Läufe ≈ **4.700 am Tag** (vorher
   stündlich ~310 Stationen ≈ 7.400).
