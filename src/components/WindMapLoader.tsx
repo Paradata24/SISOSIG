@@ -17,6 +17,7 @@ export default function WindMapLoader({
   stationFilter,
   historyFrame,
   refreshToken,
+  onViewportStationsChange,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -24,6 +25,8 @@ export default function WindMapLoader({
   historyFrame: TimelineFrame | null;
   /** Zähler des Refresh-Buttons, siehe WindMap. */
   refreshToken: number;
+  /** Meldet die Stationscodes im sichtbaren Kartenausschnitt, siehe WindMap. */
+  onViewportStationsChange: (codes: string[]) => void;
 }) {
   return (
     <WindMap
@@ -31,6 +34,7 @@ export default function WindMapLoader({
       stationFilter={stationFilter}
       historyFrame={historyFrame}
       refreshToken={refreshToken}
+      onViewportStationsChange={onViewportStationsChange}
     />
   );
 }

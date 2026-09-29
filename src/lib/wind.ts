@@ -109,6 +109,15 @@ export const TIMELINE_SLOT_COUNT =
   HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
 /**
+ * Breite eines 10-Minuten-Schritts im Zeitbalken (px). Absichtlich derselbe
+ * Spaltenabstand wie im Verlaufsbalken (Wert-Quadrat 16,5 px + Lücke 12 px,
+ * siehe COLUMN_SPACING in WindHistoryPanel.tsx): Beide Balken haben dadurch
+ * am Handy denselben Zeitmaßstab und wirken wie EINE Zeitachse. Ändert sich
+ * dort der Spaltenabstand, hier mitziehen.
+ */
+export const TIMELINE_STEP_PX = 28.5;
+
+/**
  * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
  * noch durchgezogen werden: 2,5 Messtakte der Quelle. Bei 10-Minuten-Quellen
  * sind das 25 min (EIN fehlender Wert wird überbrückt, ab ZWEI reißt die

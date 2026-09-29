@@ -546,6 +546,42 @@ function WindMarkers({
   );
 }
 
+// Meldet nach jedem Verschieben/Zoomen (und wenn sich die Stationsliste oder
+// der Filter ändert), welche Stationen im sichtbaren Kartenausschnitt liegen.
+// Daraus berechnet WindApp den Farbstrich im Zeitbalken — der Strich zeigt
+// also immer das Gebiet, das man gerade ansieht. Gemeldet wird nur bei einer
+// echten Änderung der Liste, sonst würde der Strich bei jedem Abruf der
+// Live-Werte neu berechnet. Muss innerhalb von <MapContainer> stehen.
+function ViewportReporter({
+  stations,
+  onChange,
+}: {
+  stations: WindStation[];
+  onChange: (codes: string[]) => void;
+}) {
+  const lastKey = useRef("");
+  const report = useCallback(
+    (map: L.Map) => {
+      const bounds = map.getBounds();
+      const codes = stations
+        .filter(
+          (s) => s.lat !== null && s.lng !== null && bounds.contains([s.lat, s.lng]),
+        )
+        .map((s) => s.stationCode);
+      const key = codes.join(",");
+      if (key === lastKey.current) return;
+      lastKey.current = key;
+      onChange(codes);
+    },
+    [stations, onChange],
+  );
+  const map = useMapEvents({ moveend: () => report(map) });
+  useEffect(() => {
+    report(map);
+  }, [map, report]);
+  return null;
+}
+
 // Kartenhintergrund (baseLayer) und Stationsfilter werden nicht mehr hier,
 // sondern im Menü im Titel-Balken umgeschaltet (WindApp.tsx) und kommen als
 // Props herein.
@@ -554,6 +590,7 @@ export default function WindMap({
   stationFilter,
   historyFrame,
   refreshToken,
+  onViewportStationsChange,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -564,6 +601,8 @@ export default function WindMap({
    * sofort frische Live-Werte (und den Verlauf einer offenen Station).
    */
   refreshToken: number;
+  /** Stationscodes im sichtbaren Kartenausschnitt (für den Zeitbalken). */
+  onViewportStationsChange: (codes: string[]) => void;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -808,6 +847,7 @@ export default function WindMap({
           onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
         />
+        <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
       </MapContainer>
       {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, bleibt die
           Plakette weg — die Uhrzeit steht dann ohnehin im Zeitbalken. */}
