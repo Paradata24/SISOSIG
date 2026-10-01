@@ -75,16 +75,19 @@ body {
   pointer-events: none !important;
 }
 
-/* Zeitbalken unter der Karte (TimeSlider.tsx): das Band mit den ganzen
-   12 Stunden. Antippen/Ziehen wertet TimeSlider selbst aus; touch-action:
-   none verhindert, dass der Browser die Geste als Seiten-Scrollen, Zoomen
-   oder "Zurück"-Wischen deutet — sonst bricht das Ziehen am Handy ab. */
+/* Zeitbalken unter der Karte (TimeSlider.tsx): das Zeitrad. Ziehen, Auslauf
+   und Antippen wertet TimeSlider selbst aus; touch-action: none verhindert,
+   dass der Browser die Geste als Seiten-Scrollen, Zoomen oder "Zurück"-Wischen
+   deutet — sonst bricht das Drehen am Handy ab. */
 .zeitband {
   touch-action: none;
-  cursor: pointer;
+  cursor: grab;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+.zeitband:active {
+  cursor: grabbing;
 }
 .zeitband:focus {
   outline: none;

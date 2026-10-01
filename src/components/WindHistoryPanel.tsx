@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FUTURE_MARGIN_HOURS,
   getWindColor,
@@ -476,16 +476,10 @@ function ValueBox({
 export default function WindHistoryPanel({
   station,
   onClose,
-  markerTime = null,
   refreshToken = 0,
 }: {
   station: WindStation;
   onClose: () => void;
-  /**
-   * Im Zeitbalken unter der Karte gewählter Zeitpunkt. Ist er gesetzt, zeigt
-   * eine senkrechte Linie im Diagramm, wo man gerade steht. null = live.
-   */
-  markerTime?: number | null;
   /**
    * Zähler des Refresh-Buttons im Titel-Balken. Ändert er sich, wird der
    * Verlauf der offenen Station neu geladen. Die bisherige Kurve bleibt dabei
@@ -512,10 +506,6 @@ export default function WindHistoryPanel({
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
   // damit der Render selbst rein bleibt (kein Date.now() während des Renderns).
   const [now, setNow] = useState(() => Date.now());
-  // Beim Ziehen am Zeitbalken kommen sehr viele Zwischenwerte an. Das Diagramm
-  // darf dabei ruhig etwas hinterherhinken — Hauptsache, der Balken selbst
-  // bleibt flüssig.
-  const deferredMarkerTime = useDeferredValue(markerTime);
 
   const loading = result?.code !== station.stationCode;
   const entries = loading ? null : (result?.entries ?? null);
@@ -805,7 +795,6 @@ export default function WindHistoryPanel({
       y,
       colorBands,
       yTicks,
-      minT,
       hasData,
       hasForecast,
       svgWidth,
@@ -834,7 +823,6 @@ export default function WindHistoryPanel({
     y,
     colorBands,
     yTicks,
-    minT,
     hasData,
     hasForecast,
     svgWidth,
@@ -877,44 +865,20 @@ export default function WindHistoryPanel({
     if (!el || !entries || entries.length === 0) return;
     if (centeredForRef.current === station.stationCode) return;
     centeredForRef.current = station.stationCode;
-    // Ist im Zeitbalken eine frühere Uhrzeit gewählt, steht stattdessen sie
-    // in der Mitte.
-    el.scrollLeft = Math.max(0, x(deferredMarkerTime ?? now) - el.clientWidth / 2);
-  }, [entries, x, now, station.stationCode, deferredMarkerTime]);
+    el.scrollLeft = Math.max(0, x(now) - el.clientWidth / 2);
+  }, [entries, x, now, station.stationCode]);
 
-  // followMarker: Blättert man im Zeitbalken unter der Karte, läuft das
-  // Diagramm mit — die gewählte Zeit (bzw. "jetzt") steht dann in der Mitte
-  // des sichtbaren Bereichs, die Zeitmarke bleibt also immer im Blick. Nur
-  // bei einer ÄNDERUNG der Zeit, damit eigenes Scrollen im Diagramm (z. B. um
-  // die Prognose anzusehen) nicht sofort zurückspringt. An den Rändern
-  // begrenzt der Browser den Wert selbst.
-  const followedTimeRef = useRef<number | null | undefined>(undefined);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !entries || entries.length === 0) return;
-    const target = deferredMarkerTime ?? null;
-    if (followedTimeRef.current === undefined) {
-      // Erster Durchlauf: nur merken (die Startposition setzt der Effekt oben).
-      followedTimeRef.current = target;
-      if (target === null) return;
-    } else if (followedTimeRef.current === target) {
-      return;
-    }
-    followedTimeRef.current = target;
-    el.scrollLeft = Math.max(0, x(target ?? now) - el.clientWidth / 2);
-  }, [deferredMarkerTime, entries, x, now]);
-
-  // absolute (nicht fixed): Das Panel sitzt am unteren Rand des KARTENbereichs,
-  // also über dem Zeitbalken und der Fußzeile — beide bleiben sichtbar und
-  // bedienbar. (Der frühere Innenabstand für den iPhone-Balken ganz unten
-  // entfällt damit, weil das Panel den Bildschirmrand nicht mehr berührt.)
+  // absolute (nicht fixed): Das Panel sitzt am unteren Rand des KARTENbereichs.
+  // Bei geöffneter Station ist der Zeitbalken weg (WindApp), das Panel reicht
+  // also bis zum Seitenende — deshalb der Innenabstand für den Bedienbalken,
+  // den iPhones unten einblenden (auf anderen Geräten ist env(...) gleich 0).
   // Der Schatten nach oben hebt das Panel von der Karte ab; er ist bewusst
   // dezent (0.18 statt der früheren 0.5), weil ein kräftiger schwarzer
   // Schatten auf hellem Grund sofort schmutzig wirkt.
   return (
     <section
       aria-label={`Windverlauf ${station.stationName}`}
-      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -1066,23 +1030,6 @@ export default function WindHistoryPanel({
               >
                 jetzt
               </text>
-
-              {/* Zeitmarke: Steht der Zeitbalken unter der Karte nicht auf
-                  "aktuell", zeigt diese Linie, welchen Zeitpunkt die Karte
-                  gerade darstellt. Schwarz wie die Zeitmarke im
-                  Zeitbalken (früher bernsteinfarben); das Diagramm scrollt
-                  so mit, dass sie in der Mitte steht (siehe followMarker
-                  unten). */}
-              {deferredMarkerTime !== null && deferredMarkerTime >= minT && (
-                <line
-                  x1={x(deferredMarkerTime)}
-                  y1={chartTop}
-                  x2={x(deferredMarkerTime)}
-                  y2={chartBottom}
-                  className="stroke-zinc-900 dark:stroke-zinc-100"
-                  strokeWidth={2}
-                />
-              )}
 
               {/* Reihenfolge (Wunsch des Projektbesitzers): erst die beiden
                   Flächen, dann die beiden Kurvenpaare. Dadurch liegen die

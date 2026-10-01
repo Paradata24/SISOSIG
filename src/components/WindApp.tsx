@@ -51,6 +51,18 @@ export default function WindApp() {
   // Liste wandert alle 10 Minuten weiter, über die Position würde ein einmal
   // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
+
+  // --- Geöffnete Station ---
+  // Der Zustand liegt hier statt in WindMap, weil WindApp bei geöffneter
+  // Station den Zeitbalken ausblendet. Beim Öffnen springt der Zeitbalken auf
+  // "aktuell" zurück: Die Karte zeigt nur noch die aktuellen Werte, und nach
+  // dem Schließen steht der Zeitbalken wieder auf "Aktuell". Feste Referenz
+  // (useCallback), weil die Marker-Klick-Handler der Karte daran hängen.
+  const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
+  const handleSelectStation = useCallback((code: string | null) => {
+    setSelectedStationCode(code);
+    if (code !== null) setSelectedTime(null);
+  }, []);
   const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
   // Startwert "loading": Die Daten werden gleich beim Seitenaufruf geholt
   // (siehe ensureTimeline). Bei späterem Auffrischen bleibt der Status
@@ -162,9 +174,13 @@ export default function WindApp() {
   // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
   // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
   const deferredTime = useDeferredValue(clampedTime);
+  // Bei geöffneter Station gibt es keinen Verlaufs-Ausschnitt: Karte und
+  // Verlaufsbalken zeigen dann nur die aktuellen Werte (Wunsch des
+  // Projektbesitzers). Das hier direkt zu erzwingen vermeidet, dass der
+  // verzögerte Zeitpunkt (deferredTime) noch einen Moment alte Werte zeigt.
   const historyFrame = useMemo(
-    () => buildTimelineFrame(timeline, deferredTime),
-    [timeline, deferredTime],
+    () => (selectedStationCode ? null : buildTimelineFrame(timeline, deferredTime)),
+    [timeline, deferredTime, selectedStationCode],
   );
 
   // Popup schließen, sobald außerhalb von Button/Popup geklickt (oder auf dem
@@ -327,18 +343,23 @@ export default function WindApp() {
           historyFrame={historyFrame}
           refreshToken={refreshToken}
           onViewportStationsChange={setViewportCodes}
+          selectedStationCode={selectedStationCode}
+          onSelectStation={handleSelectStation}
         />
       </main>
-      {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Ein
-          geöffneter Verlaufsbalken liegt direkt darüber am unteren Kartenrand;
-          sein Diagramm scrollt beim Blättern mit. */}
-      <TimeSlider
-        slots={slots}
-        selectedTime={clampedTime}
-        onChange={setSelectedTime}
-        status={timelineStatus}
-        stripColors={stripColors}
-      />
+      {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Bei
+          geöffneter Station ist sie weg (Wunsch des Projektbesitzers): Dann
+          zeigt die Karte nur die aktuellen Werte, und der Verlaufsbalken
+          reicht bis zum Seitenende. */}
+      {selectedStationCode === null && (
+        <TimeSlider
+          slots={slots}
+          selectedTime={clampedTime}
+          onChange={setSelectedTime}
+          status={timelineStatus}
+          stripColors={stripColors}
+        />
+      )}
     </>
   );
 }
