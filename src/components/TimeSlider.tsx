@@ -49,10 +49,11 @@ const ANGLE_PER_SLOT_DEG = 6;
 const MAX_ANGLE_DEG = 80;
 const ANGLE_PER_SLOT = (ANGLE_PER_SLOT_DEG * Math.PI) / 180;
 const MAX_ANGLE = (MAX_ANGLE_DEG * Math.PI) / 180;
-// Wie weit das Rad dreht, wenn der Finger sich um eine Strichbreite in der
-// Mitte bewegt. 1 = Strich folgt dem Finger genau; etwas mehr lässt die
-// 12 Stunden mit weniger Wischen durchlaufen.
-const DRAG_GAIN = 1.5;
+// So viele Pixel muss der Finger wandern, damit das Rad um einen
+// 10-Minuten-Schritt weiterdreht. Fest statt aus der Radbreite gerechnet: Das
+// Rad liegt in einer Zeile mit Uhrzeit und Knopf und ist schmal; die
+// Fingerstrecke soll trotzdem für 12 Stunden angenehm kurz bleiben.
+const DRAG_PX_PER_SLOT = 14;
 // Ab dieser Fingerbewegung (px) gilt eine Berührung als Ziehen, nicht mehr als Antippen.
 const TAP_MAX_MOVE_PX = 6;
 const TAP_MAX_MS = 350;
@@ -126,16 +127,6 @@ function formatSlotLabel(time: number, now: number): string {
   if (new Date(now).toDateString() === date.toDateString()) return hhmm;
   const weekday = date.toLocaleDateString("de-DE", { weekday: "short" });
   return `${weekday} ${hhmm}`;
-}
-
-/** "vor 3 h 20 min" — wie weit der gewählte Zeitpunkt zurückliegt. */
-function formatAgo(time: number, now: number): string {
-  const minutes = Math.max(0, Math.round((now - time) / 60000));
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  if (hours === 0) return `vor ${rest} min`;
-  if (rest === 0) return `vor ${hours} h`;
-  return `vor ${hours} h ${rest} min`;
 }
 
 /** Stundenbeschriftung wie im Verlaufsbalken: "14:00", um Mitternacht das Datum. */
@@ -297,7 +288,7 @@ export default function TimeSlider({
     if (!drag.moved && Math.abs(dx) < TAP_MAX_MOVE_PX) return;
     drag.moved = true;
     // Nach rechts ziehen = zurück in der Zeit (kleinere Schritt-Nummer).
-    const next = clampPos(drag.startPos - (dx * DRAG_GAIN) / stepPx);
+    const next = clampPos(drag.startPos - dx / DRAG_PX_PER_SLOT);
     const t = performance.now();
     drag.samples.push({ t, pos: next });
     while (drag.samples.length > 2 && t - drag.samples[0].t > VELOCITY_WINDOW_MS) {
@@ -425,100 +416,97 @@ export default function TimeSlider({
     }
   }
 
+  // Datum (Wochentag, Tag.Monat.) und Uhrzeit des gewählten Schritts, links.
+  const shown = new Date(slots[index]);
+  const dateText = `${shown.toLocaleDateString("de-DE", { weekday: "short" })} ${String(shown.getDate()).padStart(2, "0")}.${String(shown.getMonth() + 1).padStart(2, "0")}.`;
+  const timeText = shown.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
   return (
     // Unterstes Element der Seite: der zusätzliche untere Innenabstand hält
     // alles über dem Bedienbalken, den iPhones unten einblenden (auf anderen
     // Geräten ist env(...) gleich 0).
-    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Gewählte Uhrzeit mittig, rechts der Knopf "Aktuell". Die linke Spalte
-          ist leer, damit die Uhrzeit genau über der Mitte des Rads steht. */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-2">
-        <div />
-        <div className="min-w-0 text-center leading-tight tabular-nums">
+    // ALLES IN EINER ZEILE (Wunsch des Projektbesitzers): links Datum und
+    // Uhrzeit, in der Mitte das Rad, rechts der Knopf "Aktuell". Die Zeile
+    // liegt bewusst mit etwas Abstand zum Seitenrand unten: Am unteren
+    // iPhone-Rand löst die Wischgeste (Home-Leiste) sonst das Verschieben der
+    // Seite aus, wenn man am Rad zieht.
+    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex items-center gap-2 px-2">
+        <div className="w-[68px] shrink-0 leading-tight tabular-nums" aria-live="off">
           {status === "error" ? (
-            <span className="text-xs text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
-          ) : current ? (
-            <div className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Aktuell</div>
+            <div className="text-[11px] text-red-600 dark:text-red-400">Kein Verlauf</div>
           ) : (
-            <>
-              <div className="text-base font-semibold whitespace-nowrap text-zinc-900 dark:text-zinc-50">
-                {formatSlotLabel(slots[index], now)} Uhr
-              </div>
-              <div className="text-[11px] whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                {formatAgo(slots[index], now)}
-              </div>
-            </>
+            <div className="text-[11px] whitespace-nowrap text-zinc-500 dark:text-zinc-400">{dateText}</div>
           )}
-          {status === "loading" && (
-            <div className="text-[11px] whitespace-nowrap text-zinc-400">Verlauf wird geladen…</div>
+          <div className="text-base font-semibold whitespace-nowrap text-zinc-900 dark:text-zinc-50">
+            {timeText}
+          </div>
+        </div>
+        <div
+          ref={wheelRef}
+          className="zeitband relative min-w-0 flex-1"
+          style={{ height: WHEEL_H }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+          role="slider"
+          aria-label="Zeitpunkt der Karte (Rad drehen)"
+          aria-valuemin={0}
+          aria-valuemax={lastIndex}
+          aria-valuenow={index}
+          aria-valuetext={current ? "Aktuell" : `${formatSlotLabel(slots[index], now)} Uhr`}
+        >
+          {width > 0 && (
+            <svg width={width} height={WHEEL_H} aria-hidden="true" className="block">
+              <defs>
+                {/* Weiche Ränder: Dort "kippt" das Rad weg. */}
+                <linearGradient id="zeitrad-rand-links" x1="0" x2="1" y1="0" y2="0">
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
+                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+                </linearGradient>
+                <linearGradient id="zeitrad-rand-rechts" x1="1" x2="0" y1="0" y2="0">
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
+                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+                </linearGradient>
+              </defs>
+              {strips}
+              {marks}
+              <rect x={0} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-links)" />
+              <rect x={width * 0.76} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-rechts)" />
+              {/* Fester Rahmen in der Mitte: der Zeitpunkt darin gilt. Weißer
+                  Rand darunter, damit er auch auf rotem Farbstrich klar bleibt. */}
+              <rect
+                x={cx - stepPx / 2 - 1}
+                y={FRAME_TOP}
+                width={stepPx + 2}
+                height={FRAME_BOTTOM - FRAME_TOP}
+                fill="none"
+                strokeWidth={5}
+                className="stroke-white dark:stroke-zinc-900"
+              />
+              <rect
+                x={cx - stepPx / 2 - 1}
+                y={FRAME_TOP}
+                width={stepPx + 2}
+                height={FRAME_BOTTOM - FRAME_TOP}
+                fill="none"
+                strokeWidth={2}
+                className="stroke-zinc-900 dark:stroke-zinc-100"
+              />
+            </svg>
           )}
         </div>
         <button
           type="button"
           onClick={() => goTo(lastIndex, 160)}
           disabled={current}
-          className={`${BUTTON_CLASS} justify-self-end px-3 text-sm font-medium`}
+          className={`${BUTTON_CLASS} px-2.5 text-sm font-medium`}
         >
           Aktuell
         </button>
-      </div>
-
-      <div
-        ref={wheelRef}
-        className="zeitband relative mt-1"
-        style={{ height: WHEEL_H }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onKeyDown={handleKeyDown}
-        tabIndex={0}
-        role="slider"
-        aria-label="Zeitpunkt der Karte (Rad drehen)"
-        aria-valuemin={0}
-        aria-valuemax={lastIndex}
-        aria-valuenow={index}
-        aria-valuetext={current ? "Aktuell" : `${formatSlotLabel(slots[index], now)} Uhr`}
-      >
-        {width > 0 && (
-          <svg width={width} height={WHEEL_H} aria-hidden="true" className="block">
-            <defs>
-              {/* Weiche Ränder: Dort "kippt" das Rad weg. */}
-              <linearGradient id="zeitrad-rand-links" x1="0" x2="1" y1="0" y2="0">
-                <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
-                <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
-              </linearGradient>
-              <linearGradient id="zeitrad-rand-rechts" x1="1" x2="0" y1="0" y2="0">
-                <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
-                <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
-              </linearGradient>
-            </defs>
-            {strips}
-            {marks}
-            <rect x={0} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-links)" />
-            <rect x={width * 0.76} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-rechts)" />
-            {/* Fester Rahmen in der Mitte: der Zeitpunkt darin gilt. Weißer
-                Rand darunter, damit er auch auf rotem Farbstrich klar bleibt. */}
-            <rect
-              x={cx - stepPx / 2 - 1}
-              y={FRAME_TOP}
-              width={stepPx + 2}
-              height={FRAME_BOTTOM - FRAME_TOP}
-              fill="none"
-              strokeWidth={5}
-              className="stroke-white dark:stroke-zinc-900"
-            />
-            <rect
-              x={cx - stepPx / 2 - 1}
-              y={FRAME_TOP}
-              width={stepPx + 2}
-              height={FRAME_BOTTOM - FRAME_TOP}
-              fill="none"
-              strokeWidth={2}
-              className="stroke-zinc-900 dark:stroke-zinc-100"
-            />
-          </svg>
-        )}
       </div>
     </div>
   );
