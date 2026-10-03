@@ -43,9 +43,11 @@ const API_BASE =
   process.env.WIND_API_BASE_URL ??
   "https://geoservices.buergernetz.bz.it/services/meteo/v1";
 
-// Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt nur HISTORY_HOURS
-// (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
-// ausgefallene Sammel-Läufe und halten die Tabelle klein.
+// Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt HISTORY_HOURS
+// (24h, siehe src/lib/wind.ts), der Zeitbalken 12h — 2 Tage reichen dafür
+// und halten die Tabelle klein. Ein ausgefallener Lauf kann nichts zu früh
+// löschen, weil das Aufräumen in genau diesem Lauf steckt. Die Anzeige darf
+// höchstens so lang sein wie die Aufbewahrung.
 const RETENTION_DAYS = 2;
 
 // SLF-Stationen: Das SLF liefert die letzten 24 h mit, deshalb schreibt jeder

@@ -85,12 +85,22 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
  * stehen bewusst hier zentral, damit das Panel (WindHistoryPanel) und die
  * beiden APIs (/api/history, /api/forecast) nicht auseinanderlaufen können.
  *
+ * 24 h seit Okt. 2026 (vorher 12 h; Kompromiss des Projektbesitzers zwischen
+ * 12 und 48 h). Beim Öffnen sieht der Verlaufsbalken genauso aus wie vorher —
+ * er springt auf "jetzt", ältere Werte erreicht man durch Wischen nach links.
+ * Der Zeitbalken unter der Karte hat sein EIGENES Fenster (TIMELINE_HOURS,
+ * weiter unten) und bleibt bei 12 h.
+ *
  * Achtung: Die Supabase-Edge-Function
  * (supabase/functions/fetch-wind-forecasts) ist Deno-Code und kann hier NICHT
  * importieren – dort stehen eigene, abgeleitete Konstanten (PAST_HOURS /
- * FORECAST_HOURS), die bei einer Änderung mitgezogen werden müssen.
+ * FORECAST_HOURS), die bei einer Änderung geprüft werden müssen. PAST_HOURS
+ * darf kleiner als HISTORY_HOURS sein (Begründung dort).
+ *
+ * Mehr als 48 h gehen nicht ohne längere Aufbewahrung in der Datenbank
+ * (RETENTION_DAYS in /api/collect und in der Edge Function, beide 2 Tage).
  */
-export const HISTORY_HOURS = 12;
+export const HISTORY_HOURS = 24;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
@@ -104,9 +114,18 @@ export const FUTURE_MARGIN_HOURS = 4;
  */
 export const TIMELINE_STEP_MINUTES = 10;
 export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
+
+/**
+ * Zeitfenster des Zeitbalkens unter der Karte (/api/timeline, TimeSlider).
+ * Bewusst getrennt von HISTORY_HOURS und kürzer: /api/timeline lädt beim
+ * Seitenaufruf und alle 10 min die Werte ALLER Stationen — doppelt so viele
+ * Stunden hieße doppelt so viele Daten bei jedem Aufruf, und das Zeitrad wäre
+ * doppelt so lang zu drehen.
+ */
+export const TIMELINE_HOURS = 12;
 /** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
 export const TIMELINE_SLOT_COUNT =
-  HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
+  TIMELINE_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
 /**
  * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
@@ -137,7 +156,7 @@ export function snapToGrid(t: number): number {
 
 /**
  * Die Rasterzeitpunkte des Zeitbalkens: aufsteigend, der LETZTE Eintrag ist
- * "jetzt" (auf das Raster eingerastet), der erste liegt HISTORY_HOURS davor.
+ * "jetzt" (auf das Raster eingerastet), der erste liegt TIMELINE_HOURS davor.
  * Hängt nur an der Uhr — der Balken kann also gezeichnet werden, bevor
  * irgendwelche Daten geladen sind.
  */

@@ -116,7 +116,7 @@ einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
 auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
 Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
 `measured_at`), und Einträge älter als 2 Tage werden bei jedem Lauf
-gelöscht (die Anzeige braucht nur 12 Stunden, der Rest ist Puffer).
+gelöscht (der Verlaufsbalken zeigt 24 Stunden, der Zeitbalken 12).
 
 **Wenn `wind_measurements` schon vor dieser Änderung angelegt wurde:**
 einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
@@ -154,8 +154,8 @@ mitschicken.
 - **Wetterdienst nicht erreichbar / keine Werte:** Status `502`.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
-letzten 12 Stunden einer Station (für den Verlaufsbalken).
-`/api/timeline` liefert dieselben 12 Stunden für **alle** Stationen
+letzten 24 Stunden einer Station (für den Verlaufsbalken).
+`/api/timeline` liefert die letzten 12 Stunden für **alle** Stationen
 gemeinsam (für den Zeitbalken unter der Karte, siehe unten).
 
 ### Benötigte Zugangsdaten
@@ -220,13 +220,15 @@ curl -X POST https://<deine-vercel-domain>/api/collect \
 Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
 `200` samt `{"ok":true,"saved":…}`.
 
-## Verlaufsbalken (12h-Windverlauf beim Klick auf eine Station)
+## Verlaufsbalken (24h-Windverlauf beim Klick auf eine Station)
 
 Der **Verlaufsbalken** ist das Panel, das unten über die volle
 Bildschirmbreite erscheint, sobald man auf der Karte auf eine Station
-klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
+klickt. Er zeigt den Windverlauf der letzten 24 Stunden dieser Station
+(beim Öffnen steht „jetzt" im Bild, Älteres erreicht man durch Wischen nach
+links):
 
-- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
+- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 24 h" bis
   „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
 - zwei weisse Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
   den Farbflächen der Windstärke-Skala (dieselbe Skala wie die Windpfeile
@@ -317,9 +319,9 @@ und z. B. sehen, wie der Föhn durchbricht.
   Stationen im **gerade sichtbaren Kartenausschnitt**. So sieht man schon vor
   dem Drehen, wann es in diesem Gebiet aufgefrischt hat.
 - **Schrittweite 10 Minuten**, genau der Takt, in dem die Stationen messen.
-- **Zeitraum: die letzten 12 Stunden** (dieselben `HISTORY_HOURS` wie beim
-  Verlaufsbalken). Weiter zurück geht es bewusst nicht, auch wenn die Datenbank
-  2 Tage aufbewahrt.
+- **Zeitraum: die letzten 12 Stunden** (`TIMELINE_HOURS`, bewusst kürzer als
+  die 24 h des Verlaufsbalkens). Weiter zurück geht es bewusst nicht: Der
+  Zeitbalken lädt die Werte aller Stationen bei jedem Seitenaufruf.
 - **Öffnet man eine Station, verschwindet der Zeitbalken:** Die Karte zeigt dann
   nur die aktuellen Werte, und der Verlaufsbalken der Station reicht bis zum
   unteren Rand. Schließt man ihn, ist der Zeitbalken wieder da (auf „Aktuell").

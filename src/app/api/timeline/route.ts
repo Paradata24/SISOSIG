@@ -2,17 +2,18 @@ import { NextResponse } from "next/server";
 import {
   buildTimelineSlots,
   GRID_MS,
-  HISTORY_HOURS,
   snapToGrid,
   SOURCE_INTERVAL_MINUTES,
+  TIMELINE_HOURS,
   TIMELINE_STEP_MINUTES,
   type WindStation,
   type TimelinePayload,
   type TimelineSeries,
 } from "@/lib/wind";
 
-// Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
-// (aktuell 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
+// Liefert die Messwerte ALLER Stationen der letzten TIMELINE_HOURS Stunden
+// (aktuell 12; der Verlaufsbalken reicht weiter zurück, siehe src/lib/wind.ts)
+// aus der Supabase-Tabelle wind_measurements — die Datengrundlage
 // für den Zeitbalken unter der Karte (TimeSlider.tsx).
 //
 // Aufruf: /api/timeline  (keine Parameter)
@@ -214,7 +215,7 @@ export async function GET() {
   }
 
   const payload: TimelinePayload = {
-    hours: HISTORY_HOURS,
+    hours: TIMELINE_HOURS,
     stepMinutes: TIMELINE_STEP_MINUTES,
     generatedAt: times[times.length - 1],
     times,

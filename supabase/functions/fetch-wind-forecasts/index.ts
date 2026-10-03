@@ -137,9 +137,14 @@ function insideIconCh1(station: Station): boolean {
 // 3-Stunden-Takt des Modells, damit ein Anstoß alle 3 h sicher durchkommt.
 const MIN_REFETCH_WITHOUT_META_MS = 170 * 60 * 1000;
 
-// Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
+// Rollendes Zeitfenster je Lauf. Bezug: HISTORY_HOURS (24) und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
-// importieren, deshalb bei einer Änderung beide Stellen anfassen.
+// importieren, deshalb bei einer Änderung beide Stellen prüfen.
+// PAST_HOURS darf KLEINER als HISTORY_HOURS sein: Gespeichert wird per Upsert
+// und erst nach RETENTION_DAYS gelöscht, ältere Stunden aus früheren Läufen
+// bleiben also stehen. Die 12–24 h zurückliegenden Stunden im Verlaufsbalken
+// kommen so aus den Läufen von vor bis zu 12 h. Mehr als RETENTION_DAYS kann
+// der Verlaufsbalken aber nicht zeigen.
 const PAST_HOURS = 12;
 // Deutlich MEHR als FUTURE_MARGIN_HOURS (4): Neu geholt wird nur noch alle
 // 3 Stunden (bei jedem neuen Modelllauf, s. o.), und Open-Meteo zählt ab der
@@ -150,7 +155,7 @@ const PAST_HOURS = 12;
 // 2 Wochen Zeitraum). /api/forecast schneidet den Überhang wieder ab.
 const FORECAST_HOURS = 12;
 // Aufbewahrung wie bei den Messwerten (/api/collect): 2 Tage reichen für die
-// 12h-Anzeige mit großem Puffer.
+// 24h-Anzeige im Verlaufsbalken.
 const RETENTION_DAYS = 2;
 
 // Stationen pro Open-Meteo-Request. Überschreibbar für Tests, damit sich
