@@ -214,8 +214,11 @@ also alle 3 h, wirklich neue Werte).
   muss sichtbar bleiben. Sie steht (wie Esri, CARTO, OpenStreetMap) seit
   Sept. 2026 **ganz unten im Menü-Popup unter „Quellen"** (`MAP_SOURCES` in
   `src/lib/wind.ts`) — nicht entfernen.
-- **Auf der Karte unten steht nur „Zuletzt aktualisiert"**: Leaflets
-  Quellen-Zeile unten rechts ist per `attributionControl={false}`
+- **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
+  mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
+  `WindMap` meldet jeden Abruf über `onDataLoaded`, `WindApp` reicht ihn an
+  `TimeSlider` weiter. Bei geöffneter Station (Zeitbalken weg) steht er nirgends.
+  Leaflets Quellen-Zeile unten rechts ist per `attributionControl={false}`
   abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
   Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
 - **Zeitbalken = Zeitrad** (dritter Umbau, Okt. 2026, Wunsch des Projektbesitzers,
@@ -227,7 +230,7 @@ also alle 3 h, wirklich neue Werte).
   auslaufen, es rastet immer auf einem 10-Minuten-Schritt ein; Antippen springt
   zur Stelle. **Alles in EINER Zeile** (Wunsch des Projektbesitzers): links Datum
   und Uhrzeit des gewählten Schritts, in der Mitte das Rad, rechts der Knopf
-  „Aktuell". Die Zeile hat unten Abstand: Am iPhone-Rand ganz unten löst die
+  „Aktuell"; darunter mittig „Zuletzt aktualisiert". Die Zeile hat unten Abstand: Am iPhone-Rand ganz unten löst die
   Wischgeste (Home-Leiste) sonst das Verschieben der Seite aus (Rückmeldung
   des Projektbesitzers). Stellschrauben als Konstanten oben in der Datei
   (`ANGLE_PER_SLOT_DEG`, `DRAG_PX_PER_SLOT`, `FLING_*`). Die Bewegung ist **bewusst

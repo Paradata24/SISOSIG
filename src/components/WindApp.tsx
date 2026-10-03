@@ -35,6 +35,10 @@ export default function WindApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
+  // steht als "Zuletzt aktualisiert" mittig unter dem Rad im Zeitbalken.
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   // --- Refresh-Button ---
   // Zähler statt Ja/Nein: jede Erhöhung ist ein neuer Auftrag an Karte und
   // Verlaufsbalken, sofort frisch zu laden (siehe refreshToken in WindMap).
@@ -345,6 +349,7 @@ export default function WindApp() {
           onViewportStationsChange={setViewportCodes}
           selectedStationCode={selectedStationCode}
           onSelectStation={handleSelectStation}
+          onDataLoaded={setLastUpdated}
         />
       </main>
       {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Bei
@@ -358,6 +363,7 @@ export default function WindApp() {
           onChange={setSelectedTime}
           status={timelineStatus}
           stripColors={stripColors}
+          lastUpdated={lastUpdated}
         />
       )}
     </>

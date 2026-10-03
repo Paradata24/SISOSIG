@@ -20,6 +20,7 @@ export default function WindMapLoader({
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
+  onDataLoaded,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -32,6 +33,8 @@ export default function WindMapLoader({
   /** Geöffnete Station (null = keine), siehe WindMap. */
   selectedStationCode: string | null;
   onSelectStation: (stationCode: string | null) => void;
+  /** Zeitpunkt jedes erfolgreichen Abrufs der Live-Werte, siehe WindMap. */
+  onDataLoaded: (time: Date) => void;
 }) {
   return (
     <WindMap
@@ -42,6 +45,7 @@ export default function WindMapLoader({
       onViewportStationsChange={onViewportStationsChange}
       selectedStationCode={selectedStationCode}
       onSelectStation={onSelectStation}
+      onDataLoaded={onDataLoaded}
     />
   );
 }

@@ -610,6 +610,7 @@ export default function WindMap({
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
+  onDataLoaded,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -629,10 +630,14 @@ export default function WindMap({
   selectedStationCode: string | null;
   /** Station öffnen (Code) bzw. schließen (null). Muss eine feste Referenz sein. */
   onSelectStation: (stationCode: string | null) => void;
+  /**
+   * Meldet jeden erfolgreichen Abruf der Live-Werte (Zeitpunkt). WindApp zeigt
+   * ihn als "Zuletzt aktualisiert" unter dem Rad. Muss eine feste Referenz sein.
+   */
+  onDataLoaded: (time: Date) => void;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
   // useMemo verhindert, dass sie bei jedem Neuzeichnen (z. B. beim Zoomen)
@@ -732,7 +737,7 @@ export default function WindMap({
         }
         setError(null);
         setStations(data as WindStation[]);
-        setLastUpdated(new Date());
+        onDataLoaded(new Date());
       } catch {
         if (!cancelled && isInitial) {
           setError("Winddaten konnten nicht geladen werden");
@@ -765,7 +770,7 @@ export default function WindMap({
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [onDataLoaded]);
 
   // Refresh-Button: sofort frische Werte holen. Beim ersten Aufbau (Zähler 0)
   // nichts tun — da lädt der Effekt oben ohnehin schon. Wie beim Takt bleiben
@@ -874,17 +879,9 @@ export default function WindMap({
         <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
         <ContainerResizeWatcher />
       </MapContainer>
-      {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, bleibt die
-          Plakette weg — die Uhrzeit steht dann ohnehin im Zeitbalken. */}
-      {!historyFrame && lastUpdated ? (
-        <div className="absolute bottom-4 left-4 z-[1000] rounded-md bg-white/85 px-2 py-1 text-xs text-zinc-600 shadow-md dark:bg-zinc-900/80 dark:text-zinc-300">
-          Zuletzt aktualisiert:{" "}
-          {lastUpdated.toLocaleTimeString("de-DE", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </div>
-      ) : null}
+      {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
+          unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
+          Projektbesitzers). */}
       {error && (
         <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
           {error}

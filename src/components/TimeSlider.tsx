@@ -147,6 +147,7 @@ export default function TimeSlider({
   onChange,
   status,
   stripColors,
+  lastUpdated,
 }: {
   /** Rasterzeitpunkte (Epoch-ms), aufsteigend; der letzte ist "jetzt". */
   slots: number[];
@@ -156,6 +157,8 @@ export default function TimeSlider({
   status: TimelineStatus;
   /** Farbe je Rasterzeitpunkt (parallel zu slots), siehe buildStripColors. */
   stripColors: (string | null)[] | null;
+  /** Zeitpunkt des letzten Abrufs der Live-Werte (null = noch keiner). */
+  lastUpdated: Date | null;
 }) {
   const lastIndex = slots.length - 1;
   const now = slots[lastIndex];
@@ -430,7 +433,7 @@ export default function TimeSlider({
     // liegt bewusst mit etwas Abstand zum Seitenrand unten: Am unteren
     // iPhone-Rand löst die Wischgeste (Home-Leiste) sonst das Verschieben der
     // Seite aus, wenn man am Rad zieht.
-    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-center gap-2 px-2">
         <div className="w-[68px] shrink-0 leading-tight tabular-nums" aria-live="off">
           {status === "error" ? (
@@ -507,6 +510,15 @@ export default function TimeSlider({
         >
           Aktuell
         </button>
+      </div>
+      {/* "Zuletzt aktualisiert" mittig unter dem Rad (früher als Plakette auf
+          der Karte). Zusammen mit dem größeren unteren Abstand hebt es das
+          Rad um rund 25 px vom Seitenrand weg (Wunsch des Projektbesitzers,
+          wegen der iPhone-Wischgeste unten). */}
+      <div className="mt-1.5 text-center text-[11px] leading-4 text-zinc-500 tabular-nums dark:text-zinc-400">
+        {lastUpdated
+          ? `Zuletzt aktualisiert: ${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+          : "\u00A0"}
       </div>
     </div>
   );
