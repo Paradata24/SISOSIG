@@ -176,6 +176,10 @@ also alle 3 h, wirklich neue Werte).
     Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
     bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
+  - **Aktiver Filter steht oben mittig auf der Karte** (Okt. 2026, Wunsch des
+    Projektbesitzers), immer in Großbuchstaben, auch „ALLE"
+    (`getStationFilterMapLabel` in `src/lib/wind.ts`, Schild in
+    `src/components/WindMap.tsx`; eine Fehlermeldung steht darunter).
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Standardkarte ist OpenTopoMap in sehr hellen Graustufen** (Sept. 2026,
