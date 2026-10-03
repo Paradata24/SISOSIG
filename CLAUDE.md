@@ -225,8 +225,10 @@ also alle 3 h, wirklich neue Werte).
   (Striche rücken zusammen, werden blasser, der Farbstrich wird dünner).
   Nach **rechts** ziehen = zurück in der Zeit. Loslassen mit Schwung lässt es
   auslaufen, es rastet immer auf einem 10-Minuten-Schritt ein; Antippen springt
-  zur Stelle. Darüber die gewählte Uhrzeit mittig und rechts der Knopf
-  „Aktuell". Stellschrauben als Konstanten oben in der Datei
+  zur Stelle. **Darunter** (ganz unten) die gewählte Uhrzeit mittig und rechts
+  der Knopf „Aktuell" — das Rad liegt bewusst darüber und nicht ganz unten:
+  Am iPhone-Rand unten löst die Wischgeste (Home-Leiste) sonst das
+  Verschieben der Seite aus (Rückmeldung des Projektbesitzers). Stellschrauben als Konstanten oben in der Datei
   (`ANGLE_PER_SLOT_DEG`, `DRAG_GAIN`, `FLING_*`). Die Bewegung ist **bewusst
   eigene Physik** per Zeigerereignissen, nicht Browser-Scrollen.
   - Im Rad liegt ein **Farbstrich**: Windfarbe der windigsten 10 % der

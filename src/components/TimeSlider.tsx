@@ -429,43 +429,15 @@ export default function TimeSlider({
     // Unterstes Element der Seite: der zusätzliche untere Innenabstand hält
     // alles über dem Bedienbalken, den iPhones unten einblenden (auf anderen
     // Geräten ist env(...) gleich 0).
+    // Reihenfolge von oben: erst das Rad, darunter Uhrzeit und Knopf
+    // "Aktuell". Das Rad sitzt bewusst NICHT ganz unten: Am unteren Rand des
+    // iPhones löst eine Wischgeste die Seite/App-Wechsel aus (Home-Leiste);
+    // wer dort das Rad zieht, verschiebt stattdessen die Seite (Rückmeldung
+    // des Projektbesitzers). Unten stehen deshalb nur Elemente zum Antippen.
     <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
-      {/* Gewählte Uhrzeit mittig, rechts der Knopf "Aktuell". Die linke Spalte
-          ist leer, damit die Uhrzeit genau über der Mitte des Rads steht. */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-2">
-        <div />
-        <div className="min-w-0 text-center leading-tight tabular-nums">
-          {status === "error" ? (
-            <span className="text-xs text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
-          ) : current ? (
-            <div className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Aktuell</div>
-          ) : (
-            <>
-              <div className="text-base font-semibold whitespace-nowrap text-zinc-900 dark:text-zinc-50">
-                {formatSlotLabel(slots[index], now)} Uhr
-              </div>
-              <div className="text-[11px] whitespace-nowrap text-zinc-500 dark:text-zinc-400">
-                {formatAgo(slots[index], now)}
-              </div>
-            </>
-          )}
-          {status === "loading" && (
-            <div className="text-[11px] whitespace-nowrap text-zinc-400">Verlauf wird geladen…</div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => goTo(lastIndex, 160)}
-          disabled={current}
-          className={`${BUTTON_CLASS} justify-self-end px-3 text-sm font-medium`}
-        >
-          Aktuell
-        </button>
-      </div>
-
       <div
         ref={wheelRef}
-        className="zeitband relative mt-1"
+        className="zeitband relative"
         style={{ height: WHEEL_H }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -519,6 +491,39 @@ export default function TimeSlider({
             />
           </svg>
         )}
+      </div>
+
+      {/* Gewählte Uhrzeit mittig, rechts der Knopf "Aktuell". Die linke Spalte
+          ist leer, damit die Uhrzeit genau unter der Mitte des Rads steht. */}
+      <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-2">
+        <div />
+        <div className="min-w-0 text-center leading-tight tabular-nums">
+          {status === "error" ? (
+            <span className="text-xs text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
+          ) : current ? (
+            <div className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Aktuell</div>
+          ) : (
+            <>
+              <div className="text-base font-semibold whitespace-nowrap text-zinc-900 dark:text-zinc-50">
+                {formatSlotLabel(slots[index], now)} Uhr
+              </div>
+              <div className="text-[11px] whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                {formatAgo(slots[index], now)}
+              </div>
+            </>
+          )}
+          {status === "loading" && (
+            <div className="text-[11px] whitespace-nowrap text-zinc-400">Verlauf wird geladen…</div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => goTo(lastIndex, 160)}
+          disabled={current}
+          className={`${BUTTON_CLASS} justify-self-end px-3 text-sm font-medium`}
+        >
+          Aktuell
+        </button>
       </div>
     </div>
   );
