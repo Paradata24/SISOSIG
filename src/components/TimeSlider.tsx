@@ -1,64 +1,88 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  FUTURE_MARGIN_HOURS,
-  getWindColor,
-  GRID_MS,
-  TIMELINE_STEP_PX,
-  type TimelinePayload,
-} from "@/lib/wind";
+import { getWindColor, GRID_MS, type TimelinePayload } from "@/lib/wind";
 
-// Zeitbalken unter der Karte ("Zeitband", Umbau Sept. 2026).
+// Zeitbalken unter der Karte — ein Zeitrad.
 //
-// Idee (vom Projektbesitzer aus mehreren Vorschau-Varianten ausgewählt):
-// Der Balken ist ein Stück ZEITACHSE im selben Maßstab wie der Verlaufsbalken
-// (TIMELINE_STEP_PX = Spaltenabstand dort). Man WISCHT das Band nach links oder
-// rechts; eine feste schwarze Linie in der Mitte zeigt, welchen Zeitpunkt die
-// Karte gerade darstellt. Nach rechts wischen = zurück in der Zeit.
-// Darunter ein dünner Farbstrich: je 10-Minuten-Schritt die Windfarbe der
-// windigsten Stationen im gerade sichtbaren Kartenausschnitt (siehe
-// buildStripColors). So sieht man ohne Suchen, wann es aufgefrischt hat —
-// z. B. wann der Föhn durchgebrochen ist.
+// Idee (Wunsch des Projektbesitzers, Vorbild: die Höhenauswahl bei
+// Meteoparapente): Der Zeitbalken sieht aus wie ein waagrecht liegendes Rad,
+// das man nach vorne und hinten dreht. In der Mitte steht ein fester
+// Rahmen — der Zeitpunkt unter dem Rahmen ist der, den die Karte zeigt.
+// Zu den Rändern hin "kippt" das Rad weg: Striche und Zahlen rücken enger
+// zusammen und werden blasser, wie bei einer Walze.
 //
-// Farben bewusst schwarz/grau wie der Menü-Knopf (früher grün, Wunsch des
-// Projektbesitzers). Der Zustand "jetzt" heißt überall "Aktuell" (nicht
-// "Live"/"Jetzt", ebenfalls Wunsch des Projektbesitzers).
+// Bedienung: Den Finger (oder die Maus) auf das Rad legen und ziehen. Nach
+// RECHTS ziehen dreht zurück in der Zeit, nach LINKS vor (wie beim Greifen
+// einer Zeitleiste). Loslassen mit Schwung lässt das Rad auslaufen, es rastet
+// immer auf einem 10-Minuten-Schritt ein. Ein kurzes Antippen springt zu der
+// angetippten Stelle. Der Knopf "Aktuell" dreht ganz nach vorne zurück.
 //
-// Technik: ein ganz normaler waagrechter Scrollbereich mit CSS-Einrasten
-// (scroll-snap) auf jedem 10-Minuten-Schritt. Wischen am Handy und das
-// Nachgleiten nach dem Loslassen macht also der Browser selbst — das ist
-// flüssiger und zuverlässiger als eigene Zeiger-Rechnerei. Nur für Maus,
-// Mausrad und Tastatur gibt es kleine Ergänzungen (siehe unten).
-// Die Position im Band ist direkt der Zeitpunkt: scrollLeft / TIMELINE_STEP_PX
-// = Index in der Slot-Liste. Links und rechts ist je eine halbe Bandbreite
-// Luft, damit auch der erste und der letzte Zeitpunkt bis zur Mitte kommen.
+// Im Rad liegt außerdem ein Farbstrich: je 10-Minuten-Schritt die Windfarbe
+// der windigsten Stationen im sichtbaren Kartenausschnitt (buildStripColors).
+// So sieht man schon vor dem Drehen, wann es aufgefrischt hat.
+//
+// Technik: Das Rad wird als SVG selbst gezeichnet, die Bewegung rechnet die
+// Komponente selbst (Zeigerereignisse, eigener Auslauf per requestAnimationFrame).
+// Die frühere Fassung mit dem Browser-eigenen Scrollen und Einrasten ließ sich
+// am Handy nicht benutzen (Schwung nicht steuerbar, Position kämpfte gegen den
+// Finger) — deshalb hier bewusst eigene, einfache Physik.
+//
+// Farben schwarz/grau wie der Menü-Knopf (kein Grün, Wunsch des
+// Projektbesitzers). Der Zustand "jetzt" heißt "Aktuell". Bei geöffneter
+// Station ist der Zeitbalken ganz ausgeblendet (WindApp).
 
 export type TimelineStatus = "idle" | "loading" | "ready" | "error";
 
-// Tempo beim Abspielen: so lange steht jeder 10-Minuten-Schritt. 73 Schritte
-// × 300 ms ≈ 22 s für die ganzen 12 Stunden.
-const PLAY_STEP_MS = 300;
 // Welcher Wert des Kartenausschnitts den Farbstrich bestimmt: 0,9 = die
 // windigsten 10 % der Stationen. Der Mittelwert würde einen Föhndurchbruch in
 // einem einzelnen Tal zwischen vielen ruhigen Stationen verschlucken, das
 // Maximum dagegen jede einzelne Gipfelstation hervorheben.
 const STRIP_QUANTILE = 0.9;
-// Die Prognose-Reserve rechts von "jetzt" ist (wie im Verlaufsbalken) halb so
-// dicht wie die Vergangenheit. Sie dient nur der Orientierung: Die Karte hat
-// für die Zukunft keine Werte, das Band rastet deshalb auf "jetzt" zurück.
-const FUTURE_STEP_PX = TIMELINE_STEP_PX / 2;
-const FUTURE_WIDTH_PX = ((FUTURE_MARGIN_HOURS * 3_600_000) / GRID_MS) * FUTURE_STEP_PX;
-// Breite der km/h-Spalte rechts im Verlaufsbalken (w-10). Das Band lässt
-// rechts genauso viel Platz, damit seine Mittellinie genau unter der
-// Zeitmarke des Verlaufsbalkens steht, wenn beide übereinander stehen.
-const Y_AXIS_GUTTER_CLASS = "w-10";
-// Senkrechte Aufteilung des Bands (px).
-const BAND_H = 34;
-const LABEL_Y = 11; // Grundlinie der Uhrzeiten
-const TICK_TOP = 14;
-const STRIP_Y = 25;
-const STRIP_H = 7;
+
+// --- Geometrie des Rads ---
+// Jeder 10-Minuten-Schritt dreht das Rad um diesen Winkel weiter (Grad).
+const ANGLE_PER_SLOT_DEG = 6;
+// Bis zu diesem Winkel von der Mitte aus ist das Rad sichtbar; der Rand der
+// Anzeige liegt genau dort. Ein Rad mit 80° wirkt rund, ohne dass die
+// äußersten Striche zu einem Klumpen verschmelzen.
+const MAX_ANGLE_DEG = 80;
+const ANGLE_PER_SLOT = (ANGLE_PER_SLOT_DEG * Math.PI) / 180;
+const MAX_ANGLE = (MAX_ANGLE_DEG * Math.PI) / 180;
+// Wie weit das Rad dreht, wenn der Finger sich um eine Strichbreite in der
+// Mitte bewegt. 1 = Strich folgt dem Finger genau; etwas mehr lässt die
+// 12 Stunden mit weniger Wischen durchlaufen.
+const DRAG_GAIN = 1.5;
+// Ab dieser Fingerbewegung (px) gilt eine Berührung als Ziehen, nicht mehr als Antippen.
+const TAP_MAX_MOVE_PX = 6;
+const TAP_MAX_MS = 350;
+// Auslauf: Das Rad rollt in dieser Zeitkonstante (ms) aus; das Ziel ist die
+// Position, an der der Schwung ohne Reibung verbraucht wäre, aufgerundet auf
+// einen ganzen Schritt. Eine große Zeitkonstante = langes Auslaufen.
+const FLING_TAU_MS = 320;
+// Schnelles Einrasten nach langsamem Loslassen, Antippen, Tasten, "Aktuell".
+const SNAP_TAU_MS = 110;
+// Unter dieser Geschwindigkeit (Schritte pro ms) gilt das Loslassen als
+// "ohne Schwung".
+const FLING_MIN_SPEED = 0.004;
+// Obergrenze für den Schwung: Ein sehr schneller Wisch soll das Rad nicht über
+// die ganzen 12 Stunden schleudern. 0,06 Schritte/ms ≙ höchstens rund 3 Stunden
+// Auslauf (0,06 · 320 ms ≈ 19 Schritte).
+const FLING_MAX_SPEED = 0.06;
+// Aus den letzten Bewegungen der letzten so vielen ms wird die Geschwindigkeit
+// beim Loslassen bestimmt.
+const VELOCITY_WINDOW_MS = 90;
+
+// --- Senkrechte Aufteilung (px) ---
+const WHEEL_H = 52;
+const CENTER_Y = 36; // Mitte des Farbstrichs
+const STRIP_HALF = 9; // halbe Höhe des Farbstrichs in der Mitte des Rads
+const STRIP_EDGE_FACTOR = 0.5; // Höhe am Rand relativ zur Mitte ("Walze")
+const HOUR_TICK = 9;
+const MINUTE_TICK = 5;
+const TICK_GAP = 1.5;
+const FRAME_TOP = 15;
+const FRAME_BOTTOM = 49;
 // Farbe für Schritte ohne Messwerte (Daten fehlen oder noch nicht geladen).
 const STRIP_EMPTY = "#e4e4e7"; // zinc-200
 
@@ -93,15 +117,15 @@ export function buildStripColors(
   });
 }
 
-/** "14:40 Uhr"; über Mitternacht hinweg zusätzlich der Wochentag. */
+/** "14:40"; über Mitternacht hinweg zusätzlich der Wochentag. */
 function formatSlotLabel(time: number, now: number): string {
   const date = new Date(time);
   const hhmm = date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  // Ein 12-Stunden-Fenster reicht regelmäßig über Mitternacht. "23:50 Uhr"
-  // allein wäre dann zweideutig, deshalb der Wochentag davor.
-  if (new Date(now).toDateString() === date.toDateString()) return `${hhmm} Uhr`;
+  // Ein 12-Stunden-Fenster reicht regelmäßig über Mitternacht. "23:50" allein
+  // wäre dann zweideutig, deshalb der Wochentag davor.
+  if (new Date(now).toDateString() === date.toDateString()) return hhmm;
   const weekday = date.toLocaleDateString("de-DE", { weekday: "short" });
-  return `${weekday} ${hhmm} Uhr`;
+  return `${weekday} ${hhmm}`;
 }
 
 /** "vor 3 h 20 min" — wie weit der gewählte Zeitpunkt zurückliegt. */
@@ -124,7 +148,7 @@ function formatHourLabel(date: Date): string {
 
 // Knopf-Stil wie der Menü-Knopf im Titelbalken: eckig, schwarzer Rand.
 const BUTTON_CLASS =
-  "flex h-9 shrink-0 items-center justify-center border border-black bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-white dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
+  "flex h-10 shrink-0 items-center justify-center border border-black bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-white dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
 
 export default function TimeSlider({
   slots,
@@ -152,333 +176,349 @@ export default function TimeSlider({
       : Math.min(lastIndex, Math.max(0, Math.round((selectedTime - slots[0]) / GRID_MS)));
   const current = selectedTime === null;
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Halbe Breite des Bands = Luft links/rechts (siehe oben). Gemessen, weil
-  // sie von der Bildschirmbreite abhängt.
-  const [halfWidth, setHalfWidth] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  // Gerade laufendes Ziehen mit der Maus (siehe handlePointerDown).
-  const dragRef = useRef<{ x: number; scroll: number } | null>(null);
+  const wheelRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
 
-  // Die jeweils neuesten Werte für Zuhörer, die nicht bei jedem Neuzeichnen
-  // neu angemeldet werden sollen (Scrollen, Mausrad, Abspiel-Takt).
+  // Position des Rads in Schritten (Kommazahl: zwischen zwei Schritten). Als
+  // Ref UND als State: die Ref ist für die Bewegungsrechnung immer aktuell,
+  // der State löst das Neuzeichnen aus.
+  const posRef = useRef(index);
+  const [pos, setPosState] = useState(index);
+  const setPos = (value: number) => {
+    posRef.current = value;
+    setPosState(value);
+  };
+
+  const rafRef = useRef(0);
+  // true, solange das Rad von selbst ausläuft/einrastet. Dann darf die
+  // Angleichung an einen von außen geänderten Zeitpunkt (Effekt unten) nicht
+  // dazwischenfunken.
+  const animatingRef = useRef(false);
+  const dragRef = useRef<{
+    startX: number;
+    startPos: number;
+    startTime: number;
+    moved: boolean;
+    samples: { t: number; pos: number }[];
+  } | null>(null);
+
+  // Die jeweils neuesten Werte für Funktionen, die über mehrere Bilder laufen.
   const latest = useRef({ index, lastIndex, slots, onChange });
   useEffect(() => {
     latest.current = { index, lastIndex, slots, onChange };
   });
 
-  // Index → Zeitpunkt melden. Ganz rechts IST "jetzt" → null (aktuell).
-  const select = (i: number) => {
-    const { lastIndex: last, slots: s, onChange: change } = latest.current;
+  // Schritt-Nummer → Zeitpunkt melden. Ganz vorne IST "jetzt" → null (aktuell).
+  // Nur bei einer echten Änderung: Beim Drehen kommt das 60-mal pro Sekunde,
+  // und jede Meldung lässt die Karte neu zeichnen.
+  const report = (i: number) => {
+    const { index: shown, lastIndex: last, slots: s, onChange: change } = latest.current;
     const clamped = Math.min(last, Math.max(0, i));
+    if (clamped === shown) return;
+    latest.current.index = clamped;
     change(clamped >= last ? null : s[clamped]);
   };
 
-  // Band gezielt auf einen Schritt stellen (Tastatur, Maus, Knöpfe). Das
-  // Scroll-Ereignis danach meldet den neuen Zeitpunkt über handleScroll.
-  const scrollToIndex = (i: number) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const clamped = Math.min(latest.current.lastIndex, Math.max(0, i));
-    el.scrollLeft = clamped * TIMELINE_STEP_PX;
-    select(clamped);
+  // Rad sanft auf `target` (ganze Schritte) laufen lassen. `tau` bestimmt, wie
+  // zügig (kleiner = schneller). Läuft auch den Auslauf nach dem Loslassen.
+  const animateTo = (target: number, tau: number) => {
+    cancelAnimationFrame(rafRef.current);
+    animatingRef.current = true;
+    let last = performance.now();
+    const step = (time: number) => {
+      const dt = Math.min(48, time - last);
+      last = time;
+      const from = posRef.current;
+      const next = from + (target - from) * (1 - Math.exp(-dt / tau));
+      if (Math.abs(target - next) < 0.02) {
+        setPos(target);
+        report(target);
+        animatingRef.current = false;
+        return;
+      }
+      setPos(next);
+      report(Math.round(next));
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
   };
+  const clampPos = (value: number) => Math.min(latest.current.lastIndex, Math.max(0, value));
+  const goTo = (i: number, tau = SNAP_TAU_MS) => animateTo(clampPos(Math.round(i)), tau);
 
-  // Breite beobachten.
+  // Kommt der Zeitpunkt von AUSSEN (Knopf "Aktuell" im Refresh, oder die
+  // Slot-Liste rückt nach 10 min weiter), das Rad nachdrehen. Beim eigenen
+  // Drehen stimmt die Position schon (und animatingRef/dragRef sind gesetzt).
   useEffect(() => {
-    const el = scrollRef.current;
+    if (dragRef.current || animatingRef.current) return;
+    if (Math.round(posRef.current) !== index) goTo(index, 160);
+    // goTo/animateTo lesen nur Refs und brauchen deshalb nicht in die Liste.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index]);
+
+  // Breite beobachten (Handy drehen, Fenster ändern).
+  useEffect(() => {
+    const el = wheelRef.current;
     if (!el) return;
-    const update = () => setHalfWidth(Math.round(el.clientWidth / 2));
+    const update = () => setWidth(el.clientWidth);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
-  // Kommt der Zeitpunkt von AUSSEN (Abspielen, "Aktuell"-Knopf, Refresh, oder
-  // die Slot-Liste rückt nach 10 min weiter), das Band nachziehen. Beim
-  // Wischen selbst ist die Position schon richtig (Abweichung < ½ Schritt) —
-  // dann wird bewusst NICHT geschrieben, sonst würde das Nachgleiten des
-  // Fingers am Handy abgewürgt.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || halfWidth === 0 || dragRef.current) return;
-    const target = index * TIMELINE_STEP_PX;
-    if (Math.abs(el.scrollLeft - target) > TIMELINE_STEP_PX / 2) el.scrollLeft = target;
-  }, [index, halfWidth]);
+  // --- Rad-Geometrie aus der Breite ---
+  // Radius so, dass der Rand der Anzeige genau bei MAX_ANGLE liegt.
+  const cx = width / 2;
+  const radius = width > 0 ? (cx - 2) / Math.sin(MAX_ANGLE) : 1;
+  // Abstand zweier Striche in der Mitte (px) — Maß für Ziehen und Rahmenbreite.
+  const stepPx = radius * ANGLE_PER_SLOT;
 
-  // Scrollen → Zeitpunkt. Höchstens einmal pro Bild (requestAnimationFrame),
-  // die Karte zeichnet ohnehin in ihrem eigenen Tempo nach (useDeferredValue
-  // in WindApp).
-  const frameRef = useRef(0);
-  const handleScroll = () => {
-    if (frameRef.current) return;
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = 0;
-      const el = scrollRef.current;
-      if (!el) return;
-      const i = Math.round(el.scrollLeft / TIMELINE_STEP_PX);
-      const { index: currentIndex, lastIndex: last } = latest.current;
-      if (Math.min(last, Math.max(0, i)) !== currentIndex) select(i);
-    });
-  };
-  useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
-
-  // Mausrad (senkrecht wie waagrecht): je TIMELINE_STEP_PX Drehweg ein
-  // Schritt. Ohne das würde ein senkrechtes Rad am Computer gar nichts tun,
-  // und kleine Trackpad-Bewegungen würden vom Einrasten wieder
-  // zurückgeschnappt. Als eigener Zuhörer angemeldet, weil React Mausrad-
-  // Ereignisse nur "passiv" meldet und preventDefault dort nicht wirkt.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    let accumulated = 0;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      setPlaying(false);
-      const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-      accumulated += e.deltaMode === 1 ? delta * 16 : delta;
-      const steps = Math.trunc(accumulated / TIMELINE_STEP_PX);
-      if (steps === 0) return;
-      accumulated -= steps * TIMELINE_STEP_PX;
-      const target = Math.min(
-        latest.current.lastIndex,
-        Math.max(0, Math.round(el.scrollLeft / TIMELINE_STEP_PX) + steps),
-      );
-      el.scrollLeft = target * TIMELINE_STEP_PX;
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
-  // Maus: Band mit gedrückter Taste ziehen. Am Handy (Finger, Stift) macht
-  // das der Browser selbst — deshalb nur bei pointerType "mouse". Während des
-  // Ziehens ist das Einrasten aus, sonst ruckelt es in Schritten.
+  // --- Bedienung mit Finger/Maus ---
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    setPlaying(false);
-    if (e.pointerType !== "mouse" || !scrollRef.current) return;
-    dragRef.current = { x: e.clientX, scroll: scrollRef.current.scrollLeft };
-    scrollRef.current.style.scrollSnapType = "none";
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    cancelAnimationFrame(rafRef.current);
+    animatingRef.current = false;
+    // Das Rad wird sofort auf die gerade angezeigte Stelle "festgehalten".
     e.currentTarget.setPointerCapture(e.pointerId);
+    const t = performance.now();
+    dragRef.current = {
+      startX: e.clientX,
+      startPos: posRef.current,
+      startTime: t,
+      moved: false,
+      samples: [{ t, pos: posRef.current }],
+    };
   };
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
-    if (!drag || !scrollRef.current) return;
-    scrollRef.current.scrollLeft = drag.scroll - (e.clientX - drag.x);
+    if (!drag || stepPx <= 0) return;
+    const dx = e.clientX - drag.startX;
+    if (!drag.moved && Math.abs(dx) < TAP_MAX_MOVE_PX) return;
+    drag.moved = true;
+    // Nach rechts ziehen = zurück in der Zeit (kleinere Schritt-Nummer).
+    const next = clampPos(drag.startPos - (dx * DRAG_GAIN) / stepPx);
+    const t = performance.now();
+    drag.samples.push({ t, pos: next });
+    while (drag.samples.length > 2 && t - drag.samples[0].t > VELOCITY_WINDOW_MS) {
+      drag.samples.shift();
+    }
+    setPos(next);
+    report(Math.round(next));
   };
-  const endDrag = () => {
-    const el = scrollRef.current;
-    if (!dragRef.current || !el) return;
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
     dragRef.current = null;
-    el.style.scrollSnapType = "";
-    scrollToIndex(Math.round(el.scrollLeft / TIMELINE_STEP_PX));
+    if (!drag) return;
+    const t = performance.now();
+    if (!drag.moved) {
+      // Antippen: zu der angetippten Stelle drehen. Umkehrung der Rad-Formel
+      // x = Mitte + Radius · sin(Winkel).
+      if (t - drag.startTime > TAP_MAX_MS || !wheelRef.current) return;
+      const rect = wheelRef.current.getBoundingClientRect();
+      const offset = (e.clientX - rect.left - cx) / radius;
+      const angle = Math.asin(Math.min(1, Math.max(-1, offset)));
+      goTo(posRef.current + angle / ANGLE_PER_SLOT);
+      return;
+    }
+    // Schwung aus den letzten Bewegungen (Schritte pro ms). Hat der Finger vor
+    // dem Loslassen kurz gestanden, gibt es keinen Schwung.
+    const first = drag.samples[0];
+    const lastSample = drag.samples[drag.samples.length - 1];
+    const span = lastSample.t - first.t;
+    const fresh = t - lastSample.t <= VELOCITY_WINDOW_MS;
+    const speed = fresh && span > 0 ? (lastSample.pos - first.pos) / span : 0;
+    if (Math.abs(speed) >= FLING_MIN_SPEED) {
+      const capped = Math.sign(speed) * Math.min(FLING_MAX_SPEED, Math.abs(speed));
+      goTo(posRef.current + capped * FLING_TAU_MS, FLING_TAU_MS);
+    } else {
+      goTo(posRef.current);
+    }
+  };
+  const handlePointerCancel = () => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    goTo(posRef.current);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const step =
-      e.key === "ArrowLeft" ? -1 : e.key === "ArrowRight" ? 1 : e.key === "Home" ? -Infinity : e.key === "End" ? Infinity : 0;
-    if (step === 0) return;
+    const here = Math.round(posRef.current);
+    if (e.key === "ArrowLeft") goTo(here - 1);
+    else if (e.key === "ArrowRight") goTo(here + 1);
+    else if (e.key === "Home") goTo(0, 160);
+    else if (e.key === "End") goTo(lastIndex, 160);
+    else return;
     e.preventDefault();
-    setPlaying(false);
-    if (step === -Infinity) scrollToIndex(0);
-    else if (step === Infinity) scrollToIndex(lastIndex);
-    else scrollToIndex(index + step);
   };
 
-  // Abspielen: Schritt für Schritt bis "jetzt", dann stehen bleiben.
-  useEffect(() => {
-    if (!playing) return;
-    const id = window.setInterval(() => {
-      const { index: i, lastIndex: last } = latest.current;
-      if (i >= last - 1) setPlaying(false);
-      select(i + 1);
-    }, PLAY_STEP_MS);
-    return () => window.clearInterval(id);
-  }, [playing]);
+  // --- Rad zeichnen ---
+  // Nur die Schritte nahe der Mitte (±MAX_ANGLE) kommen überhaupt in Frage.
+  const visibleSlots = Math.ceil(MAX_ANGLE / ANGLE_PER_SLOT) + 1;
+  const firstSlot = Math.max(0, Math.floor(pos) - visibleSlots);
+  const lastSlot = Math.min(lastIndex, Math.ceil(pos) + visibleSlots);
+  // Waagrechte Lage und "Dicke" des Rads bei einem Winkel (Bogenmaß von der Mitte).
+  const xAt = (angle: number) => cx + radius * Math.sin(angle);
+  const halfAt = (angle: number) =>
+    STRIP_HALF * (STRIP_EDGE_FACTOR + (1 - STRIP_EDGE_FACTOR) * Math.cos(angle));
+  const clampAngle = (angle: number) => Math.min(MAX_ANGLE, Math.max(-MAX_ANGLE, angle));
 
-  function togglePlay() {
-    if (playing) {
-      setPlaying(false);
-      return;
+  const strips: React.ReactNode[] = [];
+  const marks: React.ReactNode[] = [];
+  if (width > 0) {
+    for (let i = firstSlot; i <= lastSlot; i++) {
+      const centerAngle = (i - pos) * ANGLE_PER_SLOT;
+      // Farbstrich: Viereck zwischen den halben Schritten links und rechts,
+      // an den Rändern der Sichtbarkeit abgeschnitten.
+      const a = clampAngle(centerAngle - ANGLE_PER_SLOT / 2);
+      const b = clampAngle(centerAngle + ANGLE_PER_SLOT / 2);
+      if (b > a) {
+        const xa = xAt(a);
+        const xb = xAt(b);
+        const ha = halfAt(a);
+        const hb = halfAt(b);
+        const fill = stripColors?.[i] ?? STRIP_EMPTY;
+        strips.push(
+          <polygon
+            key={slots[i]}
+            points={`${xa},${CENTER_Y - ha} ${xb},${CENTER_Y - hb} ${xb},${CENTER_Y + hb} ${xa},${CENTER_Y + ha}`}
+            fill={fill}
+            stroke={fill}
+            strokeWidth={0.6}
+          />,
+        );
+      }
+      // Striche und Stundenzahlen: nur im sichtbaren Bereich.
+      if (Math.abs(centerAngle) > MAX_ANGLE) continue;
+      const date = new Date(slots[i]);
+      const hour = date.getMinutes() === 0;
+      const depth = Math.cos(centerAngle); // 1 in der Mitte, → 0 am Rand
+      const x = xAt(centerAngle);
+      const bottom = CENTER_Y - halfAt(centerAngle) - TICK_GAP;
+      const length = (hour ? HOUR_TICK : MINUTE_TICK) * (0.4 + 0.6 * depth);
+      marks.push(
+        <line
+          key={`t-${slots[i]}`}
+          x1={x}
+          x2={x}
+          y1={bottom}
+          y2={bottom - length}
+          stroke={hour ? "#52525b" : "#a1a1aa"}
+          strokeWidth={hour ? 1.4 : 1}
+          strokeOpacity={0.3 + 0.7 * depth}
+        />,
+      );
+      if (hour && depth > 0.3) {
+        marks.push(
+          <text
+            key={`l-${slots[i]}`}
+            x={x}
+            y={bottom - length - 3}
+            textAnchor="middle"
+            fontSize={11 * (0.65 + 0.35 * depth)}
+            fillOpacity={depth * depth}
+            className="fill-zinc-600 tabular-nums dark:fill-zinc-300"
+          >
+            {formatHourLabel(date)}
+          </text>,
+        );
+      }
     }
-    // Von "aktuell" aus beginnt der Film am Anfang der 12 Stunden.
-    if (index >= lastIndex) select(0);
-    setPlaying(true);
   }
-
-  // --- Band-Inhalt ---
-  const historyWidth = lastIndex * TIMELINE_STEP_PX;
-  const svgWidth = halfWidth + historyWidth + Math.max(halfWidth, FUTURE_WIDTH_PX);
-  const xOfTime = (t: number) =>
-    t <= now
-      ? halfWidth + ((t - slots[0]) / GRID_MS) * TIMELINE_STEP_PX
-      : halfWidth + historyWidth + ((t - now) / GRID_MS) * FUTURE_STEP_PX;
-  const hours: Date[] = [];
-  {
-    const first = new Date(slots[0]);
-    first.setMinutes(0, 0, 0);
-    if (first.getTime() < slots[0]) first.setHours(first.getHours() + 1);
-    const end = now + FUTURE_MARGIN_HOURS * 3_600_000;
-    for (let d = first; d.getTime() <= end; d = new Date(d.getTime() + 3_600_000)) hours.push(d);
-  }
-
-  const statusText =
-    status === "error" ? (
-      <span className="text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
-    ) : current ? (
-      <span className="font-semibold text-zinc-900 dark:text-zinc-50">Aktuell</span>
-    ) : (
-      <>
-        <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-          {formatSlotLabel(slots[index], now)}
-        </span>
-        <span className="text-zinc-500 dark:text-zinc-400"> · {formatAgo(slots[index], now)}</span>
-      </>
-    );
 
   return (
     // Unterstes Element der Seite: der zusätzliche untere Innenabstand hält
     // alles über dem Bedienbalken, den iPhones unten einblenden (auf anderen
     // Geräten ist env(...) gleich 0).
-    <div className="shrink-0 border-t border-zinc-200 bg-white pt-1.5 pb-[calc(0.25rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 px-2">
-        <button
-          type="button"
-          onClick={togglePlay}
-          aria-label={playing ? "Anhalten" : "Letzte 12 Stunden abspielen"}
-          title={playing ? "Anhalten" : "Abspielen"}
-          className={`${BUTTON_CLASS} w-9`}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
-            {playing ? (
-              <>
-                <rect x="3" y="2" width="3.5" height="12" />
-                <rect x="9.5" y="2" width="3.5" height="12" />
-              </>
-            ) : (
-              <path d="M4 2 L14 8 L4 14 Z" />
-            )}
-          </svg>
-        </button>
-        <div className="min-w-0 flex-1 truncate text-sm tabular-nums" aria-live="polite">
-          {statusText}
+    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.25rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Gewählte Uhrzeit mittig, rechts der Knopf "Aktuell". Die linke Spalte
+          ist leer, damit die Uhrzeit genau über der Mitte des Rads steht. */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-2">
+        <div />
+        <div className="min-w-0 text-center leading-tight tabular-nums">
+          {status === "error" ? (
+            <span className="text-xs text-red-600 dark:text-red-400">Verlauf nicht verfügbar</span>
+          ) : current ? (
+            <div className="text-base font-semibold text-zinc-900 dark:text-zinc-50">Aktuell</div>
+          ) : (
+            <>
+              <div className="text-base font-semibold whitespace-nowrap text-zinc-900 dark:text-zinc-50">
+                {formatSlotLabel(slots[index], now)} Uhr
+              </div>
+              <div className="text-[11px] whitespace-nowrap text-zinc-500 dark:text-zinc-400">
+                {formatAgo(slots[index], now)}
+              </div>
+            </>
+          )}
           {status === "loading" && (
-            <span className="text-xs text-zinc-400"> · Verlauf wird geladen…</span>
+            <div className="text-[11px] whitespace-nowrap text-zinc-400">Verlauf wird geladen…</div>
           )}
         </div>
         <button
           type="button"
-          onClick={() => {
-            setPlaying(false);
-            scrollToIndex(lastIndex);
-          }}
-          disabled={current && !playing}
-          className={`${BUTTON_CLASS} px-3 text-sm font-medium`}
+          onClick={() => goTo(lastIndex, 160)}
+          disabled={current}
+          className={`${BUTTON_CLASS} justify-self-end px-3 text-sm font-medium`}
         >
           Aktuell
         </button>
       </div>
 
-      {/* Gleicher Aufbau wie der Verlaufsbalken (px-1, Scrollbereich, rechts
-          die w-10-Spalte), damit die Mittellinien beider Balken übereinander
-          stehen. */}
-      <div className="mt-1 flex px-1">
-        <div className="relative min-w-0 flex-1">
-          <div
-            ref={scrollRef}
-            className="zeitband"
-            style={{ height: BAND_H }}
-            onScroll={handleScroll}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-            onTouchStart={() => setPlaying(false)}
-            onKeyDown={handleKeyDown}
-            tabIndex={0}
-            role="slider"
-            aria-label="Zeitpunkt der Karte (wischen)"
-            aria-valuemin={0}
-            aria-valuemax={lastIndex}
-            aria-valuenow={index}
-            aria-valuetext={current ? "Aktuell" : formatSlotLabel(slots[index], now)}
-          >
-            {halfWidth > 0 && (
-              <svg width={svgWidth} height={BAND_H} aria-hidden="true" className="block">
-                {/* Farbstrich: je Schritt die Windfarbe des Kartenausschnitts */}
-                {slots.map((t, i) => (
-                  <rect
-                    key={t}
-                    x={halfWidth + i * TIMELINE_STEP_PX - TIMELINE_STEP_PX / 2}
-                    y={STRIP_Y}
-                    width={TIMELINE_STEP_PX + 0.5}
-                    height={STRIP_H}
-                    fill={stripColors?.[i] ?? STRIP_EMPTY}
-                  />
-                ))}
-                {/* 10-Minuten-Striche */}
-                {slots.map((t, i) =>
-                  new Date(t).getMinutes() === 0 ? null : (
-                    <line
-                      key={`m-${t}`}
-                      x1={halfWidth + i * TIMELINE_STEP_PX}
-                      x2={halfWidth + i * TIMELINE_STEP_PX}
-                      y1={STRIP_Y - 4}
-                      y2={STRIP_Y}
-                      className="stroke-zinc-300 dark:stroke-zinc-600"
-                    />
-                  ),
-                )}
-                {/* Stunden: längerer Strich + Uhrzeit (in der Prognose-Reserve
-                    blasser, dort kann die Karte nichts zeigen) */}
-                {hours.map((d) => {
-                  const hx = xOfTime(d.getTime());
-                  const future = d.getTime() > now;
-                  return (
-                    <g key={d.getTime()}>
-                      <line
-                        x1={hx}
-                        x2={hx}
-                        y1={TICK_TOP}
-                        y2={STRIP_Y}
-                        className="stroke-zinc-400 dark:stroke-zinc-500"
-                      />
-                      <text
-                        x={hx}
-                        y={LABEL_Y}
-                        textAnchor="middle"
-                        className={`text-[11px] tabular-nums ${
-                          future ? "fill-zinc-300 dark:fill-zinc-600" : "fill-zinc-500 dark:fill-zinc-400"
-                        }`}
-                      >
-                        {formatHourLabel(d)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
-            )}
-            {/* Einrast-Punkte, einer je 10-Minuten-Schritt (siehe .zeitband-
-                punkt in globals.css). In der Prognose-Reserve gibt es keine —
-                dorthin gewischt, rastet das Band auf "jetzt" zurück. */}
-            {halfWidth > 0 &&
-              slots.map((t, i) => (
-                <span
-                  key={`s-${t}`}
-                  className="zeitband-punkt"
-                  style={{ left: halfWidth + i * TIMELINE_STEP_PX }}
-                />
-              ))}
-          </div>
-          {/* Feste Mittellinie mit Uhrzeit-Fähnchen; lässt Klicks durch. */}
-          <div className="pointer-events-none absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-zinc-900 dark:bg-zinc-100" />
-          <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 bg-zinc-900 px-1 text-[10px] leading-[14px] font-semibold whitespace-nowrap text-white tabular-nums dark:bg-zinc-100 dark:text-zinc-900">
-            {current
-              ? "aktuell"
-              : new Date(slots[index]).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
-          </div>
-        </div>
-        <div className={`${Y_AXIS_GUTTER_CLASS} shrink-0`} aria-hidden="true" />
+      <div
+        ref={wheelRef}
+        className="zeitband relative mt-1"
+        style={{ height: WHEEL_H }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+        role="slider"
+        aria-label="Zeitpunkt der Karte (Rad drehen)"
+        aria-valuemin={0}
+        aria-valuemax={lastIndex}
+        aria-valuenow={index}
+        aria-valuetext={current ? "Aktuell" : `${formatSlotLabel(slots[index], now)} Uhr`}
+      >
+        {width > 0 && (
+          <svg width={width} height={WHEEL_H} aria-hidden="true" className="block">
+            <defs>
+              {/* Weiche Ränder: Dort "kippt" das Rad weg. */}
+              <linearGradient id="zeitrad-rand-links" x1="0" x2="1" y1="0" y2="0">
+                <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
+                <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+              </linearGradient>
+              <linearGradient id="zeitrad-rand-rechts" x1="1" x2="0" y1="0" y2="0">
+                <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
+                <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+              </linearGradient>
+            </defs>
+            {strips}
+            {marks}
+            <rect x={0} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-links)" />
+            <rect x={width * 0.76} y={0} width={width * 0.24} height={WHEEL_H} fill="url(#zeitrad-rand-rechts)" />
+            {/* Fester Rahmen in der Mitte: der Zeitpunkt darin gilt. Weißer
+                Rand darunter, damit er auch auf rotem Farbstrich klar bleibt. */}
+            <rect
+              x={cx - stepPx / 2 - 1}
+              y={FRAME_TOP}
+              width={stepPx + 2}
+              height={FRAME_BOTTOM - FRAME_TOP}
+              fill="none"
+              strokeWidth={5}
+              className="stroke-white dark:stroke-zinc-900"
+            />
+            <rect
+              x={cx - stepPx / 2 - 1}
+              y={FRAME_TOP}
+              width={stepPx + 2}
+              height={FRAME_BOTTOM - FRAME_TOP}
+              fill="none"
+              strokeWidth={2}
+              className="stroke-zinc-900 dark:stroke-zinc-100"
+            />
+          </svg>
+        )}
       </div>
     </div>
   );

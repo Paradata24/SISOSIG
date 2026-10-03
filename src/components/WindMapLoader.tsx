@@ -18,6 +18,8 @@ export default function WindMapLoader({
   historyFrame,
   refreshToken,
   onViewportStationsChange,
+  selectedStationCode,
+  onSelectStation,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -27,6 +29,9 @@ export default function WindMapLoader({
   refreshToken: number;
   /** Meldet die Stationscodes im sichtbaren Kartenausschnitt, siehe WindMap. */
   onViewportStationsChange: (codes: string[]) => void;
+  /** Geöffnete Station (null = keine), siehe WindMap. */
+  selectedStationCode: string | null;
+  onSelectStation: (stationCode: string | null) => void;
 }) {
   return (
     <WindMap
@@ -35,6 +40,8 @@ export default function WindMapLoader({
       historyFrame={historyFrame}
       refreshToken={refreshToken}
       onViewportStationsChange={onViewportStationsChange}
+      selectedStationCode={selectedStationCode}
+      onSelectStation={onSelectStation}
     />
   );
 }

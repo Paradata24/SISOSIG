@@ -8,6 +8,7 @@ import {
   MapContainer,
   Marker,
   TileLayer,
+  useMap,
   useMapEvents,
   WMSTileLayer,
 } from "react-leaflet";
@@ -582,6 +583,22 @@ function ViewportReporter({
   return null;
 }
 
+// Leaflet merkt nur Änderungen der FENSTER-Größe. Blendet WindApp den Zeitbalken
+// aus oder ein (Station geöffnet/geschlossen), wird der Kartenbereich höher
+// bzw. niedriger — ohne diese Meldung bliebe die Karte im alten Format stehen
+// (Kacheln fehlen am unteren Rand, Kartenmitte verrutscht). Muss innerhalb von
+// <MapContainer> stehen.
+function ContainerResizeWatcher() {
+  const map = useMap();
+  useEffect(() => {
+    const container = map.getContainer();
+    const observer = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
+
 // Kartenhintergrund (baseLayer) und Stationsfilter werden nicht mehr hier,
 // sondern im Menü im Titel-Balken umgeschaltet (WindApp.tsx) und kommen als
 // Props herein.
@@ -591,6 +608,8 @@ export default function WindMap({
   historyFrame,
   refreshToken,
   onViewportStationsChange,
+  selectedStationCode,
+  onSelectStation,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -603,10 +622,16 @@ export default function WindMap({
   refreshToken: number;
   /** Stationscodes im sichtbaren Kartenausschnitt (für den Zeitbalken). */
   onViewportStationsChange: (codes: string[]) => void;
+  /**
+   * Die geöffnete Station (null = keine). Der Zustand liegt in WindApp, weil
+   * dort der Zeitbalken bei geöffneter Station ausgeblendet wird.
+   */
+  selectedStationCode: string | null;
+  /** Station öffnen (Code) bzw. schließen (null). Muss eine feste Referenz sein. */
+  onSelectStation: (stationCode: string | null) => void;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
@@ -658,11 +683,10 @@ export default function WindMap({
   // jeder Hintergrund-Aktualisierung von /api/wind mit aktualisiert wird.
   const selectedStation = stations.find((s) => s.stationCode === selectedStationCode) ?? null;
 
-  // Feste Referenz, damit die Marker-Klick-Handler nicht bei jeder
-  // Aktualisierung neu angemeldet werden müssen (siehe WindMarkers).
-  const handleSelect = useCallback((stationCode: string) => {
-    setSelectedStationCode(stationCode);
-  }, []);
+  // Feste Referenz (onSelectStation kommt als useCallback aus WindApp), damit
+  // die Marker-Klick-Handler nicht bei jeder Aktualisierung neu angemeldet
+  // werden müssen (siehe WindMarkers).
+  const handleSelect = onSelectStation;
 
   // Das Verlaufsbalken-Paket im Leerlauf vorab holen (siehe loadHistoryPanel
   // oben): Karte und Marker haben Vorrang, sobald der Browser aber nichts
@@ -848,6 +872,7 @@ export default function WindMap({
           selectedStationCode={selectedStationCode}
         />
         <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
+        <ContainerResizeWatcher />
       </MapContainer>
       {/* Zeigt die Karte gerade einen Zeitpunkt aus dem Zeitbalken, bleibt die
           Plakette weg — die Uhrzeit steht dann ohnehin im Zeitbalken. */}
@@ -868,8 +893,7 @@ export default function WindMap({
       {selectedStation && (
         <WindHistoryPanel
           station={selectedStation}
-          onClose={() => setSelectedStationCode(null)}
-          markerTime={historyFrame?.time ?? null}
+          onClose={() => onSelectStation(null)}
           refreshToken={refreshToken}
         />
       )}
