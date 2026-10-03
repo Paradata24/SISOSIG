@@ -116,7 +116,7 @@ einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
 auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
 Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
 `measured_at`), und Einträge älter als 2 Tage werden bei jedem Lauf
-gelöscht (der Verlaufsbalken zeigt 24 Stunden, der Zeitbalken 12).
+gelöscht (Verlaufs- und Zeitbalken zeigen 24 Stunden).
 
 **Wenn `wind_measurements` schon vor dieser Änderung angelegt wurde:**
 einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
@@ -155,7 +155,7 @@ mitschicken.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
 letzten 24 Stunden einer Station (für den Verlaufsbalken).
-`/api/timeline` liefert die letzten 12 Stunden für **alle** Stationen
+`/api/timeline` liefert dieselben 24 Stunden für **alle** Stationen
 gemeinsam (für den Zeitbalken unter der Karte, siehe unten).
 
 ### Benötigte Zugangsdaten
@@ -319,9 +319,9 @@ und z. B. sehen, wie der Föhn durchbricht.
   Stationen im **gerade sichtbaren Kartenausschnitt**. So sieht man schon vor
   dem Drehen, wann es in diesem Gebiet aufgefrischt hat.
 - **Schrittweite 10 Minuten**, genau der Takt, in dem die Stationen messen.
-- **Zeitraum: die letzten 12 Stunden** (`TIMELINE_HOURS`, bewusst kürzer als
-  die 24 h des Verlaufsbalkens). Weiter zurück geht es bewusst nicht: Der
-  Zeitbalken lädt die Werte aller Stationen bei jedem Seitenaufruf.
+- **Zeitraum: die letzten 24 Stunden** (dieselben `HISTORY_HOURS` wie beim
+  Verlaufsbalken). Mehr als 48 h ginge nur mit längerer Aufbewahrung in der
+  Datenbank (2 Tage).
 - **Öffnet man eine Station, verschwindet der Zeitbalken:** Die Karte zeigt dann
   nur die aktuellen Werte, und der Verlaufsbalken der Station reicht bis zum
   unteren Rand. Schließt man ihn, ist der Zeitbalken wieder da (auf „Aktuell").

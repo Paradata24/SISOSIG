@@ -2,27 +2,27 @@ import { NextResponse } from "next/server";
 import {
   buildTimelineSlots,
   GRID_MS,
+  HISTORY_HOURS,
   snapToGrid,
   SOURCE_INTERVAL_MINUTES,
-  TIMELINE_HOURS,
   TIMELINE_STEP_MINUTES,
   type WindStation,
   type TimelinePayload,
   type TimelineSeries,
 } from "@/lib/wind";
 
-// Liefert die Messwerte ALLER Stationen der letzten TIMELINE_HOURS Stunden
-// (aktuell 12; der Verlaufsbalken reicht weiter zurück, siehe src/lib/wind.ts)
-// aus der Supabase-Tabelle wind_measurements — die Datengrundlage
+// Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
+// (aktuell 24) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
 // für den Zeitbalken unter der Karte (TimeSlider.tsx).
 //
 // Aufruf: /api/timeline  (keine Parameter)
 //
 // Gegenstück zu /api/history, das dasselbe für EINE Station tut. Hier wäre ein
-// Zeilen-JSON (~375 Stationen × 73 Zeitpunkte) mehrere hundert KB groß,
+// Zeilen-JSON (~700 Stationen × 145 Zeitpunkte) mehrere MB groß,
 // deshalb ein kompaktes SPALTEN-Format: eine gemeinsame Zeitliste und pro
 // Station drei gleich lange Zahlenreihen (siehe TimelinePayload in
-// src/lib/wind.ts). Das sind rund 15–25 KB komprimiert.
+// src/lib/wind.ts). Bei 12 h waren das rund 15–25 KB komprimiert; mit 24 h
+// und inzwischen fast doppelt so vielen Stationen entsprechend mehr.
 //
 // Benötigt SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY (bei Vercel unter
 // Settings → Environment Variables). Der Key bleibt auf dem Server.
@@ -42,13 +42,15 @@ export const dynamic = "force-dynamic";
 // seitenweise gelesen.
 const PAGE_SIZE = 1000;
 // Harte Obergrenze, damit die Route bei einer unerwartet großen Tabelle nicht
-// endlos weiterliest. 80 Seiten = 80.000 Zeilen ≈ das Zweieinhalbfache der
-// Erwartung: ~90 Bozen/Pioupiou- und ~275 GeoSphere-Stationen × 73
-// Zeitpunkte ≈ 27.000, dazu ~200 SLF-Stationen mit nur einem Wert pro halbe
-// Stunde × 25 ≈ 5.000 — zusammen gut 32.000. (Vor GeoSphere waren es 30
-// Seiten; die hätten danach nicht mehr gereicht und die jüngsten Werte
-// abgeschnitten.)
-const MAX_PAGES = 80;
+// endlos weiterliest. 200 Seiten = 200.000 Zeilen ≈ das Zweieinhalbfache der
+// Erwartung: Im Okt. 2026 lagen in 24 h rund 82.000 Zeilen (gut 700 Stationen,
+// in 12 h waren es 41.000). Die frühere Grenze von 80 Seiten hätte bei 24 h
+// schon die jüngsten Werte abgeschnitten — bei neuen Quellen hier nachrechnen.
+const MAX_PAGES = 200;
+// So viele Seiten werden gleichzeitig angefragt. Nacheinander wären es gut 80
+// Anfragen, jede mit eigener Wartezeit — zusammen viele Sekunden. Zu je 8
+// sind es rund 11 Runden.
+const PARALLEL_PAGES = 8;
 
 // Zwischenspeicherung wie bei /api/history: Neue Messwerte kommen nur alle
 // 10 Minuten dazu (Messtakt der Stationen). Fehlerantworten bekommen bewusst
@@ -91,30 +93,36 @@ export async function GET() {
   // wegfällt.
   const sinceIso = new Date(start - GRID_MS / 2).toISOString();
 
-  // Seitenweise lesen. Zwei Details, die leicht schiefgehen:
+  // Seitenweise lesen, je PARALLEL_PAGES Seiten gleichzeitig. Details, die
+  // leicht schiefgehen:
   //  - Weitergerückt wird um die TATSÄCHLICHE Zeilenzahl der Seite, und
   //    abgebrochen wird nur bei einer LEEREN Seite. Würde man auf
   //    "Seite kürzer als PAGE_SIZE" prüfen, bräche die Schleife still nach der
   //    ersten Seite ab, sobald "Max rows" kleiner als PAGE_SIZE eingestellt ist
   //    — mit stillschweigend fehlender Historie.
+  //  - Die gleichzeitigen Seiten setzen voraus, dass jede volle Seite genau
+  //    pageSize Zeilen hat. Kommt eine Seite KÜRZER zurück, ist das entweder
+  //    das Ende der Daten oder eine kleinere "Max rows"-Einstellung. Dann
+  //    werden die übrigen Seiten dieser Runde verworfen (ihre Startpunkte
+  //    stimmen womöglich nicht), pageSize auf die tatsächliche Länge gesetzt
+  //    und ab genau dort weitergelesen. War es das Ende, ist die erste Seite
+  //    der nächsten Runde leer.
   //  - Sortiert wird aufsteigend nach Zeit. Das macht das seitenweise Lesen
   //    unempfindlich gegen gleichzeitige Schreibvorgänge: neue Zeilen von
   //    /api/collect haben immer die GRÖSSTE Zeit, hängen sich also hinten an
   //    und verschieben nichts; und das Aufräumen alter Zeilen betrifft nur
-  //    Daten außerhalb des 12h-Fensters. (station_code als zweites
+  //    Daten außerhalb des 24h-Fensters. (station_code als zweites
   //    Sortierkriterium sorgt für eine eindeutige Reihenfolge.)
-  const rows: MeasurementRow[] = [];
-  let offset = 0;
-  let pages = 0;
-  let truncated = false;
-  while (pages < MAX_PAGES) {
+  const fetchPage = async (
+    from: number,
+    size: number,
+  ): Promise<MeasurementRow[] | { error: string }> => {
     const query =
       `${supabaseUrl}/rest/v1/wind_measurements` +
       `?measured_at=gte.${encodeURIComponent(sinceIso)}` +
       `&order=measured_at.asc,station_code.asc` +
       `&select=station_code,measured_at,direction,speed_kmh,gust_kmh,source` +
-      `&limit=${PAGE_SIZE}&offset=${offset}`;
-
+      `&limit=${size}&offset=${from}`;
     let res: Response;
     try {
       res = await fetch(query, {
@@ -122,25 +130,46 @@ export async function GET() {
         cache: "no-store",
       });
     } catch {
-      return NextResponse.json(
-        { error: "Supabase ist nicht erreichbar" },
-        { status: 502 },
-      );
+      return { error: "Supabase ist nicht erreichbar" };
     }
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `Supabase antwortete mit Status ${res.status}` },
-        { status: 502 },
-      );
-    }
+    if (!res.ok) return { error: `Supabase antwortete mit Status ${res.status}` };
+    return (await res.json()) as MeasurementRow[];
+  };
 
-    const page: MeasurementRow[] = await res.json();
-    if (page.length === 0) break;
-    rows.push(...page);
-    offset += page.length;
-    pages += 1;
-    if (pages === MAX_PAGES) truncated = true;
+  const rows: MeasurementRow[] = [];
+  let offset = 0;
+  let pageSize = PAGE_SIZE;
+  let pages = 0;
+  let finished = false;
+  while (!finished && pages < MAX_PAGES) {
+    const count = Math.min(PARALLEL_PAGES, MAX_PAGES - pages);
+    const batch = await Promise.all(
+      Array.from({ length: count }, (_, i) =>
+        fetchPage(offset + i * pageSize, pageSize),
+      ),
+    );
+    pages += count;
+
+    for (const page of batch) {
+      if (!Array.isArray(page)) {
+        return NextResponse.json({ error: page.error }, { status: 502 });
+      }
+      if (page.length === 0) {
+        finished = true;
+        break;
+      }
+      rows.push(...page);
+      offset += page.length;
+      if (page.length < pageSize) {
+        // Ende der Daten oder kleinere "Max rows"-Einstellung (siehe oben):
+        // Rest der Runde verwerfen und ab hier mit der echten Seitenlänge
+        // weiterlesen.
+        pageSize = page.length;
+        break;
+      }
+    }
   }
+  const truncated = !finished;
   if (truncated) {
     console.warn(
       `/api/timeline: Seiten-Obergrenze erreicht (${rows.length} Zeilen) — ` +
@@ -215,7 +244,7 @@ export async function GET() {
   }
 
   const payload: TimelinePayload = {
-    hours: TIMELINE_HOURS,
+    hours: HISTORY_HOURS,
     stepMinutes: TIMELINE_STEP_MINUTES,
     generatedAt: times[times.length - 1],
     times,

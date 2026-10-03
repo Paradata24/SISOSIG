@@ -86,10 +86,9 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
  * beiden APIs (/api/history, /api/forecast) nicht auseinanderlaufen können.
  *
  * 24 h seit Okt. 2026 (vorher 12 h; Kompromiss des Projektbesitzers zwischen
- * 12 und 48 h). Beim Öffnen sieht der Verlaufsbalken genauso aus wie vorher —
- * er springt auf "jetzt", ältere Werte erreicht man durch Wischen nach links.
- * Der Zeitbalken unter der Karte hat sein EIGENES Fenster (TIMELINE_HOURS,
- * weiter unten) und bleibt bei 12 h.
+ * 12 und 48 h). Gilt auch für den Zeitbalken unter der Karte (/api/timeline,
+ * TIMELINE_SLOT_COUNT). Der Verlaufsbalken öffnet weiterhin bei "jetzt",
+ * ältere Werte erreicht man durch Wischen nach links.
  *
  * Achtung: Die Supabase-Edge-Function
  * (supabase/functions/fetch-wind-forecasts) ist Deno-Code und kann hier NICHT
@@ -114,18 +113,9 @@ export const FUTURE_MARGIN_HOURS = 4;
  */
 export const TIMELINE_STEP_MINUTES = 10;
 export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
-
-/**
- * Zeitfenster des Zeitbalkens unter der Karte (/api/timeline, TimeSlider).
- * Bewusst getrennt von HISTORY_HOURS und kürzer: /api/timeline lädt beim
- * Seitenaufruf und alle 10 min die Werte ALLER Stationen — doppelt so viele
- * Stunden hieße doppelt so viele Daten bei jedem Aufruf, und das Zeitrad wäre
- * doppelt so lang zu drehen.
- */
-export const TIMELINE_HOURS = 12;
-/** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
+/** 24 h × 6 Schritte + der Schritt "jetzt" = 145 Rasterpunkte. */
 export const TIMELINE_SLOT_COUNT =
-  TIMELINE_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
+  HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
 /**
  * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
@@ -156,7 +146,7 @@ export function snapToGrid(t: number): number {
 
 /**
  * Die Rasterzeitpunkte des Zeitbalkens: aufsteigend, der LETZTE Eintrag ist
- * "jetzt" (auf das Raster eingerastet), der erste liegt TIMELINE_HOURS davor.
+ * "jetzt" (auf das Raster eingerastet), der erste liegt HISTORY_HOURS davor.
  * Hängt nur an der Uhr — der Balken kann also gezeichnet werden, bevor
  * irgendwelche Daten geladen sind.
  */
@@ -179,7 +169,7 @@ export interface TimelineValue {
  * Drei gleich lange Spalten, parallel zu TimelinePayload.times:
  * d = Richtung (Grad), s = Mittelwind (km/h), g = Böe (km/h).
  * null bedeutet: zu diesem Zeitpunkt keine Messung.
- * Bewusst so kurz benannt — bei ~130 Stationen × 73 Zeitpunkten macht das
+ * Bewusst so kurz benannt — bei ~700 Stationen × 145 Zeitpunkten macht das
  * im JSON einen spürbaren Unterschied.
  */
 export interface TimelineSeries {
@@ -188,7 +178,7 @@ export interface TimelineSeries {
   g: (number | null)[];
 }
 
-/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 12 h. */
+/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 24 h. */
 export interface TimelinePayload {
   hours: number;
   stepMinutes: number;
