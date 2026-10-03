@@ -6,6 +6,7 @@ import { fetchGeoSphereStations } from "@/lib/geosphere";
 import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
 import { fetchDwdStations } from "@/lib/dwd";
+import { fetchHolfuyStations } from "@/lib/holfuy";
 
 // Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
@@ -203,8 +204,8 @@ async function fetchGeoSphereSafely(): Promise<WindStation[]> {
   }
 }
 
-// MeteoSchweiz (Schweiz), Lawinenwarndienst Tirol (Hafelekar) und Deutscher
-// Wetterdienst (Zugspitze) — alle drei additiv wie die Quellen oben. Zu einem
+// MeteoSchweiz (Schweiz), Lawinenwarndienst Tirol (Hafelekar), Deutscher
+// Wetterdienst (Zugspitze) und Holfuy (Gardasee) — alle additiv wie die Quellen oben. Zu einem
 // Helfer zusammengefasst, weil jede nur eine Zeile Fehlerbehandlung braucht.
 async function fetchAdditionalSafely(
   label: string,
@@ -231,6 +232,7 @@ export async function GET(request: Request) {
     meteoSwissStations,
     lwdTirolStations,
     dwdStations,
+    holfuyStations,
   ] = await Promise.all([
     fetchSensors(),
     fetchStationMeta(),
@@ -240,6 +242,7 @@ export async function GET(request: Request) {
     fetchAdditionalSafely("MeteoSchweiz", fetchMeteoSwissStations),
     fetchAdditionalSafely("LWD Tirol", fetchLwdTirolStations),
     fetchAdditionalSafely("DWD", fetchDwdStations),
+    fetchAdditionalSafely("Holfuy", fetchHolfuyStations),
   ]);
 
   if (sensorsResult.error || !sensorsResult.sensors) {
@@ -323,6 +326,7 @@ export async function GET(request: Request) {
     ...meteoSwissStations,
     ...lwdTirolStations,
     ...dwdStations,
+    ...holfuyStations,
   ].sort((a, b) =>
     a.stationName.localeCompare(b.stationName, "de"),
   );

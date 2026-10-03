@@ -19,10 +19,19 @@ export interface WindStation {
    * Datenquelle: Bozner Wetterdienst, OpenWindMap/Pioupiou-Netzwerk, die
    * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts), GeoSphere
    * Austria (früher ZAMG, siehe src/lib/geosphere.ts), MeteoSchweiz
-   * (src/lib/meteoswiss.ts), der Lawinenwarndienst Tirol (src/lib/lwdtirol.ts)
-   * oder der Deutsche Wetterdienst (src/lib/dwd.ts)
+   * (src/lib/meteoswiss.ts), der Lawinenwarndienst Tirol (src/lib/lwdtirol.ts),
+   * der Deutsche Wetterdienst (src/lib/dwd.ts) oder Holfuy (Gardasee,
+   * src/lib/holfuy.ts — nur mit Zugangsschlüssel HOLFUY_API_KEY)
    */
-  source: "bolzano" | "openwindmap" | "slf" | "geosphere" | "meteoswiss" | "lwdtirol" | "dwd";
+  source:
+    | "bolzano"
+    | "openwindmap"
+    | "slf"
+    | "geosphere"
+    | "meteoswiss"
+    | "lwdtirol"
+    | "dwd"
+    | "holfuy";
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -54,7 +63,27 @@ export const SOURCE_INFO: Record<
     label: "Datenbasis: Deutscher Wetterdienst",
     url: "https://www.dwd.de/DE/leistungen/opendata/opendata.html",
   },
+  // Holfuy-Bedingungen: "Holfuy" nennen UND auf die Seite der Station
+  // verlinken — der Link je Station kommt aus getSourceLink(). Nicht entfernen.
+  holfuy: { label: "Holfuy", url: "https://holfuy.com" },
 };
+
+/**
+ * Quellen-Link für den Verlaufsbalken. Meist der feste Eintrag aus
+ * SOURCE_INFO; Holfuy verlangt dagegen den Link auf die Seite der jeweiligen
+ * Station (z. B. holfuy.com/de/weather/1000). Das Präfix "holfuy-" muss zu
+ * HOLFUY_CODE_PREFIX in src/lib/holfuy.ts passen.
+ */
+export function getSourceLink(
+  station: Pick<WindStation, "source" | "stationCode">,
+): { label: string; url: string } {
+  const info = SOURCE_INFO[station.source];
+  if (station.source === "holfuy") {
+    const id = station.stationCode.replace(/^holfuy-/, "");
+    return { label: info.label, url: `https://holfuy.com/de/weather/${id}` };
+  }
+  return info;
+}
 
 /**
  * Wie oft eine Quelle einen neuen Messwert liefert (Minuten). Bozen misst
@@ -77,6 +106,7 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
   meteoswiss: 10,
   lwdtirol: 10,
   dwd: 10,
+  holfuy: 10,
 };
 
 /**

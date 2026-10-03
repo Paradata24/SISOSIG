@@ -86,7 +86,8 @@ direktes Aufrufen der API-Routen (`curl`).
 Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
 OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz), MeteoSchweiz
 (alle SwissMetNet-Stationen) und GeoSphere Austria (TAWES, ganz Österreich)
-sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
+sowie einzelnen Stationen des Lawinenwarndienstes Tirol, des DWD und von
+Holfuy (Gardasee, nur mit API-Schlüssel), Historie
 und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
@@ -105,6 +106,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
+| `src/lib/holfuy.ts` | Holfuy-Stationen am Gardasee (`HOLFUY_STATIONS`); nur aktiv mit Schlüssel `HOLFUY_API_KEY` in Vercel |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen, Pioupiou, SLF, GeoSphere), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
@@ -325,6 +327,11 @@ also alle 3 h, wirklich neue Werte).
 - Der Windanzeiger wählt sie über **Stationscodes** aus, nicht über Namen
   (Fehltreffer, z. B. SLF „Titlisboden" ↔ MeteoSchweiz „Titlis"). Robiei ist
   bewusst nicht dabei: MeteoSchweiz-Kürzel `ROB` = Poschiavo/Robbia im Tal.
+- **Holfuy (Gardasee, Okt. 2026) braucht einen Schlüssel:** ohne
+  `HOLFUY_API_KEY` liefert die API nur „no_access", das Modul fragt dann gar
+  nicht an. Kein Abschreiben von holfuy.com (laut Holfuy-Bedingungen
+  verboten). Pflicht-Quellenangabe = Link auf die Stationsseite
+  (`getSourceLink` in `src/lib/wind.ts`).
 - **Zugspitze (DWD) liefert seit 25.09.2026 keine Werte** (Ausfall beim DWD);
   sie ist grau, bis der DWD wieder veröffentlicht. Kein Fehler im Code.
 

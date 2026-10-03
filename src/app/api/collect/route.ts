@@ -4,6 +4,7 @@ import { fetchGeoSphereStations } from "@/lib/geosphere";
 import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
 import { fetchDwdStations } from "@/lib/dwd";
+import { fetchHolfuyStations } from "@/lib/holfuy";
 import { fetchSlfReadingsSince } from "@/lib/slf";
 import type { WindStation } from "@/lib/wind";
 
@@ -174,8 +175,8 @@ export async function POST(request: Request) {
     });
   }
 
-  // 3b) OpenWindMap/Pioupiou-, GeoSphere-Austria-, MeteoSchweiz-, LWD-Tirol- und
-  //     DWD-Stationen dazuholen —
+  // 3b) OpenWindMap/Pioupiou-, GeoSphere-Austria-, MeteoSchweiz-, LWD-Tirol-,
+  //     DWD- und Holfuy-Stationen dazuholen —
   //     additiv: schlägt ein Abruf fehl, werden trotzdem die übrigen
   //     Messwerte gespeichert statt den ganzen Lauf abzubrechen.
   const extraSources: Array<[string, () => Promise<WindStation[]>]> = [
@@ -184,6 +185,7 @@ export async function POST(request: Request) {
     ["MeteoSchweiz", fetchMeteoSwissStations],
     ["LWD Tirol", fetchLwdTirolStations],
     ["DWD", fetchDwdStations],
+    ["Holfuy", fetchHolfuyStations],
   ];
   for (const [label, fetchStations] of extraSources) {
     try {

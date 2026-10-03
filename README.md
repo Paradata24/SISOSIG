@@ -169,6 +169,7 @@ Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
 | `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 | `NEXT_PUBLIC_CARTO_API_KEY` | kostenloser CARTO-Basemaps-Schlüssel (per E-Mail von https://carto.com/basemaps/apikey/) | Ortsnamen über dem Relief (zweisprachig). Optional: ohne Schlüssel nimmt die Karte die Esri-Ortsnamen (nur italienisch) |
+| `HOLFUY_API_KEY` | Zugangsschlüssel für die Holfuy-API, kostenlos auf Anfrage bei info@holfuy.com | Holfuy-Stationen am Gardasee (`src/lib/holfuy.ts`). Optional: ohne Schlüssel erscheinen sie einfach nicht. **Nicht** `NEXT_PUBLIC_` davorsetzen — der Schlüssel darf nicht in den Browser |
 
 Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
 Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
@@ -653,6 +654,30 @@ sind über ihren Stationscode in `WINDANZEIGER_STATION_CODES`
 erzeugen (SLF „Titlisboden" enthält „Titlis"). **Nicht** dabei sind bewusst
 Robiei (das MeteoSchweiz-Kürzel `ROB` ist Poschiavo/Robbia im Tal, eine andere
 Station), Talstationen, Startplatz-Stationen und der Gaisberg.
+
+## Holfuy-Stationen am Gardasee (vorbereitet, Okt. 2026)
+
+Am Gardasee und im Sarcatal stehen mehrere Holfuy-Stationen von Fliegervereinen
+(Malcesine/Monte Baldo, Monte Brento Start und Landeplatz, Colonei, Monte
+Belpo, Deltaland, Garda Paragliding). Die Liste steht in `HOLFUY_STATIONS` in
+`src/lib/holfuy.ts` (Codes `holfuy-<Nummer>`, die Nummer steht in der Adresse
+der Stationsseite, z. B. `holfuy.com/de/weather/1000`).
+
+- **Zugangsschlüssel nötig:** Die Holfuy-API (`api.holfuy.com/live/`) liefert
+  ohne Schlüssel nur „no_access". Holfuy vergibt ihn laut Nutzungsbedingungen
+  kostenlos auf Anfrage (info@holfuy.com). Er gehört als `HOLFUY_API_KEY` in die
+  Vercel-Umgebungsvariablen (danach neu deployen). **Ohne Schlüssel ist die
+  Quelle einfach aus** — kein Fehler, keine Anfrage an Holfuy.
+- **Kein Abschreiben der Webseite:** Laut Holfuy-Bedingungen ist das
+  automatische Sammeln von holfuy.com ohne Vereinbarung verboten.
+- **Quellenangabe (Pflicht):** „Holfuy" plus Link auf die Seite der jeweiligen
+  Station — steht im Verlaufsbalken (`getSourceLink` in `src/lib/wind.ts`).
+- Gilt der Schlüssel nur für einen Teil der Stationen, erscheinen nur diese;
+  gilt er für keine, steht „Holfuy: kein Zugriff" in den Vercel-Logs.
+- **Keine Prognose-Kurve** (Edge Function kennt die Stationen nicht) und
+  **nicht im Windanzeiger** (Start-/Landeplatz-Stationen, wie bei den anderen
+  Quellen bewusst ausgenommen) — sichtbar unter „Alle".
+- Umbiegen auf einen Mock: `HOLFUY_API_URL`.
 
 ## Hinweis zur Sandbox-Umgebung
 

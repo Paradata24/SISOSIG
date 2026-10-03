@@ -9,7 +9,7 @@ import {
   measurementGapMs,
   snapDirectionTo8,
   snapToGrid,
-  SOURCE_INFO,
+  getSourceLink,
   TIMELINE_STEP_MINUTES,
   WIND_COLOR_SCALE,
   type WindStation,
@@ -1239,12 +1239,12 @@ export default function WindHistoryPanel({
       <p className="border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
         Quelle:{" "}
         <a
-          href={SOURCE_INFO[station.source].url}
+          href={getSourceLink(station).url}
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
         >
-          {SOURCE_INFO[station.source].label}
+          {getSourceLink(station).label}
         </a>
       </p>
     </section>
