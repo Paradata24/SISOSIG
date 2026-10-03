@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { HISTORY_HOURS } from "@/lib/wind";
 
 // Liefert die Wind-Historie der letzten HISTORY_HOURS Stunden (siehe
-// src/lib/wind.ts, aktuell 24) einer Station aus der Supabase-Tabelle
+// src/lib/wind.ts, aktuell 12) einer Station aus der Supabase-Tabelle
 // wind_measurements (befüllt von der Sammel-Route /api/collect, die von
 // Supabase Cron angestoßen wird).
 //

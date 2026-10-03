@@ -85,21 +85,12 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
  * stehen bewusst hier zentral, damit das Panel (WindHistoryPanel) und die
  * beiden APIs (/api/history, /api/forecast) nicht auseinanderlaufen können.
  *
- * 24 h seit Okt. 2026 (vorher 12 h; Kompromiss des Projektbesitzers zwischen
- * 12 und 48 h). Gilt auch für den Zeitbalken unter der Karte (/api/timeline,
- * TIMELINE_SLOT_COUNT). Der Verlaufsbalken öffnet weiterhin bei "jetzt",
- * ältere Werte erreicht man durch Wischen nach links.
- *
  * Achtung: Die Supabase-Edge-Function
  * (supabase/functions/fetch-wind-forecasts) ist Deno-Code und kann hier NICHT
  * importieren – dort stehen eigene, abgeleitete Konstanten (PAST_HOURS /
- * FORECAST_HOURS), die bei einer Änderung geprüft werden müssen. PAST_HOURS
- * darf kleiner als HISTORY_HOURS sein (Begründung dort).
- *
- * Mehr als 48 h gehen nicht ohne längere Aufbewahrung in der Datenbank
- * (RETENTION_DAYS in /api/collect und in der Edge Function, beide 2 Tage).
+ * FORECAST_HOURS), die bei einer Änderung mitgezogen werden müssen.
  */
-export const HISTORY_HOURS = 24;
+export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
@@ -113,7 +104,7 @@ export const FUTURE_MARGIN_HOURS = 4;
  */
 export const TIMELINE_STEP_MINUTES = 10;
 export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
-/** 24 h × 6 Schritte + der Schritt "jetzt" = 145 Rasterpunkte. */
+/** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
 export const TIMELINE_SLOT_COUNT =
   HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
@@ -169,7 +160,7 @@ export interface TimelineValue {
  * Drei gleich lange Spalten, parallel zu TimelinePayload.times:
  * d = Richtung (Grad), s = Mittelwind (km/h), g = Böe (km/h).
  * null bedeutet: zu diesem Zeitpunkt keine Messung.
- * Bewusst so kurz benannt — bei ~700 Stationen × 145 Zeitpunkten macht das
+ * Bewusst so kurz benannt — bei ~130 Stationen × 73 Zeitpunkten macht das
  * im JSON einen spürbaren Unterschied.
  */
 export interface TimelineSeries {
@@ -178,7 +169,7 @@ export interface TimelineSeries {
   g: (number | null)[];
 }
 
-/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 24 h. */
+/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 12 h. */
 export interface TimelinePayload {
   hours: number;
   stepMinutes: number;

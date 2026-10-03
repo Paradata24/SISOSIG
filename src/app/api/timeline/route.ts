@@ -12,17 +12,16 @@ import {
 } from "@/lib/wind";
 
 // Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
-// (aktuell 24) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
+// (aktuell 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
 // für den Zeitbalken unter der Karte (TimeSlider.tsx).
 //
 // Aufruf: /api/timeline  (keine Parameter)
 //
 // Gegenstück zu /api/history, das dasselbe für EINE Station tut. Hier wäre ein
-// Zeilen-JSON (~700 Stationen × 145 Zeitpunkte) mehrere MB groß,
+// Zeilen-JSON (~700 Stationen × 73 Zeitpunkte) mehrere hundert KB groß,
 // deshalb ein kompaktes SPALTEN-Format: eine gemeinsame Zeitliste und pro
 // Station drei gleich lange Zahlenreihen (siehe TimelinePayload in
-// src/lib/wind.ts). Bei 12 h waren das rund 15–25 KB komprimiert; mit 24 h
-// und inzwischen fast doppelt so vielen Stationen entsprechend mehr.
+// src/lib/wind.ts). Das sind einige Dutzend KB komprimiert.
 //
 // Benötigt SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY (bei Vercel unter
 // Settings → Environment Variables). Der Key bleibt auf dem Server.
@@ -42,14 +41,15 @@ export const dynamic = "force-dynamic";
 // seitenweise gelesen.
 const PAGE_SIZE = 1000;
 // Harte Obergrenze, damit die Route bei einer unerwartet großen Tabelle nicht
-// endlos weiterliest. 200 Seiten = 200.000 Zeilen ≈ das Zweieinhalbfache der
-// Erwartung: Im Okt. 2026 lagen in 24 h rund 82.000 Zeilen (gut 700 Stationen,
-// in 12 h waren es 41.000). Die frühere Grenze von 80 Seiten hätte bei 24 h
-// schon die jüngsten Werte abgeschnitten — bei neuen Quellen hier nachrechnen.
-const MAX_PAGES = 200;
-// So viele Seiten werden gleichzeitig angefragt. Nacheinander wären es gut 80
-// Anfragen, jede mit eigener Wartezeit — zusammen viele Sekunden. Zu je 8
-// sind es rund 11 Runden.
+// endlos weiterliest. 100 Seiten = 100.000 Zeilen ≈ das Zweieinhalbfache der
+// Erwartung: Im Okt. 2026 lagen in 12 h rund 41.000 Zeilen (gut 700 Stationen
+// aus allen Quellen). Die frühere Grenze von 80 Seiten war damit nur noch
+// knapp doppelt so groß — bei neuen Quellen oder einem längeren HISTORY_HOURS
+// hier nachrechnen, sonst fehlen still die jüngsten Werte.
+const MAX_PAGES = 100;
+// So viele Seiten werden gleichzeitig angefragt. Nacheinander wären es gut 40
+// Anfragen, jede mit eigener Wartezeit — zusammen mehrere Sekunden. Zu je 8
+// sind es rund 6 Runden.
 const PARALLEL_PAGES = 8;
 
 // Zwischenspeicherung wie bei /api/history: Neue Messwerte kommen nur alle
@@ -111,7 +111,7 @@ export async function GET() {
   //    unempfindlich gegen gleichzeitige Schreibvorgänge: neue Zeilen von
   //    /api/collect haben immer die GRÖSSTE Zeit, hängen sich also hinten an
   //    und verschieben nichts; und das Aufräumen alter Zeilen betrifft nur
-  //    Daten außerhalb des 24h-Fensters. (station_code als zweites
+  //    Daten außerhalb des 12h-Fensters. (station_code als zweites
   //    Sortierkriterium sorgt für eine eindeutige Reihenfolge.)
   const fetchPage = async (
     from: number,

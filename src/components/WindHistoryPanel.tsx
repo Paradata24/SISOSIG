@@ -18,8 +18,7 @@ import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry } from "@/app/api/forecast/route";
 
 // Verlaufspanel am unteren Bildschirmrand (Vorbild: Meteoparapente).
-// Zeigt für die angeklickte Station die letzten 24 Stunden (HISTORY_HOURS;
-// beim Öffnen steht "jetzt" im Bild, Älteres erreicht man durch Wischen):
+// Zeigt für die angeklickte Station die letzten 12 Stunden (HISTORY_HOURS):
 //  - Zeitachse (Lokalzeit) oben
 //  - Liniendiagramm vor dem Farbverlauf der Windstärke-Skala: Mittelwind
 //    (unten, dünn) und Böen (oben, ca. 15% dicker), dazwischen eine
@@ -110,7 +109,7 @@ const MIN_LABEL_SPACING = COLUMN_SPACING - 2;
 // damit die Spaltenbreite hier und das Raster des Zeitbalkens unter der Karte
 // (gleiche Konstante) nicht auseinanderlaufen können.
 const LABEL_INTERVAL_MIN = TIMELINE_STEP_MINUTES;
-// Breite pro Stunde für den Geschichts-Teil (jetzt − 24h bis jetzt). FEST (nicht
+// Breite pro Stunde für den Geschichts-Teil (jetzt − 12h bis jetzt). FEST (nicht
 // datenabhängig) so gewählt, dass die 6 Messungen pro Stunde (alle 10 min) mit
 // genau dem Spaltenabstand nebeneinander Platz haben.
 // Dadurch ist die Achse zugleich breiter als der Bildschirm → das Diagramm
@@ -126,7 +125,7 @@ const AXIS_PAD = Math.max(PAD_X, MEAS_BOX_W / 2, ARROW_SIZE / 2);
 // Wie weit die Historie zurückreicht (HISTORY_HOURS) bzw. wie viel Platz rechts
 // nach "jetzt" bleibt (FUTURE_MARGIN_HOURS) — beides zentral in src/lib/wind.ts,
 // weil /api/history und /api/forecast dieselben Werte brauchen. Die Zeitachse
-// läuft fest von (jetzt − 24h) bis (jetzt + 4h), sodass die aktuelle Uhrzeit
+// läuft fest von (jetzt − 12h) bis (jetzt + 4h), sodass die aktuelle Uhrzeit
 // immer nahe dem rechten Rand steht.
 // Zwei aufeinanderfolgende Punkte werden nur dann zu einer Linie verbunden,
 // wenn sie höchstens so weit auseinanderliegen. Standardwert für die
@@ -641,7 +640,7 @@ export default function WindHistoryPanel({
     const yTicks = buildYTicks(yMax);
 
     // --- Skalen ---
-    // Feste Zeitachse von (jetzt − 24h) bis (jetzt + 4h), unabhängig davon,
+    // Feste Zeitachse von (jetzt − 12h) bis (jetzt + 4h), unabhängig davon,
     // welche Messpunkte tatsächlich vorliegen. So sitzen die Werte immer an der
     // richtigen Stelle der Achse, fehlende Zeiträume bleiben als Lücke sichtbar
     // (statt die wenigen Punkte über die ganze Breite zu strecken), und die
@@ -896,7 +895,7 @@ export default function WindHistoryPanel({
           </span>
         </h2>
         <span className="hidden text-xs text-zinc-500 sm:inline dark:text-zinc-400">
-          letzte 24 Stunden{" "}
+          letzte 12 Stunden{" "}
           <span className="text-zinc-400 dark:text-zinc-500">
             — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
             Messung ·{" "}
@@ -945,7 +944,7 @@ export default function WindHistoryPanel({
               height={SVG_H}
               viewBox={`0 0 ${svgWidth} ${SVG_H}`}
               role="img"
-              aria-label="Windverlauf: Mittelwind und Böen der letzten 24 Stunden"
+              aria-label="Windverlauf: Mittelwind und Böen der letzten 12 Stunden"
             >
               {/* Farbflächen der Windstärke-Skala (gleiche Bereiche wie die
                   Kartenpfeile, siehe WIND_COLOR_SCALE): eine Fläche je

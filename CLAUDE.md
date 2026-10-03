@@ -30,7 +30,7 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 - Aktuell nur ich + wenige Nutzer, aber die Architektur soll
   skalierbar bleiben
 - Phasenplan:
-  1. Südtirol: Live-Wind + Historie auf Karte (aktuell in Arbeit)
+  1. Südtirol: Live-Wind + 12h-Historie auf Karte (aktuell in Arbeit)
   2. Erweiterung auf weitere Länder/Regionen (Schweiz, Österreich)
   3. Prognosevergleich mehrerer Modelle via Open-Meteo API
 
@@ -60,10 +60,10 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
   Änderungen".
 
 ## Begriffe des Projektbesitzers
-- **Verlaufsbalken** = das Panel unten mit dem 24h-Diagramm einer Station
+- **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm einer Station
   (`src/components/WindHistoryPanel.tsx`)
 - **Zeitbalken** = das Zeitrad unter der Karte, mit dem man die ganze Karte
-  durch die letzten 24 h dreht (`src/components/TimeSlider.tsx`)
+  durch die letzten 12 h dreht (`src/components/TimeSlider.tsx`)
 - **Windanzeiger** = die vom Besitzer ausgewählte Stationsliste im
   Stationsfilter (Südtirol über Namen: `WINDANZEIGER_STATION_NAMES`, alle
   anderen Quellen über Stationscodes: `WINDANZEIGER_STATION_CODES`, beide in
@@ -90,8 +90,8 @@ sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
 und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
-(24 h für alle Stationen, beim Seitenaufruf + alle 10 min) und `/api/history` + `/api/forecast`
-(24 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
+(12 h für alle Stationen, beim Seitenaufruf + alle 10 min) und `/api/history` + `/api/forecast`
+(12 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
 `/api/collect` alle 5 min (Messwerte) und der Edge Function
 `fetch-wind-forecasts` (Prognosen; holt nur bei einem neuen ICON-CH1-Lauf,
 also alle 3 h, wirklich neue Werte).
@@ -107,9 +107,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
 | `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen, Pioupiou, SLF, GeoSphere), inkl. Caching |
 | `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
-| `src/app/api/history/route.ts` | 24 h Messwerte **einer** Station |
+| `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
-| `src/app/api/timeline/route.ts` | 24 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
+| `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
@@ -259,14 +259,6 @@ also alle 3 h, wirklich neue Werte).
     „Jetzt".
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
     und alle 10 min geladen (früher erst beim ersten Anfassen).
-- **Verlaufs- und Zeitbalken zeigen 24 h** (Okt. 2026, vorher 12 h;
-  Kompromiss des Projektbesitzers zwischen 12 und 48 h). Eine Einstellung für
-  alles: `HISTORY_HOURS` in `src/lib/wind.ts`. Der Verlaufsbalken öffnet
-  weiterhin bei „jetzt", Älteres erreicht man durch Wischen nach links.
-  Gespeichert werden ohnehin 2 Tage (`RETENTION_DAYS`) — mehr als 48 h Anzeige
-  geht nur mit längerer Aufbewahrung. `/api/timeline` liest dafür rund
-  82.000 Zeilen, je 8 Seiten gleichzeitig (`MAX_PAGES`/`PARALLEL_PAGES`; bei
-  neuen Quellen die Obergrenze nachrechnen).
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere
