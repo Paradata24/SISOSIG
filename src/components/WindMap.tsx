@@ -16,6 +16,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   CARTO_API_KEY,
+  getStationFilterMapLabel,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
@@ -882,11 +883,22 @@ export default function WindMap({
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
           Projektbesitzers). */}
-      {error && (
-        <div className="absolute top-3 left-1/2 z-[1000] -translate-x-1/2 rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
-          {error}
+      {/* Oben mittig: welcher Stationsfilter aktiv ist (immer sichtbar, auch
+          bei "ALLE"; Wunsch des Projektbesitzers), darunter ggf. die
+          Fehlermeldung. Beide in EINER Spalte, damit sie sich nicht
+          überdecken. pointer-events-none: Das Schild ist nur Anzeige, Ziehen
+          und Antippen der Karte gehen durch es hindurch. Stil wie die Knöpfe
+          im Titel-Balken (eckig, schwarzer Rahmen, weiß). */}
+      <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
+        <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50">
+          {getStationFilterMapLabel(stationFilter)}
         </div>
-      )}
+        {error && (
+          <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
+            {error}
+          </div>
+        )}
+      </div>
       {selectedStation && (
         <WindHistoryPanel
           station={selectedStation}

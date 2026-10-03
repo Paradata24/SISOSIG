@@ -469,6 +469,21 @@ export function getStationFilterLabel(filter: StationFilter): string {
 }
 
 /**
+ * Beschriftung des Filter-Schildes oben mittig auf der Karte: dieselbe wie im
+ * Menü, aber immer in Großbuchstaben (Wunsch des Projektbesitzers), z. B.
+ * "ALLE", "WINDANZEIGER", "STATIONEN ≤1.000 m". Nur die Einheit "m" bleibt
+ * klein — ein großes "M" läse sich wie "Millionen".
+ */
+export function getStationFilterMapLabel(filter: StationFilter): string {
+  if (filter === "all" || filter === "windanzeiger") {
+    return getStationFilterLabel(filter).toUpperCase();
+  }
+  const { thresholdM, direction } = ALTITUDE_FILTERS[filter];
+  const sign = direction === "above" ? "≥" : "≤";
+  return `STATIONEN ${sign}${thresholdM.toLocaleString("de-DE")} m`;
+}
+
+/**
  * true, wenn die Station beim gewählten Filter auf der Karte sichtbar ist.
  * Stationen ohne Höhenangabe fallen bei jedem Höhenfilter heraus — bei
  * unbekannter Höhe lässt sich nicht sagen, ob sie dazugehören.
