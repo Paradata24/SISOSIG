@@ -1,3 +1,4 @@
+import { isInAlps } from "./alps";
 import type { WindStation } from "./wind";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
@@ -19,7 +20,7 @@ import type { WindStation } from "./wind";
 // nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box, im Sept.
 // 2026 dann alle Österreichs; das brachte viele Stationen im Flachland
 // (Wien, Burgenland, Weinviertel, Donauraum, Mühl-/Waldviertel) ohne Nutzen
-// für Gleitschirmflieger. Die Regel steht in isInAlps() weiter unten.
+// für Gleitschirmflieger. Die Regel steht in src/lib/alps.ts (gilt für alle Quellen).
 // Stationen ganz ohne Windwerte (reine Temperatur-/Niederschlagsstationen,
 // rund ein Dutzend) werden ausgelassen, wie beim Bozner Dienst.
 //
@@ -122,52 +123,6 @@ export function formatGeoSphereName(name: string): string {
 function valueAt(param: GeoSphereParameter | undefined, idx: number): number | null {
   const v = param?.data?.[idx];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
-
-// Grober Umriss des österreichischen Alpenraums als Vieleck aus
-// [Länge, Breite]-Punkten. Drin sind die Alpen samt Talböden (Innsbruck,
-// Salzburg, Klagenfurt, Villach, Graz, Bregenz …) und dem Alpenrand
-// (Gmunden/Traunsee, Waidhofen/Ybbs, Hohe Wand, Semmering); draußen sind
-// Alpenvorland, Donauraum, Wien, Burgenland, Weinviertel, Böhmische Masse
-// (Mühl-/Waldviertel) und das Südost-Hügelland der Steiermark. Der Süden und
-// Westen liegen außerhalb Österreichs und schneiden deshalb nichts ab.
-// Am 04.10.2026 gegen alle 286 aktiven Stationen geprüft: 191 drin, 95 draußen;
-// alle Windanzeiger-Stationen (WINDANZEIGER_STATION_CODES) bleiben drin.
-//
-// ACHTUNG: Die Edge Function fetch-wind-forecasts hat eine Kopie dieses
-// Vielecks (Deno kann nicht aus src/ importieren) — bei Änderungen beide
-// anfassen, sonst gibt es Prognosen für Stationen, die gar nicht mehr
-// angezeigt werden (oder umgekehrt Stationen ohne Prognose).
-const ALPS_POLYGON: Array<[number, number]> = [
-  [9.4, 46.3],
-  [9.4, 47.75],
-  [12.0, 47.75],
-  [13.2, 48.0],
-  [13.8, 48.0],
-  [14.2, 47.95],
-  [14.9, 48.0],
-  [15.6, 48.05],
-  [15.9, 48.0],
-  [16.06, 47.9],
-  [16.06, 47.45],
-  [15.75, 47.3],
-  [15.55, 47.0],
-  [15.35, 46.6],
-  [15.3, 46.3],
-];
-
-// Punkt-im-Vieleck-Test (Strahlverfahren): zählt, wie oft ein Strahl nach
-// Osten die Vieleck-Kanten kreuzt — ungerade Anzahl heißt "drin".
-export function isInAlps(lat: number, lon: number): boolean {
-  let inside = false;
-  for (let i = 0, j = ALPS_POLYGON.length - 1; i < ALPS_POLYGON.length; j = i++) {
-    const [xi, yi] = ALPS_POLYGON[i];
-    const [xj, yj] = ALPS_POLYGON[j];
-    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
 }
 
 async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
