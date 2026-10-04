@@ -1,3 +1,4 @@
+import { isInAlps } from "./alps";
 import type { WindStation } from "./wind";
 
 // Gemeinsame Logik zum Abrufen der IMIS-Stationen des SLF (WSL-Institut für
@@ -171,6 +172,7 @@ export async function fetchSlfStations(): Promise<WindStation[]> {
 
   for (const s of meta) {
     if (typeof s.lat !== "number" || typeof s.lon !== "number") continue;
+    if (!isInAlps(s.lat, s.lon)) continue;
     const readings = byStation.get(`${SLF_CODE_PREFIX}${s.code}`);
     if (!readings || readings.length === 0) continue;
     const latest = readings[readings.length - 1];
@@ -207,9 +209,17 @@ export async function fetchSlfStations(): Promise<WindStation[]> {
  * gelieferter Wert) beim nächsten Lauf von selbst.
  */
 export async function fetchSlfReadingsSince(sinceMs: number): Promise<SlfReading[]> {
-  const byStation = await fetchReadingsByStation();
+  const [meta, byStation] = await Promise.all([fetchStationMeta(), fetchReadingsByStation()]);
+  // Nur Stationen im Alpenraum (siehe src/lib/alps.ts) — dieselbe Auswahl wie
+  // in fetchSlfStations, damit nichts gesammelt wird, was nie angezeigt wird.
+  const inAlps = new Set(
+    meta
+      .filter((s) => typeof s.lat === "number" && typeof s.lon === "number" && isInAlps(s.lat, s.lon))
+      .map((s) => `${SLF_CODE_PREFIX}${s.code}`),
+  );
   const rows: SlfReading[] = [];
-  for (const list of byStation.values()) {
+  for (const [code, list] of byStation) {
+    if (!inAlps.has(code)) continue;
     for (const r of list) {
       if (Date.parse(r.measuredAt) >= sinceMs) rows.push(r);
     }

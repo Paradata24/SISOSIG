@@ -1,8 +1,8 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt die Windprognose des
 // Modells ICON-CH1 (MeteoSwiss) von Open-Meteo für alle Wetterstationen mit
 // Windsensoren (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-
-// Stationen, die Schweizer IMIS-Stationen des SLF und alle österreichischen
-// GeoSphere-Stationen) und
+// Stationen, die Schweizer IMIS-Stationen des SLF und die GeoSphere-Stationen;
+// alle nur im Alpenraum) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -352,18 +352,66 @@ async function loadSlfStations(): Promise<Station[]> {
 // try/catch beim Aufruf.
 //
 // Bis Sept. 2026 waren es nur die 13 grenznahen Stationen (Südtirol-Box),
-// weil stündliche Abrufe aller Stationen das Open-Meteo-Kontingent gesprengt
-// hätten. Seit nur noch bei neuen Modellläufen abgefragt wird (8× statt
-// 24× am Tag, s. o.), ist dafür Platz. Die Metadaten sagen nicht, welche
-// Station Wind misst; das gute Dutzend ohne Windsensor bekommt eine
-// Prognose, die nie angezeigt wird (wie beim SLF). Die 10 Stationen ganz im
-// Osten (Burgenland/Weinviertel) liegen außerhalb des ICON-CH1-Gebiets und
-// werden über ICON_CH1_MAX_LNG vorab aussortiert.
+// dann ganz Österreich; der Alpenraum-Filter (siehe isInAlps unten) schneidet
+// jetzt das Flachland wieder weg. Die Metadaten sagen nicht, welche Station
+// Wind misst; das Dutzend ohne Windsensor bekommt eine Prognose, die nie
+// angezeigt wird (wie beim SLF).
 interface GeoSphereStationMeta {
   id: string;
   lat?: number;
   lon?: number;
   is_active?: boolean;
+}
+
+// Alpenraum-Filter für ALLE Quellen (Wunsch des Projektbesitzers, Okt. 2026:
+// nur Stationen dort, wo Berge sind; entscheidend ist der Ort, nicht die
+// Höhe — Talstationen in den Alpen bleiben). Kopie von ALPS_POLYGON /
+// isInAlps() aus src/lib/alps.ts (Erklärung zum Umriss dort) — bei
+// Änderungen beide anfassen. Wird einmal auf die fertige Stationsliste
+// angewendet (siehe unten, neben insideIconCh1), damit nur Stationen
+// abgefragt werden, die auch auf der Karte erscheinen.
+const ALPS_POLYGON: Array<[number, number]> = [
+  [6.7, 45.85],
+  [6.7, 46.5],
+  [7.0, 46.6],
+  [7.1, 46.7],
+  [7.4, 46.82],
+  [7.65, 46.88],
+  [7.85, 47.0],
+  [8.05, 47.05],
+  [8.3, 47.1],
+  [8.62, 47.15],
+  [9.1, 47.3],
+  [9.6, 47.4],
+  [9.6, 47.75],
+  [12.0, 47.75],
+  [13.2, 48.0],
+  [13.8, 48.0],
+  [14.2, 47.95],
+  [14.9, 48.0],
+  [15.6, 48.05],
+  [15.9, 48.0],
+  [16.06, 47.9],
+  [16.06, 47.45],
+  [15.75, 47.3],
+  [15.55, 47.0],
+  [15.35, 46.6],
+  [15.3, 46.3],
+  [15.3, 45.9],
+  [8.8, 45.9],
+  [8.8, 45.85],
+];
+
+function isInAlps(lat: number, lon: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ALPS_POLYGON.length - 1; i < ALPS_POLYGON.length; j = i++) {
+    const [xi, yi] = ALPS_POLYGON[i];
+    const [xj, yj] = ALPS_POLYGON[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 async function loadGeoSphereStations(): Promise<Station[]> {
@@ -595,10 +643,10 @@ export async function handleRequest(request: Request): Promise<Response> {
   } catch (err) {
     console.error("GeoSphere-Stationsliste nicht abrufbar:", err);
   }
-  // Stationen außerhalb des Modellgebiets gar nicht erst abfragen (siehe
-  // ICON_CH1_MAX_LNG).
+  // Stationen außerhalb der Alpen (siehe isInAlps) und außerhalb des
+  // Modellgebiets (siehe ICON_CH1_MAX_LNG) gar nicht erst abfragen.
   const beforeFilter = stations.length;
-  stations = stations.filter(insideIconCh1);
+  stations = stations.filter((s) => insideIconCh1(s) && isInAlps(s.lat, s.lng));
   const outsideFiltered = beforeFilter - stations.length;
   if (stations.length === 0) {
     return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);

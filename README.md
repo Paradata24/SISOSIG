@@ -343,7 +343,7 @@ Die Supabase Edge Function `fetch-wind-forecasts`
 Windprognosen des Modells **ICON-CH1** (MeteoSwiss) von
 [Open-Meteo](https://open-meteo.com) für alle Stationen, die auch auf der
 Karte erscheinen — Bozen, Südtiroler OpenWindMap/Pioupiou-Stationen,
-SLF (Schweiz) und GeoSphere (ganz Österreich); die Stationslisten sind in
+SLF (Schweiz) und GeoSphere (Österreich), jeweils nur im Alpenraum; die Stationslisten sind in
 der Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren
 kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
@@ -370,7 +370,7 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   Podersdorf, Andau, Hohenau) bekommen keine Prognose; sie werden vorab
   aussortiert, weil Open-Meteo sonst die ganze Anfrage ablehnt.
 - **Kontingent:** Open-Meteo erlaubt kostenlos 10.000 Aufrufe pro Tag,
-  gezählt je Station. ~580 Stationen × 8 Läufe ≈ **4.700 am Tag** (vorher
+  gezählt je Station. ~430 Stationen × 8 Läufe ≈ **3.400 am Tag** (vorher
   stündlich ~310 Stationen ≈ 7.400).
 - Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Angezeigt werden
   davon nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
@@ -551,11 +551,34 @@ den Hinweis nur noch stationsweise als „Quelle:"-Link unten im
 Verlaufsbalken.
 
 
+## Nur Stationen in den Alpen
+
+Die Karte zeigt (und sammelt, und prognostiziert) nur Wetterstationen **im
+Alpenraum** — Gleitschirmflieger brauchen sonst nichts. Entscheidend ist der
+**Ort, nicht die Höhe**: Talstationen in den Alpen (Innsbruck, Chur, Sion,
+Bozen, Klagenfurt, Graz …) bleiben, Stationen im Flachland oder Mittelgebirge
+außerhalb der Alpen (Wien, Burgenland, Mühl-/Waldviertel, Schweizer Mittelland
+mit Bern/Zürich/Basel/Genf, Jura) fallen weg.
+
+- **Regel:** `isInAlps(lat, lon)` in `src/lib/alps.ts` — ein grober Umriss der
+  Alpen. In der Edge Function `fetch-wind-forecasts` steht aus Deno-Gründen
+  eine Kopie; ändert man den Umriss, müssen beide Stellen angepasst und die
+  Edge Function im Supabase-Dashboard neu deployt werden.
+- **Betrifft:** GeoSphere Austria (191 von 286 Stationen bleiben),
+  MeteoSchweiz (97 von 151), SLF (207 von 208). Bozen, OpenWindMap (Südtirol),
+  LWD Tirol und Zugspitze liegen sowieso in den Alpen.
+- **Ausnahme Windanzeiger:** Chasseral und La Dôle (MeteoSchweiz, Jura) bleiben,
+  weil sie zu den vom Projektbesitzer gewählten Windanzeiger-Stationen gehören.
+- Alte Messwerte und Prognosen der entfernten Stationen löscht das
+  Aufräumen nach 2 Tagen von selbst.
+
 ## GeoSphere-Austria-Stationen (früher ZAMG)
 
-Zusätzlich zeigt die Karte **alle österreichischen Wetterstationen mit
-Windmessung** von GeoSphere Austria (Messnetz TAWES, 10-Minuten-Werte),
-rund 275 Stück. Code: `src/lib/geosphere.ts` (genutzt von `/api/wind` und
+Zusätzlich zeigt die Karte die **österreichischen Wetterstationen mit
+Windmessung im Alpenraum** von GeoSphere Austria (Messnetz TAWES,
+10-Minuten-Werte), rund 190 Stück. Stationen im Flachland (Wien, Burgenland,
+Weinviertel, Donauraum, Mühl-/Waldviertel) fehlen bewusst — siehe Abschnitt
+„Nur Stationen in den Alpen" weiter oben. Code: `src/lib/geosphere.ts` (genutzt von `/api/wind` und
 `/api/collect`), in der Edge Function `fetch-wind-forecasts` aus
 Deno-Gründen separat dupliziert.
 
@@ -570,8 +593,7 @@ Deno-Gründen separat dupliziert.
   liefert m/s, umgerechnet wird auf km/h. Höhe kommt direkt aus den Metadaten.
 - **Anfrage-Grenze:** höchstens 240 Anfragen pro Stunde — deshalb 120 s Cache
   für die Messwerte (siehe Kommentar in `src/lib/geosphere.ts`).
-- **Prognosen:** ICON-CH1 für alle Stationen (deckt ganz Österreich ab,
-  auch Wien/Graz/Linz).
+- **Prognosen:** ICON-CH1 für alle angezeigten Stationen.
 - **Lizenz:** CC BY 4.0 — Quellenangabe über den „Quelle:"-Link im
   Verlaufsbalken („GeoSphere Austria (CC BY 4.0)").
 - **Ausfallsicher** wie OpenWindMap: fällt der Dienst aus, bleiben die

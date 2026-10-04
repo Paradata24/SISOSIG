@@ -1,4 +1,5 @@
-import type { WindStation } from "./wind";
+import { isInAlps } from "./alps";
+import { WINDANZEIGER_STATION_CODES, type WindStation } from "./wind";
 
 // Gemeinsame Logik zum Abrufen der automatischen Messstationen von MeteoSchweiz
 // (Bundesamt für Meteorologie und Klimatologie, Netz "SwissMetNet"/SMN, rund
@@ -131,7 +132,7 @@ async function fetchMeta(): Promise<Map<string, MeteoSwissMeta>> {
 }
 
 /**
- * Live-Werte aller MeteoSchweiz-Stationen mit Windmessung, im selben
+ * Live-Werte der MeteoSchweiz-Stationen im Alpenraum mit Windmessung, im selben
  * WindStation-Format wie die anderen Quellen. Stationen ohne jeden Windwert
  * (reine Temperatur-/Niederschlagsstationen) und Stationen ohne Eintrag in der
  * Stationsliste (kein Standort) erscheinen nicht.
@@ -151,6 +152,17 @@ export async function fetchMeteoSwissStations(): Promise<WindStation[]> {
     const abbr = r["Station/Location"];
     const station = abbr ? meta.get(abbr) : undefined;
     if (!station) continue;
+
+    // Nur Alpen-Stationen (Mittelland, Jura und Poebene bleiben draußen, siehe
+    // src/lib/alps.ts). Ausnahme: die vom Projektbesitzer ausgewählten
+    // Windanzeiger-Stationen — Chasseral und La Dôle liegen im Jura, sind aber
+    // ausdrücklich gewollt.
+    if (
+      !isInAlps(station.lat, station.lng) &&
+      !WINDANZEIGER_STATION_CODES.includes(`${METEOSWISS_CODE_PREFIX}${abbr}`)
+    ) {
+      continue;
+    }
 
     const direction = numberOrNull(r["dkl010z0"]);
     const speedKmh = numberOrNull(r["fu3010z0"]);
