@@ -192,7 +192,7 @@ async function fetchSlfSafely(): Promise<WindStation[]> {
   }
 }
 
-// GeoSphere-Austria-Stationen (alle österreichischen Stationen mit Wind, siehe
+// GeoSphere-Austria-Stationen (die österreichischen Stationen mit Wind im Alpenraum, siehe
 // src/lib/geosphere.ts) sind genauso additiv wie OpenWindMap.
 async function fetchGeoSphereSafely(): Promise<WindStation[]> {
   try {

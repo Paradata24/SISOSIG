@@ -1,8 +1,8 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt die Windprognose des
 // Modells ICON-CH1 (MeteoSwiss) von Open-Meteo für alle Wetterstationen mit
 // Windsensoren (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-
-// Stationen, die Schweizer IMIS-Stationen des SLF und alle österreichischen
-// GeoSphere-Stationen) und
+// Stationen, die Schweizer IMIS-Stationen des SLF und die GeoSphere-Stationen
+// im österreichischen Alpenraum) und
 // schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
 //
@@ -348,22 +348,55 @@ async function loadSlfStations(): Promise<Station[]> {
   return stations;
 }
 
-// Alle aktiven GeoSphere-Austria-Stationen laden. Ebenfalls additiv, siehe
-// try/catch beim Aufruf.
+// Alle aktiven GeoSphere-Austria-Stationen IM ALPENRAUM laden. Ebenfalls
+// additiv, siehe try/catch beim Aufruf.
 //
 // Bis Sept. 2026 waren es nur die 13 grenznahen Stationen (Südtirol-Box),
-// weil stündliche Abrufe aller Stationen das Open-Meteo-Kontingent gesprengt
-// hätten. Seit nur noch bei neuen Modellläufen abgefragt wird (8× statt
-// 24× am Tag, s. o.), ist dafür Platz. Die Metadaten sagen nicht, welche
-// Station Wind misst; das gute Dutzend ohne Windsensor bekommt eine
-// Prognose, die nie angezeigt wird (wie beim SLF). Die 10 Stationen ganz im
-// Osten (Burgenland/Weinviertel) liegen außerhalb des ICON-CH1-Gebiets und
-// werden über ICON_CH1_MAX_LNG vorab aussortiert.
+// dann ganz Österreich, seit Okt. 2026 nur noch der Alpenraum (Wunsch des
+// Projektbesitzers: Stationen im Flachland sind unnötig). Die Regel ist
+// IDENTISCH zu isInAlps() in src/lib/geosphere.ts — bei Änderungen beide
+// anfassen. Die Metadaten sagen nicht, welche Station Wind misst; das
+// Dutzend ohne Windsensor bekommt eine Prognose, die nie angezeigt wird
+// (wie beim SLF). Die Stationen ganz im Osten (Burgenland/Weinviertel)
+// fallen mit dem Alpenraum-Filter ohnehin weg; ICON_CH1_MAX_LNG bleibt als
+// Sicherheitsnetz für alle Quellen bestehen.
 interface GeoSphereStationMeta {
   id: string;
   lat?: number;
   lon?: number;
   is_active?: boolean;
+}
+
+// Kopie von ALPS_POLYGON / isInAlps() aus src/lib/geosphere.ts (Erklärung
+// zum Umriss dort).
+const ALPS_POLYGON: Array<[number, number]> = [
+  [9.4, 46.3],
+  [9.4, 47.75],
+  [12.0, 47.75],
+  [13.2, 48.0],
+  [13.8, 48.0],
+  [14.2, 47.95],
+  [14.9, 48.0],
+  [15.6, 48.05],
+  [15.9, 48.0],
+  [16.06, 47.9],
+  [16.06, 47.45],
+  [15.75, 47.3],
+  [15.55, 47.0],
+  [15.35, 46.6],
+  [15.3, 46.3],
+];
+
+function isInAlps(lat: number, lon: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ALPS_POLYGON.length - 1; i < ALPS_POLYGON.length; j = i++) {
+    const [xi, yi] = ALPS_POLYGON[i];
+    const [xj, yj] = ALPS_POLYGON[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
 
 async function loadGeoSphereStations(): Promise<Station[]> {
@@ -377,6 +410,7 @@ async function loadGeoSphereStations(): Promise<Station[]> {
     if (s.is_active === false || typeof s.lat !== "number" || typeof s.lon !== "number") {
       continue;
     }
+    if (!isInAlps(s.lat, s.lon)) continue;
     stations.push({ code: `${GEOSPHERE_CODE_PREFIX}${s.id}`, lat: s.lat, lng: s.lon });
   }
   return stations;

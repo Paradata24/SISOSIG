@@ -85,7 +85,7 @@ direktes Aufrufen der API-Routen (`curl`).
 
 Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
 OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz), MeteoSchweiz
-(alle SwissMetNet-Stationen) und GeoSphere Austria (TAWES, ganz Österreich)
+(alle SwissMetNet-Stationen) und GeoSphere Austria (TAWES, nur Alpenraum Österreichs)
 sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
 und Prognose in Supabase.
 
@@ -101,7 +101,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
-| `src/lib/geosphere.ts` | Alle österreichischen Stationen mit Wind von GeoSphere Austria (früher ZAMG) |
+| `src/lib/geosphere.ts` | Österreichische Stationen mit Wind von GeoSphere Austria (früher ZAMG), nur Alpenraum (`isInAlps()`) |
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
@@ -328,6 +328,15 @@ also alle 3 h, wirklich neue Werte).
 - **Zugspitze (DWD) liefert seit 25.09.2026 keine Werte** (Ausfall beim DWD);
   sie ist grau, bis der DWD wieder veröffentlicht. Kein Fehler im Code.
 
+**Österreich nur im Alpenraum (Okt. 2026)**
+- Von GeoSphere werden nur Stationen im Alpenraum geladen, gesammelt und
+  prognostiziert (`isInAlps()` / `ALPS_POLYGON` in `src/lib/geosphere.ts`,
+  Kopie in der Edge Function). Wunsch des Projektbesitzers: Stationen im
+  Flachland (Wien, Burgenland, Weinviertel, Donauraum, Mühl-/Waldviertel)
+  sind unnötig. Talstationen der Alpen (Innsbruck, Salzburg, Klagenfurt, Graz,
+  Bregenz …) bleiben bewusst drin. Nicht wieder auf „ganz Österreich"
+  zurückbauen.
+
 ## Nicht wieder einführen (ohne Rücksprache)
 
 Alles Folgende gab es schon einmal und wurde auf ausdrücklichen Wunsch des
@@ -357,8 +366,10 @@ Projektbesitzers entfernt:
   Stationsabrufs und der GeoSphere-Adresse. Wird `HISTORY_HOURS` /
   `FUTURE_MARGIN_HOURS` in `src/lib/wind.ts`, `SOUTH_TYROL_BBOX` in
   `src/lib/pioupiou.ts` (gilt auch für die GeoSphere-Prognosen) oder
-  Adresse/Codepräfix in `src/lib/slf.ts` bzw. `src/lib/geosphere.ts` geändert,
-  muss die Edge Function mitgezogen werden.
+  Adresse/Codepräfix in `src/lib/slf.ts` bzw. `src/lib/geosphere.ts` oder der
+  Alpenraum-Umriss `ALPS_POLYGON` in `src/lib/geosphere.ts` geändert, muss die
+  Edge Function mitgezogen werden (und danach im Supabase-Dashboard neu
+  deployt).
 - **GeoSphere erlaubt nur 240 Anfragen pro Stunde** (je Absender). Deshalb
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
@@ -393,8 +404,8 @@ Projektbesitzers entfernt:
 - **Open-Meteo-Kontingent:** kostenlos 10.000 Aufrufe am Tag. Gezählt wird
   je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
-  Anfrage kosten erst ab 10 Reihen extra. Stand Sept. 2026: ~580 Stationen
-  (inkl. ganz Österreich) × 8 Modellläufe ≈ 4.700 am Tag. Wird die
+  Anfrage kosten erst ab 10 Reihen extra. Stand Sept. 2026: ~485 Stationen
+  (Österreich nur Alpenraum) × 8 Modellläufe ≈ 3.900 am Tag. Wird die
   Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
   entfernt, wären es stündlich ≈ 14.000 — über der Grenze.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,

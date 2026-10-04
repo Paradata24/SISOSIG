@@ -14,15 +14,19 @@ import type { WindStation } from "./wind";
 // den anderen Quellen über den "Quelle:"-Link im Verlaufsbalken
 // (SOURCE_INFO in src/lib/wind.ts). Nicht entfernen.
 //
-// Welche Stationen: ALLE aktiven Stationen Österreichs mit Windmessung
-// (Wunsch des Projektbesitzers, Sept. 2026) — rund 275 Stück. Anfangs waren
-// es nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box.
+// Welche Stationen: nur die im ALPENRAUM (Wunsch des Projektbesitzers,
+// Okt. 2026: "nur dort, wo Berge sind") — rund 190 von ~290. Anfangs waren es
+// nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box, im Sept.
+// 2026 dann alle Österreichs; das brachte viele Stationen im Flachland
+// (Wien, Burgenland, Weinviertel, Donauraum, Mühl-/Waldviertel) ohne Nutzen
+// für Gleitschirmflieger. Die Regel steht in isInAlps() weiter unten.
 // Stationen ganz ohne Windwerte (reine Temperatur-/Niederschlagsstationen,
 // rund ein Dutzend) werden ausgelassen, wie beim Bozner Dienst.
 //
 // Zwei Anfragen je Abruf:
 //   1. /metadata: alle ~290 österreichischen Stationen mit Name, Koordinaten
-//      und Höhe. Ändert sich praktisch nie → 6 h gecacht.
+//      und Höhe (danach auf den Alpenraum gefiltert). Ändert sich praktisch
+//      nie → 6 h gecacht.
 //   2. Aktuelle Messwerte aller aktiven Stationen (station_ids=… ist
 //      Pflicht, die Schnittstelle kennt kein "alle"), Parameter DD
 //      (Richtung), FF (Mittelwind), FFX (Böe).
@@ -120,6 +124,52 @@ function valueAt(param: GeoSphereParameter | undefined, idx: number): number | n
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
+// Grober Umriss des österreichischen Alpenraums als Vieleck aus
+// [Länge, Breite]-Punkten. Drin sind die Alpen samt Talböden (Innsbruck,
+// Salzburg, Klagenfurt, Villach, Graz, Bregenz …) und dem Alpenrand
+// (Gmunden/Traunsee, Waidhofen/Ybbs, Hohe Wand, Semmering); draußen sind
+// Alpenvorland, Donauraum, Wien, Burgenland, Weinviertel, Böhmische Masse
+// (Mühl-/Waldviertel) und das Südost-Hügelland der Steiermark. Der Süden und
+// Westen liegen außerhalb Österreichs und schneiden deshalb nichts ab.
+// Am 04.10.2026 gegen alle 286 aktiven Stationen geprüft: 191 drin, 95 draußen;
+// alle Windanzeiger-Stationen (WINDANZEIGER_STATION_CODES) bleiben drin.
+//
+// ACHTUNG: Die Edge Function fetch-wind-forecasts hat eine Kopie dieses
+// Vielecks (Deno kann nicht aus src/ importieren) — bei Änderungen beide
+// anfassen, sonst gibt es Prognosen für Stationen, die gar nicht mehr
+// angezeigt werden (oder umgekehrt Stationen ohne Prognose).
+const ALPS_POLYGON: Array<[number, number]> = [
+  [9.4, 46.3],
+  [9.4, 47.75],
+  [12.0, 47.75],
+  [13.2, 48.0],
+  [13.8, 48.0],
+  [14.2, 47.95],
+  [14.9, 48.0],
+  [15.6, 48.05],
+  [15.9, 48.0],
+  [16.06, 47.9],
+  [16.06, 47.45],
+  [15.75, 47.3],
+  [15.55, 47.0],
+  [15.35, 46.6],
+  [15.3, 46.3],
+];
+
+// Punkt-im-Vieleck-Test (Strahlverfahren): zählt, wie oft ein Strahl nach
+// Osten die Vieleck-Kanten kreuzt — ungerade Anzahl heißt "drin".
+export function isInAlps(lat: number, lon: number): boolean {
+  let inside = false;
+  for (let i = 0, j = ALPS_POLYGON.length - 1; i < ALPS_POLYGON.length; j = i++) {
+    const [xi, yi] = ALPS_POLYGON[i];
+    const [xj, yj] = ALPS_POLYGON[j];
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
   const res = await fetch(`${API_BASE}/metadata`, {
     next: { revalidate: METADATA_REVALIDATE_S },
@@ -132,12 +182,13 @@ async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
     (s) =>
       s.is_active !== false &&
       typeof s.lat === "number" &&
-      typeof s.lon === "number",
+      typeof s.lon === "number" &&
+      isInAlps(s.lat, s.lon),
   );
 }
 
 /**
- * Ruft alle GeoSphere-Austria-Stationen mit Windmessung ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
+ * Ruft die GeoSphere-Austria-Stationen im Alpenraum mit Windmessung ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
  * Farbskala, gleiches stale-Verhalten, gleiche Darstellung).
  */
 export async function fetchGeoSphereStations(): Promise<WindStation[]> {
