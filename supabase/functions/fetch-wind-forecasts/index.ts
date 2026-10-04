@@ -38,8 +38,9 @@
 // Open-Meteo zählt kostenlos 10.000 "Aufrufe" pro Tag. Laut Quellcode von
 // Open-Meteo (calculateQueryWeight) kostet jeder Standort einer Anfrage
 // mindestens 1 Aufruf, mehr erst ab 10 Werte-Reihen oder 2 Wochen Zeitraum —
-// wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~580
-// Stationen und 8 Modellläufen am Tag sind das ~4.700 Aufrufe (47 %).
+// wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~430
+// Stationen (nur Alpenraum) und 8 Modellläufen am Tag sind das ~3.400
+// Aufrufe (34 %).
 //
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
