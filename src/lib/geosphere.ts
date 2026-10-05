@@ -1,3 +1,4 @@
+import { isInAlps } from "./alps";
 import type { WindStation } from "./wind";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
@@ -14,15 +15,19 @@ import type { WindStation } from "./wind";
 // den anderen Quellen über den "Quelle:"-Link im Verlaufsbalken
 // (SOURCE_INFO in src/lib/wind.ts). Nicht entfernen.
 //
-// Welche Stationen: ALLE aktiven Stationen Österreichs mit Windmessung
-// (Wunsch des Projektbesitzers, Sept. 2026) — rund 275 Stück. Anfangs waren
-// es nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box.
+// Welche Stationen: nur die im ALPENRAUM (Wunsch des Projektbesitzers,
+// Okt. 2026: "nur dort, wo Berge sind") — rund 190 von ~290. Anfangs waren es
+// nur die grenznahen Stationen innerhalb der Südtirol-Bounding-Box, im Sept.
+// 2026 dann alle Österreichs; das brachte viele Stationen im Flachland
+// (Wien, Burgenland, Weinviertel, Donauraum, Mühl-/Waldviertel) ohne Nutzen
+// für Gleitschirmflieger. Die Regel steht in src/lib/alps.ts (gilt für alle Quellen).
 // Stationen ganz ohne Windwerte (reine Temperatur-/Niederschlagsstationen,
 // rund ein Dutzend) werden ausgelassen, wie beim Bozner Dienst.
 //
 // Zwei Anfragen je Abruf:
 //   1. /metadata: alle ~290 österreichischen Stationen mit Name, Koordinaten
-//      und Höhe. Ändert sich praktisch nie → 6 h gecacht.
+//      und Höhe (danach auf den Alpenraum gefiltert). Ändert sich praktisch
+//      nie → 6 h gecacht.
 //   2. Aktuelle Messwerte aller aktiven Stationen (station_ids=… ist
 //      Pflicht, die Schnittstelle kennt kein "alle"), Parameter DD
 //      (Richtung), FF (Mittelwind), FFX (Böe).
@@ -132,12 +137,13 @@ async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
     (s) =>
       s.is_active !== false &&
       typeof s.lat === "number" &&
-      typeof s.lon === "number",
+      typeof s.lon === "number" &&
+      isInAlps(s.lat, s.lon),
   );
 }
 
 /**
- * Ruft alle GeoSphere-Austria-Stationen mit Windmessung ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
+ * Ruft die GeoSphere-Austria-Stationen im Alpenraum mit Windmessung ab, im selben WindStation-Format wie die Bozner Stationen (gleiche
  * Farbskala, gleiches stale-Verhalten, gleiche Darstellung).
  */
 export async function fetchGeoSphereStations(): Promise<WindStation[]> {
