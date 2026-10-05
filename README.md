@@ -679,6 +679,13 @@ der Stationsseite, z. B. `holfuy.com/de/weather/1000`).
   Quellen bewusst ausgenommen) — sichtbar unter „Alle".
 - Umbiegen auf einen Mock: `HOLFUY_API_URL`.
 
+**Ersatz ohne Holfuy (seit Okt. 2026 aktiv):** Vier Startplatz-Stationen am
+Gardasee senden frei im OpenWindMap-Netz und stehen deshalb schon auf der
+Karte — als Ausnahmen in `EXTRA_STATIONS` in `src/lib/pioupiou.ts`:
+Rifugio Chierego (Monte Baldo, `pioupiou-1650`), Alpo Startplatz (Tremosine,
+`pioupiou-1729`), Decollo Castiverio (Corno d'Aquilio, `pioupiou-2073`) und
+Decollo GAS (`pioupiou-1321`). Wie Bälmeten ohne Prognose-Kurve.
+
 ## Hinweis zur Sandbox-Umgebung
 
 Innerhalb dieser Cloud-Sandbox sind sowohl der Wetterdienst der Provinz

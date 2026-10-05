@@ -39,8 +39,18 @@ export const SOUTH_TYROL_BBOX = {
  * Kopie der Box und kennt diese Stationen nicht — sie bekommen keine
  * Prognose-Kurve.
  */
+//
+// Gardasee (Okt. 2026): Startplatz-Stationen von Fliegervereinen, die frei im
+// OpenWindMap-Netz senden — Ersatz, solange Holfuy keinen API-Schlüssel
+// vergibt (siehe src/lib/holfuy.ts). Ihre Höhen stammen aus dem
+// Geländemodell von Open-Meteo (Elevation-API) an den Koordinaten der
+// Station, beim Rifugio Chierego aus dem Stationsnamen.
 const EXTRA_STATIONS: Record<number, { altitude: number }> = {
   1535: { altitude: 2414 }, // Bälmeten Backup (Paradeltaclub Uri)
+  1650: { altitude: 1911 }, // Rifugio G. Chierego (Monte Baldo)
+  1729: { altitude: 1506 }, // Alpo Startplatz (Tremosine, Westufer)
+  2073: { altitude: 1395 }, // Decollo Castiverio Corno d'Aquilio (Lessinia)
+  1321: { altitude: 672 }, // Decollo GAS (VoloLiberoScaligero, Südost-Ufer)
 };
 
 // Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen —

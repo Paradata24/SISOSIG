@@ -331,7 +331,9 @@ also alle 3 h, wirklich neue Werte).
   `HOLFUY_API_KEY` liefert die API nur „no_access", das Modul fragt dann gar
   nicht an. Kein Abschreiben von holfuy.com (laut Holfuy-Bedingungen
   verboten). Pflicht-Quellenangabe = Link auf die Stationsseite
-  (`getSourceLink` in `src/lib/wind.ts`).
+  (`getSourceLink` in `src/lib/wind.ts`). Bis dahin stehen vier
+  Gardasee-Startplätze über OpenWindMap auf der Karte (`EXTRA_STATIONS` in
+  `src/lib/pioupiou.ts`).
 - **Zugspitze (DWD) liefert seit 25.09.2026 keine Werte** (Ausfall beim DWD);
   sie ist grau, bis der DWD wieder veröffentlicht. Kein Fehler im Code.
 
