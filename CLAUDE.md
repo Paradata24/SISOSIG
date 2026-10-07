@@ -101,6 +101,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
+| `src/lib/plausibility.ts` | Erkennung wahrscheinlicher Messfehler (eingefroren, Windfahne klemmt, unmögliche Werte) |
 | `src/lib/alps.ts` | Alpen-Regel für ALLE Quellen: `isInAlps(lat, lon)` (Umriss `ALPS_POLYGON`) |
 | `src/lib/geosphere.ts` | Österreichische Stationen mit Wind von GeoSphere Austria (früher ZAMG) |
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
@@ -347,6 +348,22 @@ also alle 3 h, wirklich neue Werte).
   Windanzeiger-Stationen bleiben immer, auch außerhalb des Umrisses
   (MeteoSchweiz **Chasseral** und **La Dôle** liegen im Jura). Steht in
   `meteoswiss.ts`.
+
+**Wahrscheinliche Messfehler (Okt. 2026)**
+- Wunsch des Projektbesitzers: Liefert eine Station auffällige Werte, steht sie
+  auf der Karte als **voller grauer Punkt** (anders als der blasse hohle Ring
+  einer ausgefallenen Station), und beim Anklicken steht im Verlaufsbalken ein
+  Hinweis „Wahrscheinlich Messfehler: …". Gilt live und beim Blättern im
+  Zeitbalken; im Farbstrich des Zeitbalkens zählen solche Werte nicht mit.
+- Regeln in `src/lib/plausibility.ts`: (1) Mittelwind, Böe und Richtung
+  ≥ 90 min exakt gleich (nur ab 3 km/h — Windstille ist kein Fehler),
+  (2) Richtung ≥ 3 h auf das Grad gleich bei ≥ 5 km/h (nicht für Pioupiou und
+  DWD, die liefern nur grobe Richtungsschritte), (3) physikalisch unmögliche
+  Einzelwerte (z. B. Böe deutlich kleiner als Mittelwind).
+- Die Grenzwerte sind an 2 Tagen echter Daten geprüft (keine Fehlalarme).
+  **Nicht verschärfen ohne erneute Prüfung an echten Daten.**
+- Berechnet wird für den Verlauf in `/api/timeline` (Feld `q` je Station), für
+  die Live-Werte in `WindMap` (`assessLive`: 12 h Verlauf + aktueller Wert).
 
 ## Nicht wieder einführen (ohne Rücksprache)
 

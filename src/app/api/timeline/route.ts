@@ -10,6 +10,7 @@ import {
   type TimelinePayload,
   type TimelineSeries,
 } from "@/lib/wind";
+import { assessSeries, encodeSuspectFlags } from "@/lib/plausibility";
 
 // Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
 // (aktuell 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
@@ -241,6 +242,16 @@ export async function GET() {
         series.g[i] = series.g[lastReal];
       }
     }
+  }
+
+  // Wahrscheinliche Messfehler markieren (stundenlang exakt dieselben Werte,
+  // klemmende Windfahne, unmögliche Werte — Regeln in src/lib/plausibility.ts).
+  // Erst NACH dem Halten der SLF-Werte, damit die Prüfung genau das sieht, was
+  // die Karte zeigt. Das Feld q bekommen nur auffällige Stationen.
+  for (const [code, series] of Object.entries(stations)) {
+    const source = sourceByStation.get(code) as WindStation["source"] | undefined;
+    const q = encodeSuspectFlags(assessSeries(series, times, source));
+    if (q) series.q = q;
   }
 
   const payload: TimelinePayload = {

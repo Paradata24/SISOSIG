@@ -23,6 +23,27 @@ export interface WindStation {
    * oder der Deutsche Wetterdienst (src/lib/dwd.ts)
    */
   source: "bolzano" | "openwindmap" | "slf" | "geosphere" | "meteoswiss" | "lwdtirol" | "dwd";
+  /**
+   * Gesetzt, wenn die Werte wahrscheinlich ein Messfehler sind (z. B. stundenlang
+   * exakt dieselben Werte). Kommt NICHT von /api/wind, sondern wird erst im
+   * Browser ergänzt (WindMap, Regeln in src/lib/plausibility.ts). Die Karte
+   * zeigt dann einen grauen Punkt, der Verlaufsbalken einen Hinweis.
+   */
+  suspect?: SuspectInfo | null;
+}
+
+/**
+ * Art der Auffälligkeit (Regeln und Begründung in src/lib/plausibility.ts):
+ *  - "frozen": Mittelwind, Böe und Richtung stehen lange exakt still,
+ *  - "vane": nur die Windrichtung steht still, obwohl Wind weht (Windfahne klemmt),
+ *  - "implausible": ein einzelner Wert ist physikalisch unmöglich.
+ */
+export type SuspectReason = "frozen" | "vane" | "implausible";
+
+export interface SuspectInfo {
+  reason: SuspectReason;
+  /** Seit wann (Epoch-ms) die Auffälligkeit besteht; null = unbekannt. */
+  since: number | null;
 }
 
 /** Anzeigename + Link zur Datenquelle, z. B. für den "Quelle:"-Hinweis im Verlaufsbalken. */
@@ -154,6 +175,8 @@ export interface TimelineValue {
   direction: number | null;
   speedKmh: number | null;
   gustKmh: number | null;
+  /** Wahrscheinlicher Messfehler zu diesem Zeitpunkt (siehe TimelineSeries.q). */
+  suspect?: SuspectReason;
 }
 
 /**
@@ -167,6 +190,28 @@ export interface TimelineSeries {
   d: (number | null)[];
   s: (number | null)[];
   g: (number | null)[];
+  /**
+   * Nur bei Stationen mit Auffälligkeiten (sonst fehlt das Feld, spart Platz):
+   * ein Zeichen je Rasterpunkt, "." = in Ordnung, sonst der Buchstabe aus
+   * SUSPECT_CODES (f/v/i). Berechnet von /api/timeline mit den Regeln aus
+   * src/lib/plausibility.ts.
+   */
+  q?: string;
+}
+
+/** Ein Buchstabe je Auffälligkeit für TimelineSeries.q. */
+export const SUSPECT_CODES: Record<SuspectReason, string> = {
+  frozen: "f",
+  vane: "v",
+  implausible: "i",
+};
+
+/** Umkehrung von SUSPECT_CODES; undefined bei "." (in Ordnung). */
+export function decodeSuspect(code: string | undefined): SuspectReason | undefined {
+  if (code === "f") return "frozen";
+  if (code === "v") return "vane";
+  if (code === "i") return "implausible";
+  return undefined;
 }
 
 /** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 12 h. */
@@ -220,7 +265,8 @@ export function buildTimelineFrame(
     const speedKmh = series.s[idx] ?? null;
     const gustKmh = series.g[idx] ?? null;
     if (direction === null && speedKmh === null && gustKmh === null) continue;
-    values.set(code, { direction, speedKmh, gustKmh });
+    const suspect = decodeSuspect(series.q?.[idx]);
+    values.set(code, suspect ? { direction, speedKmh, gustKmh, suspect } : { direction, speedKmh, gustKmh });
   }
   return { time: payload.times[idx], values };
 }

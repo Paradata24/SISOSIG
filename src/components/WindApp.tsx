@@ -345,6 +345,7 @@ export default function WindApp() {
           baseLayer={baseLayer}
           stationFilter={stationFilter}
           historyFrame={historyFrame}
+          timeline={timeline}
           refreshToken={refreshToken}
           onViewportStationsChange={setViewportCodes}
           selectedStationCode={selectedStationCode}

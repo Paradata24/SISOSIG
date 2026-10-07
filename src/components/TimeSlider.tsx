@@ -110,6 +110,9 @@ export function buildStripColors(
     const speeds: number[] = [];
     for (const s of series) {
       const v = s.s[idx];
+      // Wahrscheinliche Messfehler (siehe src/lib/plausibility.ts) zählen
+      // nicht mit — ein eingefrorener Sturmwert soll den Strich nicht rot färben.
+      if (s.q && s.q[idx] !== ".") continue;
       if (v !== null && v !== undefined) speeds.push(v);
     }
     if (speeds.length === 0) return null;

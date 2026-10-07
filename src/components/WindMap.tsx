@@ -22,9 +22,12 @@ import {
   snapDirectionTo8,
   type BaseLayer,
   type StationFilter,
+  type SuspectInfo,
   type TimelineFrame,
+  type TimelinePayload,
   type WindStation,
 } from "@/lib/wind";
+import { assessLive } from "@/lib/plausibility";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
@@ -352,6 +355,33 @@ function createStaleIcon(tier: ZoomTier) {
   });
 }
 
+// Voller grauer Punkt für Stationen, deren Werte wahrscheinlich ein Messfehler
+// sind (z. B. stundenlang exakt dieselben Werte, Regeln in
+// src/lib/plausibility.ts; Wunsch des Projektbesitzers, Okt. 2026). Bewusst
+// anders als der blasse HOHLE Ring der ausgefallenen Stationen: Diese Station
+// liefert Werte, man kann ihnen nur nicht trauen. Beim Anklicken erklärt der
+// Verlaufsbalken, was auffällig ist.
+function createSuspectIcon(tier: ZoomTier) {
+  const size = ARROW_SIZE[tier];
+  const dotSize = tier === "detail" ? 12 : 10;
+
+  const html = `
+    <div style="width: ${size}px; height: ${size}px; display: flex; align-items: center; justify-content: center;">
+      <svg width="${dotSize}" height="${dotSize}" viewBox="0 0 10 10" style="pointer-events: auto; cursor: pointer;" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="5" cy="5" r="4.2" fill="#9ca3af" stroke="#4b5563" stroke-width="1.2" />
+      </svg>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: "wind-marker",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+}
+
 // Leeres Icon für Stationen, die in der Übersicht ausgedünnt werden. Der
 // Marker bleibt bestehen (siehe THIN_DISTANCE_FACTOR), ist aber unsichtbar
 // und nicht anklickbar (.wind-marker in globals.css).
@@ -395,6 +425,7 @@ function iconCacheKey(
   showLabel: boolean,
 ): string {
   if (station.stale) return `stale|${tier}`;
+  if (station.suspect) return `suspect|${tier}`;
   const dir = station.direction === null ? "x" : snapDirectionTo8(station.direction);
   const speed = station.speedKmh === null ? "x" : Math.round(station.speedKmh);
   const gust = station.gustKmh === null ? "x" : Math.round(station.gustKmh);
@@ -418,7 +449,9 @@ function getMarkerIcon(
   }
   const icon = station.stale
     ? createStaleIcon(tier)
-    : createWindIcon(station, tier, showLabel);
+    : station.suspect
+      ? createSuspectIcon(tier)
+      : createWindIcon(station, tier, showLabel);
   iconCache.set(key, icon);
   while (iconCache.size > ICON_CACHE_LIMIT) {
     const oldest = iconCache.keys().next().value;
@@ -480,8 +513,10 @@ function WindMarkers({
     const minDistanceSq = minDistance * minDistance;
     const hidden = new Set<string>();
     const candidates: WindStation[] = [];
+    // Verdächtige Werte (grauer Punkt) werden wie Ausfälle behandelt: In der
+    // Übersicht unsichtbar und ohne Einfluss aufs Ausdünnen.
     for (const s of positionedStations) {
-      if (s.stale) hidden.add(s.stationCode);
+      if (s.stale || s.suspect) hidden.add(s.stationCode);
       else candidates.push(s);
     }
     candidates.sort(
@@ -607,6 +642,7 @@ export default function WindMap({
   baseLayer,
   stationFilter,
   historyFrame,
+  timeline,
   refreshToken,
   onViewportStationsChange,
   selectedStationCode,
@@ -617,6 +653,12 @@ export default function WindMap({
   stationFilter: StationFilter;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
+  /**
+   * Die 12 h aller Stationen (/api/timeline, kommt aus WindApp). Hier nur für
+   * die Messfehler-Prüfung der LIVE-Werte gebraucht: "seit 90 min dieselben
+   * Werte" lässt sich am einzelnen aktuellen Wert nicht erkennen.
+   */
+  timeline: TimelinePayload | null;
   /**
    * Zähler des Refresh-Buttons im Titel-Balken (WindApp). Jede Erhöhung holt
    * sofort frische Live-Werte (und den Verlauf einer offenen Station).
@@ -651,6 +693,21 @@ export default function WindMap({
     return stations.filter((s) => matchesStationFilter(s, stationFilter));
   }, [stations, stationFilter]);
 
+  // Wahrscheinliche Messfehler der LIVE-Werte (grauer Punkt statt Pfeil,
+  // Regeln in src/lib/plausibility.ts). Gerechnet über ALLE Stationen statt nur
+  // die gefilterten, damit ein Filterwechsel nichts neu rechnen muss; das sind
+  // ~560 kurze Reihen à 73 Werte und läuft nur bei neuen Live-Werten (alle
+  // 3 min) oder neuem Verlauf (alle 10 min). Nur auffällige Stationen landen
+  // in der Map.
+  const liveSuspects = useMemo(() => {
+    const result = new Map<string, SuspectInfo>();
+    for (const station of stations) {
+      const info = assessLive(station, timeline?.stations[station.stationCode], timeline?.times);
+      if (info) result.set(station.stationCode, info);
+    }
+    return result;
+  }, [stations, timeline]);
+
   // Zeitbalken: Steht er nicht auf "jetzt", werden bei den sichtbaren
   // Stationen die MESSWERTE durch die des gewählten Zeitpunkts ersetzt —
   // Name, Koordinaten und Reihenfolge bleiben unangetastet.
@@ -665,7 +722,16 @@ export default function WindMap({
   // Erst filtern, dann ersetzen: bei aktivem Filter sind das ein paar Dutzend
   // statt ~130 Objekte pro Schritt.
   const displayStations = useMemo(() => {
-    if (!historyFrame) return visibleStations;
+    if (!historyFrame) {
+      // Live: Ohne Auffälligkeiten bleibt die Liste unverändert (gleiche
+      // Referenz, spart ein Neuzeichnen); sonst bekommen nur die auffälligen
+      // Stationen eine Kopie mit dem Feld suspect.
+      if (liveSuspects.size === 0) return visibleStations;
+      return visibleStations.map((station) => {
+        const suspect = liveSuspects.get(station.stationCode);
+        return suspect ? { ...station, suspect } : station;
+      });
+    }
     const timestamp = new Date(historyFrame.time).toISOString();
     return visibleStations.map((station) => {
       const value = historyFrame.values.get(station.stationCode);
@@ -680,14 +746,25 @@ export default function WindMap({
         timestamp,
         // Gleiche Regel wie bei den Live-Werten in /api/wind.
         stale: direction === null || speedKmh === null,
+        // Messfehler zu diesem Zeitpunkt, berechnet von /api/timeline. Die
+        // Uhrzeit "seit wann" braucht nur der Verlaufsbalken, und der zeigt
+        // immer die Live-Werte — hier genügt die Art.
+        suspect: value?.suspect ? { reason: value.suspect, since: null } : null,
       };
     });
-  }, [visibleStations, historyFrame]);
+  }, [visibleStations, historyFrame, liveSuspects]);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
   // jeder Hintergrund-Aktualisierung von /api/wind mit aktualisiert wird.
-  const selectedStation = stations.find((s) => s.stationCode === selectedStationCode) ?? null;
+  // Bei einem wahrscheinlichen Messfehler bekommt der Verlaufsbalken den
+  // Hinweis mit (Feld suspect).
+  const selectedStation = useMemo(() => {
+    const station = stations.find((s) => s.stationCode === selectedStationCode);
+    if (!station) return null;
+    const suspect = liveSuspects.get(station.stationCode);
+    return suspect ? { ...station, suspect } : station;
+  }, [stations, selectedStationCode, liveSuspects]);
 
   // Feste Referenz (onSelectStation kommt als useCallback aus WindApp), damit
   // die Marker-Klick-Handler nicht bei jeder Aktualisierung neu angemeldet
