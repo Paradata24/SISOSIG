@@ -14,6 +14,7 @@ import {
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
+import { describeSuspect } from "@/lib/plausibility";
 import type { HistoryEntry } from "@/app/api/history/route";
 import type { ForecastEntry } from "@/app/api/forecast/route";
 
@@ -919,6 +920,20 @@ export default function WindHistoryPanel({
           </svg>
         </button>
       </header>
+
+      {/* Hinweis bei wahrscheinlichem Messfehler (Wunsch des Projektbesitzers,
+          Okt. 2026): Die Karte zeigt die Station dann als grauen Punkt, hier
+          steht der Grund. Das Feld suspect setzt WindMap (Regeln in
+          src/lib/plausibility.ts). Bernstein statt Rot: eine Warnung, kein
+          Fehler der Seite. */}
+      {station.suspect && (
+        <p
+          role="note"
+          className="mx-3 mb-1 border-l-4 border-amber-500 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"
+        >
+          {describeSuspect(station.suspect)}
+        </p>
+      )}
 
       <div className="flex px-1 pb-1">
         <div
