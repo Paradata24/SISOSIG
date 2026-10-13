@@ -1,9 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Barlow_Semi_Condensed } from "next/font/google";
+import { Barlow_Semi_Condensed, Libre_Baskerville } from "next/font/google";
 import "./globals.css";
+import "./stil-erklaerfilm.css";
+
+// SCHALTER für den Stil "Erklärfilm" (tiefblaue Balken, orange Rahmen,
+// cremefarbene Karte, Serifenschrift; Okt. 2026, Wunsch des Projektbesitzers).
+// true = neuer Stil, false = wieder der frühere helle Stil (Weiß/Grau).
+// Mehr ist zum Zurückschalten nicht nötig; alle Regeln stehen in
+// src/app/stil-erklaerfilm.css und greifen nur bei true.
+const STIL_ERKLAERFILM = true;
 
 const barlowSemiCondensed = Barlow_Semi_Condensed({
   variable: "--font-barlow-semi-condensed",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+});
+
+// Serifenschrift für Titel, Stationsname und Uhrzeit im Stil "Erklärfilm".
+// Wird nur benutzt, wenn der Schalter oben an ist.
+const libreBaskerville = Libre_Baskerville({
+  variable: "--font-libre-baskerville",
   subsets: ["latin"],
   weight: ["400", "700"],
 });
@@ -13,9 +29,10 @@ export const metadata: Metadata = {
   description: "Live-Windwerte Südtiroler Wetterstationen auf einer Karte",
 };
 
-// Färbt die Browserleiste am Handy passend zum hellen Modus ein.
+// Färbt die Browserleiste am Handy passend zum Titelbalken ein
+// (Dunkelblau im Stil "Erklärfilm", sonst Weiß).
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: STIL_ERKLAERFILM ? "#083a6e" : "#ffffff",
 };
 
 export default function RootLayout({
@@ -32,7 +49,7 @@ export default function RootLayout({
   return (
     <html
       lang="de"
-      className={`${barlowSemiCondensed.variable} h-full antialiased`}
+      className={`${barlowSemiCondensed.variable} ${libreBaskerville.variable} ${STIL_ERKLAERFILM ? "stil-erklaerfilm " : ""}h-full antialiased`}
     >
       <head>
         {/*

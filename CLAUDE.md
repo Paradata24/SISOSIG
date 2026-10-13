@@ -112,7 +112,8 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
-| `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
+| `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter und Stil-Schalter `STIL_ERKLAERFILM` (Klassen am `<html>`) |
+| `src/app/stil-erklaerfilm.css` | Stil „Erklärfilm" (blaue Balken, orange Rahmen, Creme-Karte) — greift nur bei eingeschaltetem Schalter |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
@@ -132,6 +133,23 @@ also alle 3 h, wirklich neue Werte).
   **niemals** im Code — nur Umgebungsvariablen in Vercel/Supabase
 
 **Darstellung**
+- **Stil „Erklärfilm"** (Okt. 2026, Wunsch des Projektbesitzers, Vorbild:
+  Standbilder eines Erklärfilms): tiefblaue Balken (Titel, Zeitbalken,
+  Verlaufsbalken, Menü), orange Trennlinien/Rahmen, runde cremefarbene Knöpfe
+  mit hellblauem Rand, Serifenschrift (Libre Baskerville) für Titel,
+  Stationsname und Uhrzeit, Karte und Diagramm auf Creme. **Ausdrücklich
+  umkehrbar gewünscht:** Ein Schalter `STIL_ERKLAERFILM` in
+  `src/app/layout.tsx` (false = alter heller Stil). Alle Regeln stehen in
+  `src/app/stil-erklaerfilm.css` und hängen an der Klasse `stil-erklaerfilm`
+  am `<html>`; die Komponenten tragen dafür nur zusätzliche Klassennamen
+  (`titelbalken`, `rund-knopf`, `zeitbalken`, `verlaufsbalken`,
+  `diagramm-kasten` …), die ohne den Stil nichts bewirken. Neue Bauteile mit
+  weißem Hintergrund brauchen dort eine passende Regel. Die Windfarben,
+  Pfeile, Plaketten und Diagramm-Farbflächen bleiben bewusst unverändert; die
+  Karte ist Creme statt Blau, weil auf Blau die hellblauen Pfeile untergingen
+  (Variante „blaue Karte" wurde gezeigt, Creme empfohlen und gewählt).
+  Die Punkte unten zu „hell/weiß/grau" beschreiben den Stil bei
+  ausgeschaltetem Schalter.
 - **Heller Modus dauerhaft an**, unabhängig vom Gerät des Besuchers (früher
   war es umgekehrt der Dunkelmodus). Umgesetzt dadurch, dass in
   `src/app/layout.tsx` **keine** Klasse `dark` am `<html>` steht; die
