@@ -1,0 +1,213 @@
+/* Stil "Erklärfilm" (Okt. 2026, Wunsch des Projektbesitzers; Vorbild: zwei
+   Standbilder eines Erklärfilms mit tiefblauem Hintergrund, cremefarbenen
+   Messuhren, orangen Rahmen und Serifenschrift).
+
+   EIN- UND AUSSCHALTEN: Alles hier greift nur, solange am <html>-Element die
+   Klasse "stil-erklaerfilm" steht. Die setzt src/app/layout.tsx über den
+   Schalter STIL_ERKLAERFILM. Steht der auf false, sieht die Seite wieder genau
+   so aus wie vorher (helles Weiß/Grau) — diese Datei kann dann stehen bleiben.
+
+   Unverändert bleiben bewusst alle Farben, an denen man den Wind abliest:
+   Windfarbskala, Pfeile, Zahlen-Plaketten und die Farbflächen im Diagramm.
+   Deshalb liegt die Karte auf Creme statt Blau — auf Blau gingen die
+   hellblauen Pfeile für schwachen Wind unter.
+
+   Angesprochen werden die Bauteile über eigene Klassennamen (titelbalken,
+   rund-knopf, zeitbalken, verlaufsbalken, diagramm-kasten …), die in den
+   Komponenten zusätzlich zu den Tailwind-Klassen stehen und ohne diesen Stil
+   nichts bewirken. Die Regeln hier stehen außerhalb der Tailwind-Ebenen
+   (@layer) und schlagen deshalb die Tailwind-Klassen, ganz ohne !important.
+   Einzige Ausnahme ist der Kartengrund: den setzt WindMap.tsx als
+   style-Attribut direkt am Element. */
+
+.stil-erklaerfilm {
+  --stil-blau: #0c4c8e; /* Grundfläche der Balken */
+  --stil-blau-tief: #083a6e; /* Titelbalken, Menü */
+  --stil-blau-hell: #6fb3e3; /* Rand der runden Knöpfe */
+  --stil-blau-pastell: #b5d9f2; /* Nebentexte auf Blau */
+  --stil-blau-leer: #2b6aa6; /* Farbstrich im Zeitrad, wo keine Daten sind */
+  --stil-creme: #f4efd9; /* Knöpfe, Karte, Diagramm, Haupttexte auf Blau */
+  --stil-orange: #ea7233; /* Rahmen und Trennlinien */
+  --stil-navy: #14243a; /* Schrift auf Creme */
+  --stil-grau-blau: #4a5d78; /* Nebentexte auf Creme */
+  --stil-serif: var(--font-libre-baskerville), Georgia, serif;
+}
+.stil-erklaerfilm body {
+  background: var(--stil-blau);
+}
+
+/* --- Titelbalken ------------------------------------------------------- */
+.stil-erklaerfilm .titelbalken {
+  background: var(--stil-blau-tief);
+  border-bottom: 3px solid var(--stil-orange);
+}
+.stil-erklaerfilm .titel {
+  color: var(--stil-creme);
+  font-family: var(--stil-serif);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+/* Runde Knöpfe wie die Messuhren im Vorbild: cremefarbene Mitte, hellblauer Rand. */
+.stil-erklaerfilm .rund-knopf {
+  background: var(--stil-creme);
+  border: 3px solid var(--stil-blau-hell);
+  border-radius: 9999px;
+  color: var(--stil-navy);
+}
+.stil-erklaerfilm .rund-knopf:hover {
+  background: #fffbea;
+}
+.stil-erklaerfilm .rund-knopf svg {
+  color: var(--stil-navy);
+}
+
+/* --- Menü-Popup -------------------------------------------------------- */
+.stil-erklaerfilm .menue-popup {
+  background: var(--stil-blau-tief);
+  border: 2px solid var(--stil-orange);
+  color: var(--stil-blau-pastell);
+}
+.stil-erklaerfilm .menue-popup .text-zinc-500 {
+  color: var(--stil-blau-pastell);
+}
+.stil-erklaerfilm .menue-popup a:hover {
+  color: var(--stil-creme);
+}
+.stil-erklaerfilm .menue-option {
+  background: var(--stil-blau);
+  border: 2px solid var(--stil-blau-hell);
+  border-radius: 9999px;
+  color: var(--stil-creme);
+  padding-left: 0.75rem;
+}
+.stil-erklaerfilm .menue-option:hover {
+  background: #135aa3;
+}
+.stil-erklaerfilm .menue-option-aktiv,
+.stil-erklaerfilm .menue-option-aktiv:hover {
+  background: var(--stil-creme);
+  color: var(--stil-navy);
+}
+
+/* --- Karte ------------------------------------------------------------- */
+/* Kartengrund Creme statt Weiß. !important nötig, weil WindMap.tsx den Grund
+   als style-Attribut setzt (MAP_BACKGROUND). */
+.stil-erklaerfilm .leaflet-container {
+  background: var(--stil-creme) !important;
+}
+/* OpenTopoMap: wie bisher grau und blass (siehe .topo-ebene in globals.css),
+   danach mit sepia leicht cremefarben getönt. */
+.stil-erklaerfilm .topo-ebene {
+  filter: grayscale(100%) contrast(32%) brightness(158%) sepia(28%) saturate(115%);
+}
+/* Schild mit dem aktiven Filter oben auf der Karte ("ALLE"). */
+.stil-erklaerfilm .filter-schild {
+  background: var(--stil-creme);
+  color: var(--stil-navy);
+  border: 2px solid var(--stil-orange);
+  border-radius: 9999px;
+  padding: 2px 12px;
+  font-family: var(--stil-serif);
+  font-size: 11px;
+}
+
+/* --- Zeitbalken (Zeitrad) ---------------------------------------------- */
+.stil-erklaerfilm .zeitbalken {
+  background: var(--stil-blau);
+  border-top: 3px solid var(--stil-orange);
+}
+.stil-erklaerfilm .zeitbalken .text-zinc-900 {
+  color: var(--stil-creme);
+  font-family: var(--stil-serif);
+}
+.stil-erklaerfilm .zeitbalken .text-zinc-500 {
+  color: var(--stil-blau-pastell);
+}
+.stil-erklaerfilm .zeitbalken .text-red-600 {
+  color: #ffb4a8;
+}
+/* Tastatur-Rahmen um das Rad (siehe .zeitband in globals.css): hell statt
+   fast schwarz, sonst wirkt er auf Blau wie ein harter Kasten. */
+.stil-erklaerfilm .zeitband:focus-visible {
+  outline-color: var(--stil-blau-pastell);
+}
+/* Weiche Ränder des Rads blenden ins Blau statt ins Weiß aus. */
+.stil-erklaerfilm .zeitrad-blende {
+  stop-color: var(--stil-blau);
+}
+.stil-erklaerfilm .zeitrad-leer {
+  fill: var(--stil-blau-leer);
+  stroke: var(--stil-blau-leer);
+}
+.stil-erklaerfilm .zeitrad-strich {
+  stroke: var(--stil-blau-pastell);
+}
+.stil-erklaerfilm .zeitrad-strich-stunde {
+  stroke: var(--stil-creme);
+}
+.stil-erklaerfilm .zeitrad-zahl {
+  fill: var(--stil-blau-pastell);
+}
+/* Fester Rahmen in der Mitte: orange, mit dunkelblauem Rand darunter. */
+.stil-erklaerfilm .zeitrad-rahmen-hinten {
+  stroke: var(--stil-blau-tief);
+}
+.stil-erklaerfilm .zeitrad-rahmen {
+  stroke: var(--stil-orange);
+  stroke-width: 3px;
+}
+/* Mit .zeitbalken davor, damit es die Creme-Schrift oben (.text-zinc-900)
+   schlägt — sonst stünde Creme auf Creme. */
+.stil-erklaerfilm .zeitbalken .aktuell-knopf {
+  color: var(--stil-navy);
+  padding: 0 14px;
+  font-family: var(--stil-serif);
+  font-size: 12px;
+}
+.stil-erklaerfilm .aktuell-knopf:disabled:hover {
+  background: var(--stil-creme);
+}
+
+/* --- Verlaufsbalken ---------------------------------------------------- */
+.stil-erklaerfilm .verlaufsbalken {
+  background: var(--stil-blau);
+  border-top: 3px solid var(--stil-orange);
+}
+.stil-erklaerfilm .verlaufsbalken .text-zinc-900,
+.stil-erklaerfilm .verlaufsbalken .text-zinc-700 {
+  color: var(--stil-creme);
+}
+.stil-erklaerfilm .verlaufsbalken .text-zinc-500,
+.stil-erklaerfilm .verlaufsbalken .text-zinc-400 {
+  color: var(--stil-blau-pastell);
+}
+.stil-erklaerfilm .verlaufsbalken h2 {
+  font-family: var(--stil-serif);
+  font-size: 13px;
+}
+.stil-erklaerfilm .verlaufsbalken header button {
+  color: var(--stil-creme);
+}
+.stil-erklaerfilm .verlaufsbalken header button:hover {
+  background: var(--stil-blau-tief);
+}
+/* "grau gestrichelt" in der Legende (nur am breiten Bildschirm sichtbar):
+   das Prognose-Grau wäre auf Blau kaum lesbar. */
+.stil-erklaerfilm .legende-prognose {
+  color: var(--stil-blau-hell) !important; /* schlägt das style-Attribut */
+}
+/* Das Diagramm selbst liegt auf Creme im orangen Rahmen (wie die Kurvenkästen
+   im Vorbild). So bleiben Windfarben und dunkle Messkurve unverändert lesbar. */
+.stil-erklaerfilm .diagramm-kasten {
+  background: var(--stil-creme);
+  border: 2px solid var(--stil-orange);
+}
+.stil-erklaerfilm .verlaufsbalken .diagramm-kasten .text-zinc-500 {
+  color: var(--stil-grau-blau);
+}
+.stil-erklaerfilm .quellen-zeile {
+  border-top-color: rgba(181, 217, 242, 0.25);
+}
+.stil-erklaerfilm .quellen-zeile a:hover {
+  color: var(--stil-creme);
+}

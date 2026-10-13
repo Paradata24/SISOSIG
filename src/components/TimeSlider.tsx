@@ -380,6 +380,7 @@ export default function TimeSlider({
             points={`${xa},${CENTER_Y - ha} ${xb},${CENTER_Y - hb} ${xb},${CENTER_Y + hb} ${xa},${CENTER_Y + ha}`}
             fill={fill}
             stroke={fill}
+            className={stripColors?.[i] ? undefined : "zeitrad-leer"}
             strokeWidth={0.6}
           />,
         );
@@ -400,6 +401,7 @@ export default function TimeSlider({
           y1={bottom}
           y2={bottom - length}
           stroke={hour ? "#52525b" : "#a1a1aa"}
+          className={hour ? "zeitrad-strich zeitrad-strich-stunde" : "zeitrad-strich"}
           strokeWidth={hour ? 1.4 : 1}
           strokeOpacity={0.3 + 0.7 * depth}
         />,
@@ -413,7 +415,7 @@ export default function TimeSlider({
             textAnchor="middle"
             fontSize={11 * (0.65 + 0.35 * depth)}
             fillOpacity={depth * depth}
-            className="fill-zinc-600 tabular-nums dark:fill-zinc-300"
+            className="zeitrad-zahl fill-zinc-600 tabular-nums dark:fill-zinc-300"
           >
             {formatHourLabel(date)}
           </text>,
@@ -436,7 +438,7 @@ export default function TimeSlider({
     // liegt bewusst mit etwas Abstand zum Seitenrand unten: Am unteren
     // iPhone-Rand löst die Wischgeste (Home-Leiste) sonst das Verschieben der
     // Seite aus, wenn man am Rad zieht.
-    <div className="shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="zeitbalken shrink-0 border-t border-zinc-200 bg-white pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex items-center gap-2 px-2">
         <div className="w-[68px] shrink-0 leading-tight tabular-nums" aria-live="off">
           {status === "error" ? (
@@ -470,12 +472,12 @@ export default function TimeSlider({
               <defs>
                 {/* Weiche Ränder: Dort "kippt" das Rad weg. */}
                 <linearGradient id="zeitrad-rand-links" x1="0" x2="1" y1="0" y2="0">
-                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
-                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="zeitrad-blende dark:[stop-color:#18181b]" />
+                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="zeitrad-blende dark:[stop-color:#18181b]" />
                 </linearGradient>
                 <linearGradient id="zeitrad-rand-rechts" x1="1" x2="0" y1="0" y2="0">
-                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="dark:[stop-color:#18181b]" />
-                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.95" className="zeitrad-blende dark:[stop-color:#18181b]" />
+                  <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="zeitrad-blende dark:[stop-color:#18181b]" />
                 </linearGradient>
               </defs>
               {strips}
@@ -491,7 +493,7 @@ export default function TimeSlider({
                 height={FRAME_BOTTOM - FRAME_TOP}
                 fill="none"
                 strokeWidth={5}
-                className="stroke-white dark:stroke-zinc-900"
+                className="zeitrad-rahmen-hinten stroke-white dark:stroke-zinc-900"
               />
               <rect
                 x={cx - stepPx / 2 - 1}
@@ -500,7 +502,7 @@ export default function TimeSlider({
                 height={FRAME_BOTTOM - FRAME_TOP}
                 fill="none"
                 strokeWidth={2}
-                className="stroke-zinc-900 dark:stroke-zinc-100"
+                className="zeitrad-rahmen stroke-zinc-900 dark:stroke-zinc-100"
               />
             </svg>
           )}
@@ -509,7 +511,7 @@ export default function TimeSlider({
           type="button"
           onClick={() => goTo(lastIndex, 160)}
           disabled={current}
-          className={`${BUTTON_CLASS} px-2.5 text-sm font-medium`}
+          className={`rund-knopf aktuell-knopf ${BUTTON_CLASS} px-2.5 text-sm font-medium`}
         >
           Aktuell
         </button>

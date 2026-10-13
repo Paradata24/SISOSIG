@@ -202,9 +202,9 @@ export default function WindApp() {
   }, [menuOpen]);
 
   function optionClass(active: boolean) {
-    return `w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
+    return `menue-option w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
       active
-        ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
+        ? "menue-option-aktiv border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
         : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
     }`;
   }
@@ -217,13 +217,13 @@ export default function WindApp() {
           steht der Titel optisch genau in der Mitte. Bewusst NICHT mit
           absolut gesetzten Buttons über einem mittigen Titel — auf schmalen
           Handys würden sich Titel und Buttons sonst überlappen. */}
-      <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="titelbalken relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
         <button
           type="button"
           onClick={handleRefresh}
           aria-label="Aktualisieren"
           title="Aktualisieren"
-          className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+          className="rund-knopf z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
         >
           {/* Kreispfeil, gleiche Strichstärke und Farbe wie das Menü-Symbol. */}
           <svg
@@ -242,7 +242,7 @@ export default function WindApp() {
             <path d="M17 2v5h-5z" fill="currentColor" />
           </svg>
         </button>
-        <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
+        <h1 className="titel min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
           Should I stay or should I go
         </h1>
         <div ref={menuRef} className="relative z-[1100] shrink-0">
@@ -251,7 +251,7 @@ export default function WindApp() {
             onClick={() => setMenuOpen((open) => !open)}
             aria-label="Menü"
             aria-expanded={menuOpen}
-            className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
+            className="rund-knopf flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
           >
             {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
                 fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
@@ -271,7 +271,7 @@ export default function WindApp() {
               Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
               abgerundete Ecken, passend zum eckigen Menü-Button. */}
           {menuOpen && (
-            <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
+            <div className="menue-popup absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
               <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                 Karte
               </p>
