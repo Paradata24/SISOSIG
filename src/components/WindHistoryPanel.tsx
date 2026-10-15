@@ -879,7 +879,7 @@ export default function WindHistoryPanel({
   return (
     <section
       aria-label={`Windverlauf ${station.stationName}`}
-      className="verlaufsbalken absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -900,7 +900,7 @@ export default function WindHistoryPanel({
           <span className="text-zinc-400 dark:text-zinc-500">
             — <span className="text-zinc-700 dark:text-zinc-200">schwarz</span>:
             Messung ·{" "}
-            <span className="legende-prognose" style={{ color: CH1_COLOR }}>grau gestrichelt</span>:
+            <span style={{ color: CH1_COLOR }}>grau gestrichelt</span>:
             Prognose (ICON-CH1)
           </span>
         </span>
@@ -938,7 +938,7 @@ export default function WindHistoryPanel({
       <div className="flex px-1 pb-1">
         <div
           ref={scrollRef}
-          className="diagramm-kasten min-w-0 flex-1 overflow-x-auto"
+          className="min-w-0 flex-1 overflow-x-auto"
           style={{ height: SVG_H }}
         >
           {loading ? (
@@ -1251,7 +1251,7 @@ export default function WindHistoryPanel({
         )}
       </div>
 
-      <p className="quellen-zeile border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
+      <p className="border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
         Quelle:{" "}
         <a
           href={SOURCE_INFO[station.source].url}

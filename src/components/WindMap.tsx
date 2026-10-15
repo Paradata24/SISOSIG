@@ -45,7 +45,7 @@ const loadHistoryPanel = () => import("@/components/WindHistoryPanel");
 const WindHistoryPanel = dynamic(loadHistoryPanel, {
   ssr: false,
   loading: () => (
-    <div className="verlaufsbalken absolute inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
+    <div className="absolute inset-x-0 bottom-0 z-[1100] flex h-24 items-center justify-center border-t border-zinc-200 bg-white text-sm text-zinc-500 shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400">
       Verlauf wird geladen…
     </div>
   ),
@@ -967,7 +967,7 @@ export default function WindMap({
           und Antippen der Karte gehen durch es hindurch. Stil wie die Knöpfe
           im Titel-Balken (eckig, schwarzer Rahmen, weiß). */}
       <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
-        <div className="filter-schild border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50">
+        <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50">
           {getStationFilterMapLabel(stationFilter)}
         </div>
         {error && (
