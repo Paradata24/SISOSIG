@@ -15,6 +15,7 @@ const WindMap = dynamic(() => import("@/components/WindMap"), {
 export default function WindMapLoader({
   baseLayer,
   stationFilter,
+  onStationFilterChange,
   historyFrame,
   timeline,
   refreshToken,
@@ -25,6 +26,8 @@ export default function WindMapLoader({
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
+  /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
+  onStationFilterChange: (filter: StationFilter) => void;
   /** Gewählter Verlaufs-Zeitpunkt aus dem Zeitbalken; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
@@ -43,6 +46,7 @@ export default function WindMapLoader({
     <WindMap
       baseLayer={baseLayer}
       stationFilter={stationFilter}
+      onStationFilterChange={onStationFilterChange}
       historyFrame={historyFrame}
       timeline={timeline}
       refreshToken={refreshToken}

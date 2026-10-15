@@ -12,10 +12,8 @@ import {
 import {
   buildTimelineFrame,
   buildTimelineSlots,
-  getStationFilterLabel,
   GRID_MS,
   MAP_SOURCES,
-  STATION_FILTER_ORDER,
   type BaseLayer,
   type StationFilter,
   type TimelinePayload,
@@ -25,7 +23,9 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 
 // Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
 // Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
-// Kartenhintergrund und Stationsfilter öffnet. Der Zustand lebt hier (und nicht in
+// Kartenhintergrund und Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
+// über das Filter-Schild oben mittig auf der Karte umgeschaltet
+// (StationFilterPicker); sein Zustand liegt trotzdem hier. Der Zustand lebt hier (und nicht in
 // WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
@@ -294,26 +294,6 @@ export default function WindApp() {
                   Relief (Grau)
                 </button>
               </div>
-              <p className="mt-3 mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                Stationen
-              </p>
-              {/* Die Schaltflächen werden aus der Filterliste in wind.ts
-                  erzeugt statt einzeln hingeschrieben: So bleiben Reihenfolge,
-                  Beschriftung ("Stationen <1.000m") und Filterlogik der Karte
-                  automatisch beisammen, wenn eine Höhenstufe dazukommt. */}
-              <div className="flex flex-col gap-1.5">
-                {STATION_FILTER_ORDER.map((filter) => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setStationFilter(filter)}
-                    aria-pressed={stationFilter === filter}
-                    className={optionClass(stationFilter === filter)}
-                  >
-                    {getStationFilterLabel(filter)}
-                  </button>
-                ))}
-              </div>
               {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
                   rechts auf der Karte, jetzt hier ganz unten im Popup
                   (MAP_SOURCES in wind.ts, richtet sich nach dem gewählten
@@ -344,6 +324,7 @@ export default function WindApp() {
         <WindMapLoader
           baseLayer={baseLayer}
           stationFilter={stationFilter}
+          onStationFilterChange={setStationFilter}
           historyFrame={historyFrame}
           timeline={timeline}
           refreshToken={refreshToken}

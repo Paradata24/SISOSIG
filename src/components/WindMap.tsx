@@ -16,7 +16,6 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   CARTO_API_KEY,
-  getStationFilterMapLabel,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
@@ -29,6 +28,7 @@ import {
 } from "@/lib/wind";
 import { assessLive } from "@/lib/plausibility";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
+import StationFilterPicker from "@/components/StationFilterPicker";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
 // ersten Klick auf eine Station) und steckt deshalb in einem eigenen
@@ -635,12 +635,14 @@ function ContainerResizeWatcher() {
   return null;
 }
 
-// Kartenhintergrund (baseLayer) und Stationsfilter werden nicht mehr hier,
-// sondern im Menü im Titel-Balken umgeschaltet (WindApp.tsx) und kommen als
+// Kartenhintergrund (baseLayer) wird im Menü im Titel-Balken umgeschaltet
+// (WindApp.tsx), der Stationsfilter über das Filter-Schild oben mittig auf der
+// Karte (StationFilterPicker). Beide Zustände liegen in WindApp und kommen als
 // Props herein.
 export default function WindMap({
   baseLayer,
   stationFilter,
+  onStationFilterChange,
   historyFrame,
   timeline,
   refreshToken,
@@ -651,6 +653,8 @@ export default function WindMap({
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
+  /** Stationsfilter umschalten (Filter-Schild oben mittig auf der Karte). */
+  onStationFilterChange: (filter: StationFilter) => void;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /**
@@ -963,13 +967,13 @@ export default function WindMap({
       {/* Oben mittig: welcher Stationsfilter aktiv ist (immer sichtbar, auch
           bei "ALLE"; Wunsch des Projektbesitzers), darunter ggf. die
           Fehlermeldung. Beide in EINER Spalte, damit sie sich nicht
-          überdecken. pointer-events-none: Das Schild ist nur Anzeige, Ziehen
-          und Antippen der Karte gehen durch es hindurch. Stil wie die Knöpfe
-          im Titel-Balken (eckig, schwarzer Rahmen, weiß). */}
+          überdecken. Das Schild ist zugleich der Schalter: Antippen klappt
+          die Filterliste auf (StationFilterPicker, Okt. 2026 — vorher im
+          Menü). pointer-events-none an der Spalte: Neben dem Schild gehen
+          Ziehen und Antippen der Karte hindurch; das Schild selbst fängt
+          Tipps ab. */}
       <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
-        <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50">
-          {getStationFilterMapLabel(stationFilter)}
-        </div>
+        <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
         {error && (
           <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
             {error}
