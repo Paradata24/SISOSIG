@@ -11,6 +11,7 @@ import {
   snapToGrid,
   SOURCE_INFO,
   TIMELINE_STEP_MINUTES,
+  upperWindLevelLabel,
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
@@ -25,7 +26,9 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 //    (unten, dünn) und Böen (oben, ca. 15% dicker), dazwischen eine
 //    halbtransparente Fläche — je einmal für die Messung (schwarz) und für die
 //    ICON-CH1-Prognose (dunkelgrau, gestrichelt, blassere Fläche); die
-//    Prognose-Windrichtung steht als Pfeilreihe oben IM Diagramm
+//    Prognose-Windrichtung steht als Pfeilreihe oben IM Diagramm; bei
+//    einzelnen Gipfelstationen zusätzlich der Höhenwind aus ICON-D2 als blaue
+//    gestrichelte Linie (UPPER_WIND_STATIONS in src/lib/wind.ts)
 //  - darunter eine Reihe Windrichtungs-Pfeile und die Messwerte in
 //    eingefärbten Quadraten (Farbe = Windskala)
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
@@ -151,6 +154,15 @@ const FORECAST_DASH = "5 3";
 // durchsichtiger (früher 0.5) als die schwarze 50 %-Fläche der Messung, damit
 // die Messung klar im Vordergrund bleibt.
 const FORECAST_BAND_OPACITY = 0.2;
+
+// Höhenwind (ICON-D2, Wind der freien Atmosphäre auf der nächsthöheren
+// Druckfläche, nur bei den Stationen in UPPER_WIND_STATIONS): eine blaue
+// gestrichelte Linie
+// (Wunsch des Projektbesitzers, Okt. 2026). Nur Mittelwind — auf den
+// Druckflächen gibt es keine Böen. Kräftiges Blau (blue-600), damit sie sich
+// von der hellblauen untersten Stufe der Farbskala abhebt; gleiche
+// Strichelung wie die ICON-CH1-Kurven.
+const UPPER_WIND_COLOR = "#2563eb";
 
 // Grundstärke der Kurven; die jeweils obere Kurve (Böen) wird rund 15 %
 // dicker gezeichnet, damit sie sich von der Mittelwind-Kurve abhebt.
@@ -500,6 +512,8 @@ export default function WindHistoryPanel({
     forecast?: ForecastEntry[];
     // Startzeit des ICON-CH1-Laufs der Prognose (ISO), null wenn unbekannt.
     forecastRun?: string | null;
+    // Höhenwind ICON-D2 (nur einzelne Stationen, sonst leer).
+    upperWind?: ForecastEntry[];
     error?: string;
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -512,6 +526,7 @@ export default function WindHistoryPanel({
   const entries = loading ? null : (result?.entries ?? null);
   const forecast = loading ? null : (result?.forecast ?? null);
   const forecastRun = loading ? null : (result?.forecastRun ?? null);
+  const upperWind = loading ? null : (result?.upperWind ?? null);
   const error = loading ? null : (result?.error ?? null);
 
   // Historie der angeklickten Station laden.
@@ -547,6 +562,7 @@ export default function WindHistoryPanel({
             forecast: forecastEntries,
             forecastRun:
               typeof forecastJson?.modelRun === "string" ? forecastJson.modelRun : null,
+            upperWind: (forecastJson?.upperWind as ForecastEntry[] | undefined) ?? [],
           });
         }
       } catch {
@@ -620,6 +636,16 @@ export default function WindHistoryPanel({
         direction: e.direction,
       }))
       .filter((p) => !Number.isNaN(p.t));
+    // Höhenwind (ICON-D2) genauso, nur ohne Böen.
+    const upperPoints: Point[] = (upperWind ?? [])
+      .map((e) => ({
+        t: Date.parse(e.forecast_time),
+        speed: e.speed_kmh,
+        gust: null,
+        direction: e.direction,
+      }))
+      .filter((p) => !Number.isNaN(p.t));
+    const hasUpperWind = upperPoints.some((p) => p.speed !== null);
 
     // Auch eine Station mit Prognose, aber (noch) ohne Messwerte soll angezeigt
     // werden — nicht fälschlich "Keine Daten verfügbar".
@@ -635,6 +661,7 @@ export default function WindHistoryPanel({
     const yMax = computeYMax([
       ...points.flatMap((p) => [p.speed, p.gust]),
       ...forecastPoints.flatMap((p) => [p.speed, p.gust]),
+      ...upperPoints.map((p) => p.speed),
     ]);
     const y = makeY(yMax);
     const colorBands = buildColorBands(yMax, y);
@@ -776,6 +803,7 @@ export default function WindHistoryPanel({
     const gustPath = buildLinePath(points, (p) => p.gust, x, y, gapMs);
     const forecastSpeedPath = buildLinePath(forecastPoints, (p) => p.speed, x, y);
     const forecastGustPath = buildLinePath(forecastPoints, (p) => p.gust, x, y);
+    const upperWindPath = buildLinePath(upperPoints, (p) => p.speed, x, y);
     // Fläche zwischen Böen- und Mittelwind-Messwerten (Böe oben, Mittelwind
     // unten). Anders als die Prognosefläche benutzt sie ALLE Messwerte im
     // 10-Minuten-Takt und bricht ab zwei fehlenden Werten am Stück ab
@@ -798,6 +826,7 @@ export default function WindHistoryPanel({
       yTicks,
       hasData,
       hasForecast,
+      hasUpperWind,
       svgWidth,
       bandWidth,
       hourTicks,
@@ -807,12 +836,13 @@ export default function WindHistoryPanel({
       gustPath,
       forecastSpeedPath,
       forecastGustPath,
+      upperWindPath,
       measurementBandPath,
       forecastBandPath,
       forecastTimeSelection,
       forecastByT,
     };
-  }, [entries, forecast, now, containerW, source]);
+  }, [entries, forecast, upperWind, now, containerW, source]);
 
   // Namen der berechneten Werte unverändert übernehmen, damit die
   // Zeichen-Anweisungen weiter unten unverändert bleiben können.
@@ -826,6 +856,7 @@ export default function WindHistoryPanel({
     yTicks,
     hasData,
     hasForecast,
+    hasUpperWind,
     svgWidth,
     bandWidth,
     hourTicks,
@@ -835,11 +866,15 @@ export default function WindHistoryPanel({
     gustPath,
     forecastSpeedPath,
     forecastGustPath,
+    upperWindPath,
     measurementBandPath,
     forecastBandPath,
     forecastTimeSelection,
     forecastByT,
   } = chart;
+
+  // Druckfläche des Höhenwinds, z. B. "700 hPa (ca. 3000 m)".
+  const upperWindLevel = upperWindLevelLabel(station.stationCode);
 
   // "Lauf 08:00 Uhr" in Ortszeit — die Startzeit des Modelllaufs, aus dem die
   // gezeichnete Prognose stammt. null, wenn unbekannt.
@@ -902,6 +937,13 @@ export default function WindHistoryPanel({
             Messung ·{" "}
             <span style={{ color: CH1_COLOR }}>grau gestrichelt</span>:
             Prognose (ICON-CH1)
+            {hasUpperWind && (
+              <>
+                {" "}·{" "}
+                <span style={{ color: UPPER_WIND_COLOR }}>blau gestrichelt</span>:
+                Höhenwind (ICON-D2, {upperWindLevel})
+              </>
+            )}
           </span>
         </span>
         <button
@@ -1094,6 +1136,18 @@ export default function WindHistoryPanel({
                 strokeLinejoin="round"
               />
 
+              {/* 3b. Höhenwind (ICON-D2, blau gestrichelt) — wie die
+                     Prognose VOR der Messfläche, aber HINTER den Mess-Kurven,
+                     damit die Messung im Vordergrund bleibt. */}
+              <path
+                d={upperWindPath}
+                fill="none"
+                stroke={UPPER_WIND_COLOR}
+                strokeWidth={LINE_WIDTH}
+                strokeDasharray={FORECAST_DASH}
+                strokeLinejoin="round"
+              />
+
               {/* 4. Mess-Kurven ganz vorne. Sie folgen ALLEN Messwerten im
                      10-Minuten-Takt; die obere Kurve
                      (Böen) ist etwas dicker als die untere (Mittelwind).
@@ -1169,6 +1223,20 @@ export default function WindHistoryPanel({
                     <tspan x={PAD_X + bandWidth - 4} dy={12}>
                       {forecastRunLabel}
                     </tspan>
+                  )}
+                  {/* Höhenwind-Hinweis in Blau direkt darunter, mit der
+                      verwendeten Druckfläche (Wunsch des Projektbesitzers). */}
+                  {hasUpperWind && (
+                    <>
+                      <tspan x={PAD_X + bandWidth - 4} dy={12} fill={UPPER_WIND_COLOR}>
+                        Höhenwind ICON-D2
+                      </tspan>
+                      {upperWindLevel && (
+                        <tspan x={PAD_X + bandWidth - 4} dy={12} fill={UPPER_WIND_COLOR}>
+                          {upperWindLevel}
+                        </tspan>
+                      )}
+                    </>
                   )}
                 </text>
               )}
