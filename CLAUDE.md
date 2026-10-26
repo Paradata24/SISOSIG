@@ -113,8 +113,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
+| `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
@@ -180,8 +181,12 @@ also alle 3 h, wirklich neue Werte).
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
   - **Aktiver Filter steht oben mittig auf der Karte** (Okt. 2026, Wunsch des
     Projektbesitzers), immer in Großbuchstaben, auch „ALLE"
-    (`getStationFilterMapLabel` in `src/lib/wind.ts`, Schild in
-    `src/components/WindMap.tsx`; eine Fehlermeldung steht darunter).
+    (`getStationFilterMapLabel` in `src/lib/wind.ts`; eine Fehlermeldung
+    steht darunter). **Das Schild ist zugleich der Filter-Schalter:**
+    Antippen klappt die Liste aller Filter auf
+    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindMap`).
+    Im Menü im Titel-Balken stehen seitdem nur noch Karte und Quellen,
+    keine Filter mehr (Wunsch des Projektbesitzers).
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Standardkarte ist OpenTopoMap in sehr hellen Graustufen** (Sept. 2026,
