@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  Circle,
   CircleMarker,
   GeoJSON,
   MapContainer,
@@ -150,6 +151,22 @@ const Z_LABELS = 3;
 // wenn man zur Seite zurückkehrt — der visibilitychange-Zuhörer weiter unten
 // holt dann sofort frische Werte, unabhängig vom Takt.
 const POLL_INTERVAL_MS = 180_000; // 3 Minuten
+
+// --- Eigener Standort ("Mein Standort", Okt. 2026, Wunsch des Projektbesitzers) ---
+// Knopf oben rechts auf der Karte. Der Standort bleibt im Browser: Er wird
+// weder an /api/... geschickt noch gespeichert. Der Browser fragt beim ersten
+// Mal selbst um Erlaubnis (geht nur über https — auf Vercel immer gegeben).
+// Farbe des Punkts: das übliche "Hier bin ich"-Blau, bewusst ein voller Punkt
+// mit weißem Rand — gut unterscheidbar von Pfeilen, dem grauen Messfehler-
+// Punkt und dem hohlen Ring einer ausgefallenen Station.
+const MY_LOCATION_COLOR = "#2563eb";
+// Auf diese Zoomstufe springt die Karte beim Einschalten (falls sie nicht
+// schon näher dran ist): Region-Stufe mit Zahlen, man sieht also die Werte
+// der Stationen rundherum.
+const MY_LOCATION_ZOOM = 11;
+// Wie lange eine Fehlermeldung ("nicht freigegeben" o. Ä.) stehen bleibt.
+const MY_LOCATION_ERROR_MS = 6000;
+type MyPosition = { lat: number; lng: number; accuracyM: number };
 
 // --- Drei Zoomstufen (Sept. 2026, Umbau "Karte lesbarer") ---
 // Früher schrumpften die Pfeile mit jedem Zoomschritt stufenlos, herausgezoomt
@@ -635,6 +652,63 @@ function ContainerResizeWatcher() {
   return null;
 }
 
+// Zeichnet den eigenen Standort: blasser Kreis = Genauigkeit der Ortung (am
+// Handy mit GPS wenige Meter, am Laptop oft deutlich mehr), darin der blaue
+// Punkt. Beide liegen UNTER den Windpfeilen und sind nicht anklickbar — die
+// Pfeile bleiben im Vordergrund und bedienbar. Beim Einschalten (erste
+// Ortung) springt die Karte einmal dorthin; danach wandert nur der Punkt mit,
+// damit die Karte beim Herumschauen nicht ständig zurückspringt.
+// Muss innerhalb von <MapContainer> stehen.
+function MyLocationLayer({ position }: { position: MyPosition | null }) {
+  const map = useMap();
+  const hasCentered = useRef(false);
+  useEffect(() => {
+    if (!position) {
+      // Ausgeschaltet: beim nächsten Einschalten wieder hinspringen.
+      hasCentered.current = false;
+      return;
+    }
+    if (hasCentered.current) return;
+    hasCentered.current = true;
+    map.flyTo(
+      [position.lat, position.lng],
+      Math.max(map.getZoom(), MY_LOCATION_ZOOM),
+      { duration: 0.8 },
+    );
+  }, [map, position]);
+
+  if (!position) return null;
+  const center: [number, number] = [position.lat, position.lng];
+  return (
+    <>
+      <Circle
+        center={center}
+        radius={position.accuracyM}
+        interactive={false}
+        pathOptions={{
+          color: MY_LOCATION_COLOR,
+          weight: 1,
+          opacity: 0.4,
+          fillColor: MY_LOCATION_COLOR,
+          fillOpacity: 0.08,
+        }}
+      />
+      <CircleMarker
+        center={center}
+        radius={7}
+        interactive={false}
+        pathOptions={{
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillColor: MY_LOCATION_COLOR,
+          fillOpacity: 1,
+        }}
+      />
+    </>
+  );
+}
+
 // Kartenhintergrund (baseLayer) und Stationsfilter werden nicht mehr hier,
 // sondern im Menü im Titel-Balken umgeschaltet (WindApp.tsx) und kommen als
 // Props herein.
@@ -681,6 +755,73 @@ export default function WindMap({
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Eigener Standort (siehe MY_LOCATION_COLOR oben): locating = Knopf an,
+  // myPosition = letzte Ortung (null, solange noch keine da ist).
+  const [locating, setLocating] = useState(false);
+  const [myPosition, setMyPosition] = useState<MyPosition | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  // Ob seit dem Einschalten schon eine Ortung kam (für die Fehlerbehandlung
+  // unten; als Ref, damit der Ortungs-Zuhörer nicht neu angemeldet wird).
+  const hasFixRef = useRef(false);
+
+  const toggleLocating = useCallback(() => {
+    if (locating) {
+      setLocating(false);
+      setMyPosition(null);
+      return;
+    }
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setLocationError("Dieser Browser kann den Standort nicht ermitteln");
+      return;
+    }
+    setLocationError(null);
+    setLocating(true);
+  }, [locating]);
+
+  // Solange der Knopf an ist, verfolgt der Browser den Standort laufend
+  // (watchPosition) — der Punkt wandert also mit, z. B. beim Aufstieg.
+  // Ausschalten oder Verlassen der Seite beendet die Ortung (clearWatch),
+  // das schont den Akku.
+  useEffect(() => {
+    if (!locating) return;
+    hasFixRef.current = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        hasFixRef.current = true;
+        setLocationError(null);
+        setMyPosition({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracyM: pos.coords.accuracy,
+        });
+      },
+      (err) => {
+        // Erlaubnis verweigert: ausschalten und sagen, warum.
+        // Andere Fehler (kein GPS-Empfang, Zeitüberschreitung) nur dann, wenn
+        // noch gar keine Ortung da war — kommt später mal eine Ortung zu
+        // spät, bleibt einfach der letzte Punkt stehen.
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationError("Standort nicht freigegeben – bitte im Browser erlauben");
+        } else if (!hasFixRef.current) {
+          setLocationError("Standort konnte nicht ermittelt werden");
+        } else {
+          return;
+        }
+        setLocating(false);
+        setMyPosition(null);
+      },
+      { enableHighAccuracy: true, maximumAge: 15_000, timeout: 20_000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [locating]);
+
+  // Fehlermeldung zur Ortung nach ein paar Sekunden wieder ausblenden.
+  useEffect(() => {
+    if (!locationError) return;
+    const timer = window.setTimeout(() => setLocationError(null), MY_LOCATION_ERROR_MS);
+    return () => window.clearTimeout(timer);
+  }, [locationError]);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
   // useMemo verhindert, dass sie bei jedem Neuzeichnen (z. B. beim Zoomen)
@@ -956,6 +1097,7 @@ export default function WindMap({
         />
         <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
         <ContainerResizeWatcher />
+        <MyLocationLayer position={myPosition} />
       </MapContainer>
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
@@ -975,7 +1117,44 @@ export default function WindMap({
             {error}
           </div>
         )}
+        {locationError && (
+          <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
+            {locationError}
+          </div>
+        )}
       </div>
+      {/* Knopf "Mein Standort" oben rechts, genau unter dem Menü-Knopf und im
+          selben Stil (eckig, schwarzer Rahmen, weiß). Eingeschaltet wird das
+          Fadenkreuz blau wie der Punkt auf der Karte; solange die erste
+          Ortung noch läuft, pulsiert es. Steht bewusst oben: Unten liegt bei
+          geöffneter Station der Verlaufsbalken darüber. */}
+      <button
+        type="button"
+        onClick={toggleLocating}
+        aria-label={locating ? "Standort ausblenden" : "Mein Standort"}
+        aria-pressed={locating}
+        title={locating ? "Standort ausblenden" : "Mein Standort"}
+        className="absolute top-3 right-3 z-[1000] flex h-9 w-9 items-center justify-center border border-black bg-white shadow-sm hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+      >
+        {/* Fadenkreuz: Ring mit vier Strichen, in der Mitte ein Punkt. */}
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 20 20"
+          aria-hidden="true"
+          className={`${locating ? "" : "text-zinc-900 dark:text-zinc-50"} ${
+            locating && !myPosition ? "animate-pulse" : ""
+          }`}
+          style={locating ? { color: MY_LOCATION_COLOR } : undefined}
+        >
+          <circle cx="10" cy="10" r="5.5" fill="none" stroke="currentColor" strokeWidth="2" />
+          <rect x="9" y="1" width="2" height="4" fill="currentColor" />
+          <rect x="9" y="15" width="2" height="4" fill="currentColor" />
+          <rect x="1" y="9" width="4" height="2" fill="currentColor" />
+          <rect x="15" y="9" width="4" height="2" fill="currentColor" />
+          <circle cx="10" cy="10" r="2" fill="currentColor" />
+        </svg>
+      </button>
       {selectedStation && (
         <WindHistoryPanel
           station={selectedStation}

@@ -115,7 +115,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Stationen), Zustand des Zeitbalkens |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
+| `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station, eigener Standort |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
@@ -220,6 +220,15 @@ also alle 3 h, wirklich neue Werte).
   muss sichtbar bleiben. Sie steht (wie Esri, CARTO, OpenStreetMap) seit
   Sept. 2026 **ganz unten im Menü-Popup unter „Quellen"** (`MAP_SOURCES` in
   `src/lib/wind.ts`) — nicht entfernen.
+- **Eigener Standort** (Okt. 2026, Wunsch des Projektbesitzers): Knopf mit
+  Fadenkreuz oben rechts auf der Karte, im Stil des Menü-Knopfs. Antippen →
+  Browser fragt um Erlaubnis, blauer Punkt (`MY_LOCATION_COLOR`) mit blassem
+  Genauigkeitskreis, Karte springt einmal hin (mind. Zoom 11,
+  `MY_LOCATION_ZOOM`); danach wandert nur der Punkt mit (`watchPosition`),
+  die Karte springt nicht mehr zurück. Zweites Antippen blendet ihn aus.
+  Punkt liegt **unter** den Windpfeilen und ist nicht anklickbar. Der
+  Standort bleibt im Browser — nie an den Server schicken oder speichern.
+  Alles in `src/components/WindMap.tsx` (`MyLocationLayer`).
 - **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
   mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
   `WindMap` meldet jeden Abruf über `onDataLoaded`, `WindApp` reicht ihn an
