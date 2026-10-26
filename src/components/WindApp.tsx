@@ -25,8 +25,8 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 // Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
 // Kartenhintergrund und Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
 // über das Filter-Schild oben mittig auf der Karte umgeschaltet
-// (StationFilterPicker); sein Zustand liegt trotzdem hier. Der Zustand lebt hier (und nicht in
-// WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
+// (StationFilterPicker in WindMap). Beide Zustände leben trotzdem hier (und
+// nicht in WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {

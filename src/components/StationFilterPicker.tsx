@@ -56,7 +56,6 @@ export default function StationFilterPicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Stationsfilter: ${getStationFilterLabel(value)}`}
         className="flex items-center gap-1.5 border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800"
@@ -75,9 +74,11 @@ export default function StationFilterPicker({
       {/* Die Liste liegt ÜBER der Karte (absolut), damit Schild und eine
           eventuelle Fehlermeldung darunter nicht verrutschen. Mittig unter dem
           Schild, eckig wie das Menü-Popup. */}
+      {/* Einfache Knopf-Liste mit aria-pressed (wie früher im Menü) statt einer
+          "listbox": Die verlangt eine eigene Pfeiltasten-Steuerung, und eine
+          halbe Umsetzung ist für Bildschirmleser schlechter als gar keine. */}
       {open && (
         <ul
-          role="listbox"
           aria-label="Stationsfilter"
           className="absolute top-full left-1/2 z-[1100] mt-1 flex w-44 -translate-x-1/2 flex-col gap-1.5 border border-black/10 bg-white p-2 shadow-lg dark:border-white/10 dark:bg-zinc-800"
         >
@@ -87,8 +88,7 @@ export default function StationFilterPicker({
               <li key={filter}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={active}
+                  aria-pressed={active}
                   onClick={() => {
                     onChange(filter);
                     setOpen(false);
