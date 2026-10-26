@@ -353,12 +353,14 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   alte `icon_d2`-Zeilen laufen nach 2 Tagen von selbst ab.
 - **Höhenwind (ICON-D2)** nur für Rittnerhorn und Leiterspitz
   (`model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt): Wind der
-  freien Atmosphäre auf Höhe der Station, aus den Druckflächen 850 und
-  700 hPa auf die Stationshöhe umgerechnet. Nur Mittelwind und Richtung,
-  keine Böen. Wird bei jedem neuen ICON-CH1-Lauf mitgeholt (16 Aufrufe am
-  Tag). Weitere Stationen: `UPPER_WIND_STATION_CODES` in `src/lib/wind.ts`
-  **und** `UPPER_WIND_STATIONS` (mit Höhe) in der Edge Function ergänzen,
-  dann die Funktion neu deployen.
+  freien Atmosphäre auf der nächsthöheren Druckfläche über der Station
+  (beide: **700 hPa, ca. 3000 m**), ohne Umrechnung und so beschriftet. Nur
+  Mittelwind und Richtung, keine Böen. Eigene Laufprüfung über
+  <https://api.open-meteo.com/data/dwd_icon_d2/static/meta.json>: Fehlt der
+  Höhenwind oder gibt es einen neuen ICON-D2-Lauf, holt ihn der nächste
+  Cron-Anstoß (16 Aufrufe am Tag). Weitere Stationen: `UPPER_WIND_STATIONS`
+  in `src/lib/wind.ts` (Druckfläche) **und** in der Edge Function (mit
+  Koordinaten) ergänzen, dann die Funktion neu deployen.
 - **Wann gibt es neue Daten?** ICON-CH1 rechnet **alle 3 Stunden** neu
   (Läufe um 00, 03, 06, … UTC). Bei Open-Meteo steht ein Lauf rund
   **2 h 20 min** nach dem Start bereit, also etwa um 02:20, 05:20, 08:20, …

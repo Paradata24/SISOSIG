@@ -41,7 +41,7 @@
 // wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~580
 // Stationen und 8 Modellläufen am Tag sind das ~4.700 Aufrufe (47 %).
 // Der Höhenwind (ICON-D2, s. u.) kostet je Lauf nur 1 Aufruf pro Station
-// (6 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag.
+// (2 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag.
 //
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
@@ -52,7 +52,8 @@
 //      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv) — plus
 //      die SLF-IMIS-Stationen (Schweiz, additiv; ICON-CH1 deckt die ganze
 //      Schweiz ab).
-//   (davor: Prüfung, ob es überhaupt einen neuen Modelllauf gibt, s. o.)
+//   (davor: Höhenwind ICON-D2 mit eigener Laufprüfung, siehe
+//   refreshUpperWind; dann Prüfung, ob es einen neuen ICON-CH1-Lauf gibt)
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
 //      abfragen — nur ICON-CH1 (meteoswiss_icon_ch1, in der Datenbank
 //      'icon_ch1'). Letzte 12 h + kommende 12 h, Einheit km/h (wie in
@@ -62,8 +63,6 @@
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
-//   4b. Höhenwind (ICON-D2) für die wenigen Stationen in
-//      UPPER_WIND_STATIONS dazuholen (s. u.), im selben Upsert gespeichert.
 //   5. Prognosen älter als 2 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
@@ -117,33 +116,29 @@ const MODEL_DB = "icon_ch1";
 const MODEL_API = "meteoswiss_icon_ch1";
 
 // --- HÖHENWIND (ICON-D2, Okt. 2026, Wunsch des Projektbesitzers) ---
-// Für einzelne Gipfelstationen zusätzlich der Wind der FREIEN ATMOSPHÄRE auf
-// Höhe der Station — im Verlaufsbalken eine blaue gestrichelte Linie. Der
-// Bodenwind eines Modells gilt für dessen geglättetes Gelände (10 m über
-// Grund), der Höhenwind zeigt dagegen, was oberhalb von Tal- und Hangwinden
+// Für einzelne Gipfelstationen zusätzlich der Wind der FREIEN ATMOSPHÄRE —
+// im Verlaufsbalken eine blaue gestrichelte Linie. Der Bodenwind eines
+// Modells gilt für dessen geglättetes Gelände (10 m über Grund), der
+// Höhenwind zeigt dagegen, was oberhalb von Tal- und Hangwinden
 // "durchzieht".
-// So wird er berechnet: ICON-D2 liefert Wind auf Druckflächen. Die beiden,
-// die die Gipfelhöhen umschließen, sind 850 hPa (~1500 m) und 700 hPa
-// (~3000 m) — dazwischen hat ICON-D2 keine (DWD-Open-Data: 1000, 975, 950,
-// 850, 700, 600 … hPa). Mit der vom Modell mitgelieferten Höhe beider Flächen
-// (Geopotential) wird auf die Stationshöhe interpoliert: Geschwindigkeit
-// linear, Richtung über die Windvektoren (sonst ergäbe 350° und 10° im
-// Mittel 180°). Böen gibt es auf Druckflächen nicht — gust_kmh bleibt leer.
+// ICON-D2 liefert Wind nur auf festen Druckflächen (DWD-Open-Data: 1000, 975,
+// 950, 850, 700, 600 … hPa). Genommen wird bewusst die NÄCHSTHÖHERE Fläche
+// über der Station, ohne Umrechnung (Wunsch des Projektbesitzers: im
+// Verlaufsbalken soll ersichtlich sein, mit welchen Werten gearbeitet wird —
+// dort steht z. B. "700 hPa (ca. 3000 m)"). Für Rittnerhorn (2260 m) und
+// Leiterspitz (2320 m) ist das 700 hPa; 850 hPa (~1500 m) läge darunter.
+// Böen gibt es auf Druckflächen nicht — gust_kmh bleibt leer.
 // Gespeichert als model = 'icon_d2_upper', ohne neue Spalten.
-// Kopie von UPPER_WIND_STATION_CODES aus src/lib/wind.ts, hier MIT der
-// Stationshöhe (m) — eine neue Station an beiden Stellen eintragen. Die
-// Koordinaten kommen aus der normalen Stationsliste.
-const UPPER_WIND_STATIONS: Record<string, number> = {
-  "82500WS": 2260, // Ritten Rittner Horn (Bozner Wetterdienst)
-  "pioupiou-2163": 2320, // Leiterspitz (OpenWindMap)
+// Kopie von UPPER_WIND_STATIONS aus src/lib/wind.ts (dort nur Druckfläche),
+// hier zusätzlich MIT Koordinaten, damit der Höhenwind ohne die großen
+// Stationslisten auskommt (siehe refreshUpperWind) — eine neue Station an
+// beiden Stellen eintragen.
+const UPPER_WIND_STATIONS: Record<string, { lat: number; lng: number; pressureHPa: number }> = {
+  "82500WS": { lat: 46.6156, lng: 11.4604, pressureHPa: 700 }, // Ritten Rittner Horn, 2260 m
+  "pioupiou-2163": { lat: 46.707, lng: 11.3834, pressureHPa: 700 }, // Leiterspitz, 2320 m
 };
 const UPPER_MODEL_DB = "icon_d2_upper";
 const UPPER_MODEL_API = "dwd_icon_d2";
-// Untere und obere Druckfläche (hPa) samt Standardhöhe (m) der
-// Normatmosphäre — nur als Ersatz, falls Open-Meteo keine Geopotential-Höhe
-// liefert.
-const UPPER_LOWER_LEVEL = { hPa: 850, standardHeightM: 1457 };
-const UPPER_UPPER_LEVEL = { hPa: 700, standardHeightM: 3012 };
 const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.json`;
 
 // Metadaten des Modells bei Open-Meteo: wann der neueste Lauf gestartet und
@@ -543,25 +538,22 @@ async function fetchForecastBatch(
   return { rows, skippedNullHours };
 }
 
-// Höhenwind (ICON-D2) für die Stationen in UPPER_WIND_STATIONS holen und
-// auf die Stationshöhe interpolieren (Erklärung oben bei UPPER_WIND_STATIONS).
+// Höhenwind (ICON-D2) für alle Stationen in UPPER_WIND_STATIONS holen: Wind
+// und Richtung auf der eingetragenen Druckfläche, unverändert übernommen.
 // Nur wenige Stationen, deshalb eine einzige Anfrage ohne Batching.
 async function fetchUpperWind(
-  stations: Station[],
   fetchedAt: string,
   modelRunIso: string | null,
 ): Promise<ForecastRow[]> {
-  const levels = [UPPER_LOWER_LEVEL.hPa, UPPER_UPPER_LEVEL.hPa];
+  const codes = Object.keys(UPPER_WIND_STATIONS);
+  const stations = codes.map((code) => ({ code, ...UPPER_WIND_STATIONS[code] }));
+  const levels = [...new Set(stations.map((s) => s.pressureHPa))];
   const params = new URLSearchParams({
     latitude: stations.map((s) => s.lat).join(","),
     longitude: stations.map((s) => s.lng).join(","),
     models: UPPER_MODEL_API,
     hourly: levels
-      .flatMap((l) => [
-        `wind_speed_${l}hPa`,
-        `wind_direction_${l}hPa`,
-        `geopotential_height_${l}hPa`,
-      ])
+      .flatMap((l) => [`wind_speed_${l}hPa`, `wind_direction_${l}hPa`])
       .join(","),
     wind_speed_unit: "kmh",
     past_hours: String(PAST_HOURS),
@@ -584,51 +576,30 @@ async function fetchUpperWind(
     );
   }
 
-  const toRad = Math.PI / 180;
   const rows: ForecastRow[] = [];
   locations.forEach((loc, i) => {
     const station = stations[i];
-    const altitude = UPPER_WIND_STATIONS[station.code];
     const hourly = loc.hourly;
     const times = Array.isArray(hourly?.time)
       ? (hourly.time as Array<number | null>)
       : undefined;
     if (!hourly || !times) return;
 
-    const series = (name: string, hPa: number) =>
-      hourlySeries(hourly, `${name}_${hPa}hPa`, UPPER_MODEL_API);
-    const lo = UPPER_LOWER_LEVEL;
-    const hi = UPPER_UPPER_LEVEL;
-    const speedLo = series("wind_speed", lo.hPa);
-    const speedHi = series("wind_speed", hi.hPa);
-    const dirLo = series("wind_direction", lo.hPa);
-    const dirHi = series("wind_direction", hi.hPa);
-    const zLo = series("geopotential_height", lo.hPa);
-    const zHi = series("geopotential_height", hi.hPa);
+    const level = station.pressureHPa;
+    const speeds = hourlySeries(hourly, `wind_speed_${level}hPa`, UPPER_MODEL_API);
+    const directions = hourlySeries(hourly, `wind_direction_${level}hPa`, UPPER_MODEL_API);
 
     times.forEach((t, k) => {
       if (typeof t !== "number") return;
-      const sLo = speedLo?.[k] ?? null;
-      const sHi = speedHi?.[k] ?? null;
-      const dLo = dirLo?.[k] ?? null;
-      const dHi = dirHi?.[k] ?? null;
-      if (sLo === null || sHi === null || dLo === null || dHi === null) return;
-      const hLo = zLo?.[k] ?? lo.standardHeightM;
-      const hHi = zHi?.[k] ?? hi.standardHeightM;
-      // Anteil der oberen Fläche (0 = Station auf 850 hPa, 1 = auf 700 hPa);
-      // begrenzt, damit nie über die beiden Flächen hinaus hochgerechnet wird.
-      const f = hHi > hLo ? Math.min(1, Math.max(0, (altitude - hLo) / (hHi - hLo))) : 0.5;
-      const speed = sLo + (sHi - sLo) * f;
-      // Richtung über Einheitsvektoren mitteln (siehe oben).
-      const x = Math.sin(dLo * toRad) * (1 - f) + Math.sin(dHi * toRad) * f;
-      const y = Math.cos(dLo * toRad) * (1 - f) + Math.cos(dHi * toRad) * f;
-      const direction = Math.round(((Math.atan2(x, y) / toRad) + 360) % 360);
+      const speed = speeds?.[k] ?? null;
+      const direction = directions?.[k] ?? null;
+      if (speed === null && direction === null) return;
       rows.push({
         station_code: station.code,
         model: UPPER_MODEL_DB,
         forecast_time: new Date(t * 1000).toISOString(),
         direction,
-        speed_kmh: round1(speed),
+        speed_kmh: speed !== null ? round1(speed) : null,
         gust_kmh: null,
         fetched_at: fetchedAt,
         model_run: modelRunIso,
@@ -636,6 +607,47 @@ async function fetchUpperWind(
     });
   });
   return rows;
+}
+
+// Höhenwind auffrischen — UNABHÄNGIG vom ICON-CH1-Abruf, mit eigener
+// Laufprüfung über die ICON-D2-Metadaten (gleiches Prinzip wie bei ICON-CH1,
+// siehe oben). Dadurch kommt der Höhenwind beim nächsten Cron-Anstoß (alle
+// 15 min) von selbst, sobald er fehlt oder ein neuer ICON-D2-Lauf da ist —
+// auch wenn es keinen neuen ICON-CH1-Lauf gibt. Kosten: 1 Aufruf je Station
+// und Lauf (ICON-D2 rechnet alle 3 h, also 2 × 8 = 16 am Tag). Ein Fehler hier
+// betrifft nur den Höhenwind und wird in der Antwort gemeldet.
+async function refreshUpperWind(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  force: boolean,
+): Promise<Record<string, unknown>> {
+  try {
+    const run = await loadModelRun(UPPER_META_URL, "ICON-D2");
+    if (!force) {
+      const last = await loadLastFetchedMs(supabaseUrl, headers, UPPER_MODEL_DB);
+      const upToDate =
+        last !== null &&
+        (run ? last >= run.availableMs : Date.now() - last < MIN_REFETCH_WITHOUT_META_MS);
+      if (upToDate) return { skipped: true, modelRun: run?.runIso ?? null };
+    }
+    const rows = await fetchUpperWind(new Date().toISOString(), run?.runIso ?? null);
+    if (rows.length === 0) return { saved: 0, error: "Keine Höhenwind-Werte erhalten" };
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
+      {
+        method: "POST",
+        headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(rows),
+      },
+    );
+    if (!res.ok) {
+      return { saved: 0, error: `Supabase-Upsert schlug fehl (Status ${res.status}): ${await res.text()}` };
+    }
+    return { saved: rows.length, modelRun: run?.runIso ?? null };
+  } catch (err) {
+    console.error("Höhenwind (ICON-D2):", err);
+    return { saved: 0, error: (err as Error).message };
+  }
 }
 
 // Neuester Lauf eines Modells laut Open-Meteo (Voreinstellung: ICON-CH1):
@@ -672,15 +684,17 @@ async function loadModelRun(
   }
 }
 
-// Zeitpunkt des jüngsten gespeicherten ICON-CH1-Abrufs (fetched_at), oder
-// null (leere Tabelle oder Fehler → dann wird normal abgefragt).
+// Zeitpunkt des jüngsten gespeicherten Abrufs eines Modells (fetched_at,
+// Voreinstellung ICON-CH1), oder null (leere Tabelle oder Fehler → dann wird
+// normal abgefragt).
 async function loadLastFetchedMs(
   supabaseUrl: string,
   headers: Record<string, string>,
+  model = MODEL_DB,
 ): Promise<number | null> {
   try {
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/wind_forecasts?model=eq.${MODEL_DB}` +
+      `${supabaseUrl}/rest/v1/wind_forecasts?model=eq.${model}` +
         `&select=fetched_at&order=fetched_at.desc&limit=1`,
       { headers },
     );
@@ -730,6 +744,9 @@ export async function handleRequest(request: Request): Promise<Response> {
   } catch {
     // leerer oder kein JSON-Body (so ruft der Cron-Job auf) — kein force
   }
+  // Höhenwind zuerst und unabhängig von ICON-CH1 (siehe refreshUpperWind).
+  const upperWind = await refreshUpperWind(supabaseUrl, supabaseHeaders, force);
+
   const modelRun = await loadModelRun();
   if (!force) {
     const lastFetchedMs = await loadLastFetchedMs(supabaseUrl, supabaseHeaders);
@@ -746,6 +763,7 @@ export async function handleRequest(request: Request): Promise<Response> {
             : "Metadaten nicht lesbar, letzter Abruf jünger als 170 min",
           modelRun: modelRun?.runIso ?? null,
           lastFetched: new Date(lastFetchedMs).toISOString(),
+          upperWind,
         });
       }
     }
@@ -843,25 +861,6 @@ export async function handleRequest(request: Request): Promise<Response> {
   const modelRunIso = modelRun?.runIso ?? null;
   for (const row of rows) row.model_run = modelRunIso;
 
-  // 3b) Höhenwind (ICON-D2) für die Stationen in UPPER_WIND_STATIONS. Läuft
-  //     im Takt von ICON-CH1 mit: ICON-D2 rechnet zu denselben Uhrzeiten
-  //     (alle 3 h) und steht bei Open-Meteo sogar früher bereit (~1,5 h nach
-  //     Laufstart). Ein Fehler hier kostet nur den Höhenwind.
-  let upperSaved = 0;
-  let upperError: string | null = null;
-  const upperStations = stations.filter((s) => s.code in UPPER_WIND_STATIONS);
-  if (upperStations.length > 0) {
-    try {
-      const upperRun = await loadModelRun(UPPER_META_URL, "ICON-D2");
-      const upperRows = await fetchUpperWind(upperStations, fetchedAt, upperRun?.runIso ?? null);
-      rows.push(...upperRows);
-      upperSaved = upperRows.length;
-    } catch (err) {
-      upperError = (err as Error).message;
-      console.error("Höhenwind (ICON-D2):", upperError);
-    }
-  }
-
   if (rows.length === 0) {
     return json(
       { error: "Keine Prognosewerte erhalten", batchErrors },
@@ -917,7 +916,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     outsideFiltered,
     outsideModel,
     batchErrors,
-    upperWind: { stations: upperStations.map((s) => s.code), saved: upperSaved, error: upperError },
+    upperWind,
     cleanupBefore: cutoff,
     cleanupOk,
   });

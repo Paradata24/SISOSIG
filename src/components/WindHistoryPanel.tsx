@@ -11,6 +11,7 @@ import {
   snapToGrid,
   SOURCE_INFO,
   TIMELINE_STEP_MINUTES,
+  upperWindLevelLabel,
   WIND_COLOR_SCALE,
   type WindStation,
 } from "@/lib/wind";
@@ -27,7 +28,7 @@ import type { ForecastEntry } from "@/app/api/forecast/route";
 //    ICON-CH1-Prognose (dunkelgrau, gestrichelt, blassere Fläche); die
 //    Prognose-Windrichtung steht als Pfeilreihe oben IM Diagramm; bei
 //    einzelnen Gipfelstationen zusätzlich der Höhenwind aus ICON-D2 als blaue
-//    gestrichelte Linie (UPPER_WIND_STATION_CODES in src/lib/wind.ts)
+//    gestrichelte Linie (UPPER_WIND_STATIONS in src/lib/wind.ts)
 //  - darunter eine Reihe Windrichtungs-Pfeile und die Messwerte in
 //    eingefärbten Quadraten (Farbe = Windskala)
 // Farben und Pfeil-Drehung nutzen exakt dieselbe Logik wie die Karten-
@@ -154,8 +155,9 @@ const FORECAST_DASH = "5 3";
 // die Messung klar im Vordergrund bleibt.
 const FORECAST_BAND_OPACITY = 0.2;
 
-// Höhenwind (ICON-D2, Wind der freien Atmosphäre auf Stationshöhe, nur bei
-// den Stationen in UPPER_WIND_STATION_CODES): eine blaue gestrichelte Linie
+// Höhenwind (ICON-D2, Wind der freien Atmosphäre auf der nächsthöheren
+// Druckfläche, nur bei den Stationen in UPPER_WIND_STATIONS): eine blaue
+// gestrichelte Linie
 // (Wunsch des Projektbesitzers, Okt. 2026). Nur Mittelwind — auf den
 // Druckflächen gibt es keine Böen. Kräftiges Blau (blue-600), damit sie sich
 // von der hellblauen untersten Stufe der Farbskala abhebt; gleiche
@@ -871,6 +873,9 @@ export default function WindHistoryPanel({
     forecastByT,
   } = chart;
 
+  // Druckfläche des Höhenwinds, z. B. "700 hPa (ca. 3000 m)".
+  const upperWindLevel = upperWindLevelLabel(station.stationCode);
+
   // "Lauf 08:00 Uhr" in Ortszeit — die Startzeit des Modelllaufs, aus dem die
   // gezeichnete Prognose stammt. null, wenn unbekannt.
   const forecastRunMs = forecastRun ? Date.parse(forecastRun) : NaN;
@@ -936,7 +941,7 @@ export default function WindHistoryPanel({
               <>
                 {" "}·{" "}
                 <span style={{ color: UPPER_WIND_COLOR }}>blau gestrichelt</span>:
-                Höhenwind (ICON-D2)
+                Höhenwind (ICON-D2, {upperWindLevel})
               </>
             )}
           </span>
@@ -1219,11 +1224,19 @@ export default function WindHistoryPanel({
                       {forecastRunLabel}
                     </tspan>
                   )}
-                  {/* Höhenwind-Hinweis in Blau direkt darunter. */}
+                  {/* Höhenwind-Hinweis in Blau direkt darunter, mit der
+                      verwendeten Druckfläche (Wunsch des Projektbesitzers). */}
                   {hasUpperWind && (
-                    <tspan x={PAD_X + bandWidth - 4} dy={12} fill={UPPER_WIND_COLOR}>
-                      Höhenwind ICON-D2
-                    </tspan>
+                    <>
+                      <tspan x={PAD_X + bandWidth - 4} dy={12} fill={UPPER_WIND_COLOR}>
+                        Höhenwind ICON-D2
+                      </tspan>
+                      {upperWindLevel && (
+                        <tspan x={PAD_X + bandWidth - 4} dy={12} fill={UPPER_WIND_COLOR}>
+                          {upperWindLevel}
+                        </tspan>
+                      )}
+                    </>
                   )}
                 </text>
               )}

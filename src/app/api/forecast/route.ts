@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import {
   FUTURE_MARGIN_HOURS,
   HISTORY_HOURS,
-  UPPER_WIND_STATION_CODES,
+  UPPER_WIND_STATIONS,
 } from "@/lib/wind";
 
 // Liefert die Windprognosen einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die per
 // pg_cron angestoßen wird und bei jedem neuen ICON-CH1-Lauf, also alle
 // 3 Stunden, neue Werte holt): ICON-CH1 und — nur für die Stationen in
-// UPPER_WIND_STATION_CODES — zusätzlich den Höhenwind aus ICON-D2.
+// UPPER_WIND_STATIONS — zusätzlich den Höhenwind aus ICON-D2.
 //
 // Aufruf: /api/forecast?station=<SCODE>
 //
@@ -129,7 +129,7 @@ export async function GET(request: Request) {
   // allen anderen spart das eine Supabase-Abfrage. Additiv: Scheitert die
   // Abfrage, fehlt nur die blaue Linie, die Prognose oben bleibt.
   let upperWind: ForecastEntry[] = [];
-  if (UPPER_WIND_STATION_CODES.includes(station)) {
+  if (station in UPPER_WIND_STATIONS) {
     try {
       const upperRes = await fetch(
         `${baseUrl}&model=eq.${MODEL_UPPER}&select=${BASE_COLUMNS}`,

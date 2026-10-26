@@ -301,12 +301,15 @@ also alle 3 h, wirklich neue Werte).
 - **Höhenwind (Okt. 2026, Wunsch des Projektbesitzers)** nur für
   **Rittnerhorn** (`82500WS`) und **Leiterspitz** (`pioupiou-2163`): blaue
   gestrichelte Linie im Verlaufsbalken (`UPPER_WIND_COLOR`), nur Mittelwind
-  (Druckflächen haben keine Böen). Quelle **ICON-D2**: Wind auf 850 und
-  700 hPa, über die Geopotential-Höhe auf die Stationshöhe interpoliert
-  (`fetchUpperWind` in der Edge Function), gespeichert als
-  `model = 'icon_d2_upper'` ohne neue Spalten. Stationsliste
-  `UPPER_WIND_STATION_CODES` in `src/lib/wind.ts`, Kopie mit Höhe
-  (`UPPER_WIND_STATIONS`) in der Edge Function — beide anfassen.
+  (Druckflächen haben keine Böen). Quelle **ICON-D2**: bewusst die
+  **nächsthöhere Druckfläche** über der Station **ohne Umrechnung** (beide:
+  700 hPa), im Verlaufsbalken beschriftet als „700 hPa (ca. 3000 m)“ —
+  Wunsch des Projektbesitzers, damit ersichtlich ist, welche Werte es sind.
+  Gespeichert als `model = 'icon_d2_upper'` ohne neue Spalten. Eigene
+  Laufprüfung (`refreshUpperWind` in der Edge Function), unabhängig von
+  ICON-CH1: Fehlt der Höhenwind, kommt er beim nächsten Cron-Anstoß.
+  Stationsliste `UPPER_WIND_STATIONS` in `src/lib/wind.ts` (Druckfläche),
+  Kopie mit Koordinaten in der Edge Function — beide anfassen.
 - **Modell und Lauf stehen im Verlaufsbalken:** rechts im Prognosebereich
   „Prognose ICON-CH1" und „Lauf HH:MM Uhr" (Startzeit des Modelllaufs,
   Ortszeit; Wunsch des Projektbesitzers, Sept. 2026). Die Laufzeit speichert
@@ -406,7 +409,7 @@ Projektbesitzers entfernt:
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
   von Zeitfenster-Konstanten, der Pioupiou-Bounding-Box, des SLF-
   Stationsabrufs und der GeoSphere-Adresse. Wird `HISTORY_HOURS` /
-  `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATION_CODES` in `src/lib/wind.ts`, `SOUTH_TYROL_BBOX` in
+  `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in `src/lib/wind.ts`, `SOUTH_TYROL_BBOX` in
   `src/lib/pioupiou.ts` (gilt auch für die GeoSphere-Prognosen) oder
   Adresse/Codepräfix in `src/lib/slf.ts` bzw. `src/lib/geosphere.ts` oder der
   Alpenraum-Umriss `ALPS_POLYGON` in `src/lib/alps.ts` geändert, muss die
