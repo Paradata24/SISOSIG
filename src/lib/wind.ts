@@ -115,6 +115,22 @@ export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
+ * Stationen mit "Höhenwind" im Verlaufsbalken (Wunsch des Projektbesitzers,
+ * Okt. 2026): blaue gestrichelte Linie mit dem Wind der freien Atmosphäre auf
+ * Höhe der Station, aus dem Modell ICON-D2 (DWD). Gespeichert als
+ * model = 'icon_d2_upper' in wind_forecasts.
+ *
+ * Achtung: Die Edge Function (supabase/functions/fetch-wind-forecasts) hat
+ * eine eigene Kopie dieser Liste MIT der Stationshöhe (Deno kann hier nicht
+ * importieren) — eine neue Station muss an beiden Stellen eingetragen und die
+ * Funktion danach neu deployt werden.
+ */
+export const UPPER_WIND_STATION_CODES: string[] = [
+  "82500WS", // Ritten Rittner Horn, 2260 m (Bozner Wetterdienst)
+  "pioupiou-2163", // Leiterspitz, 2320 m (OpenWindMap)
+];
+
+/**
  * Anzeige-Raster: Schrittweite des Zeitbalkens unter der Karte und
  * Spaltendichte im Verlaufsbalken. Steht hier zentral, damit Zeitbalken,
  * /api/timeline und der Verlaufsbalken dasselbe Raster benutzen.

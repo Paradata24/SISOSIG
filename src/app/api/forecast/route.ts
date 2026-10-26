@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
-import { FUTURE_MARGIN_HOURS, HISTORY_HOURS } from "@/lib/wind";
+import {
+  FUTURE_MARGIN_HOURS,
+  HISTORY_HOURS,
+  UPPER_WIND_STATION_CODES,
+} from "@/lib/wind";
 
 // Liefert die Windprognosen einer Station aus der Supabase-Tabelle
 // wind_forecasts (befüllt von der Edge Function fetch-wind-forecasts, die per
 // pg_cron angestoßen wird und bei jedem neuen ICON-CH1-Lauf, also alle
-// 3 Stunden, neue Werte holt): ICON-CH1.
+// 3 Stunden, neue Werte holt): ICON-CH1 und — nur für die Stationen in
+// UPPER_WIND_STATION_CODES — zusätzlich den Höhenwind aus ICON-D2.
 //
 // Aufruf: /api/forecast?station=<SCODE>
 //
@@ -29,11 +34,13 @@ export interface ForecastEntry {
   model_run?: string | null;
 }
 
-// Modellname in der Tabelle wind_forecasts (siehe Edge Function): die
-// Bodenwind-Prognose ICON-CH1 (rote Kurve im Verlaufsbalken).
-// Andere Modelle gibt es nicht mehr: AROME und ICON-D2 wurden auf Wunsch des
-// Projektbesitzers komplett entfernt (weder gesammelt noch angezeigt).
+// Modellnamen in der Tabelle wind_forecasts (siehe Edge Function): die
+// Bodenwind-Prognose ICON-CH1 (dunkelgraue Kurven im Verlaufsbalken) und der
+// Höhenwind aus ICON-D2 (blaue gestrichelte Linie, nur Mittelwind und
+// Richtung, keine Böen). AROME gibt es nicht mehr (auf Wunsch des
+// Projektbesitzers komplett entfernt).
 const MODEL_SURFACE = "icon_ch1";
+const MODEL_UPPER = "icon_d2_upper";
 
 // Zwischenspeicherung wie bei /api/history. Die Prognose wird sogar nur
 // STÜNDLICH neu geholt (Edge Function fetch-wind-forecasts), 120 s im CDN
@@ -118,6 +125,22 @@ export async function GET(request: Request) {
 
   const entries: ForecastEntry[] = await res.json();
 
+  // Höhenwind (ICON-D2) nur für die wenigen Stationen, die ihn haben — bei
+  // allen anderen spart das eine Supabase-Abfrage. Additiv: Scheitert die
+  // Abfrage, fehlt nur die blaue Linie, die Prognose oben bleibt.
+  let upperWind: ForecastEntry[] = [];
+  if (UPPER_WIND_STATION_CODES.includes(station)) {
+    try {
+      const upperRes = await fetch(
+        `${baseUrl}&model=eq.${MODEL_UPPER}&select=${BASE_COLUMNS}`,
+        { headers, cache: "no-store" },
+      );
+      if (upperRes.ok) upperWind = await upperRes.json();
+    } catch {
+      // Höhenwind ist optional, siehe oben.
+    }
+  }
+
   // Der jüngste Lauf unter den gelieferten Werten. Normalerweise stammen
   // alle aus demselben Lauf; nur wenn beim letzten Abruf eine Station
   // ausfiel, können ihre Werte noch aus einem älteren sein.
@@ -136,6 +159,7 @@ export async function GET(request: Request) {
       model: "ICON-CH1",
       modelRun,
       entries,
+      upperWind,
     },
     { headers: { "Cache-Control": RESPONSE_CACHE_CONTROL } },
   );
