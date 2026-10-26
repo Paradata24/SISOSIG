@@ -115,6 +115,38 @@ export const HISTORY_HOURS = 12;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
+ * Stationen mit "Höhenwind" im Verlaufsbalken (Wunsch des Projektbesitzers,
+ * Okt. 2026): blaue gestrichelte Linie mit dem Wind der freien Atmosphäre aus
+ * dem Modell ICON-D2 (DWD). Gespeichert als model = 'icon_d2_upper' in
+ * wind_forecasts.
+ *
+ * Genommen wird die NÄCHSTHÖHERE Druckfläche über der Station, ohne
+ * Umrechnung, und im Verlaufsbalken mit Druck und ungefährer Höhe beschriftet
+ * (Wunsch des Projektbesitzers: ersichtlich, mit welchen Werten gearbeitet
+ * wird). ICON-D2 hat nur 1000, 975, 950, 850, 700, 600 … hPa; die Höhe
+ * (approxHeightM) ist die der Normatmosphäre, real schwankt sie je nach
+ * Wetterlage um rund ±150 m.
+ *
+ * Achtung: Die Edge Function (supabase/functions/fetch-wind-forecasts) hat
+ * eine eigene Kopie dieser Liste MIT Koordinaten (Deno kann hier nicht
+ * importieren) — eine neue Station muss an beiden Stellen eingetragen und die
+ * Funktion danach neu deployt werden.
+ */
+export const UPPER_WIND_STATIONS: Record<
+  string,
+  { pressureHPa: number; approxHeightM: number }
+> = {
+  "82500WS": { pressureHPa: 700, approxHeightM: 3000 }, // Ritten Rittner Horn, 2260 m (Bozen)
+  "pioupiou-2163": { pressureHPa: 700, approxHeightM: 3000 }, // Leiterspitz, 2320 m (OpenWindMap)
+};
+
+/** Beschriftung der Druckfläche, z. B. "700 hPa (ca. 3000 m)", sonst null. */
+export function upperWindLevelLabel(stationCode: string): string | null {
+  const level = UPPER_WIND_STATIONS[stationCode];
+  return level ? `${level.pressureHPa} hPa (ca. ${level.approxHeightM} m)` : null;
+}
+
+/**
  * Anzeige-Raster: Schrittweite des Zeitbalkens unter der Karte und
  * Spaltendichte im Verlaufsbalken. Steht hier zentral, damit Zeitbalken,
  * /api/timeline und der Verlaufsbalken dasselbe Raster benutzen.

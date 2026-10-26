@@ -348,9 +348,19 @@ der Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren
 kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 `supabase/forecast-schema.sql`). Details:
 
-- **Nur ICON-CH1** (`model = 'icon_ch1'`). ICON-D2 wurde bis Sept. 2026
-  mitgesammelt, aber nie angezeigt, und ist entfernt; alte `icon_d2`-Zeilen
-  laufen nach 2 Tagen von selbst ab.
+- **Bodenwind nur aus ICON-CH1** (`model = 'icon_ch1'`). Der ICON-D2-Bodenwind
+  wurde bis Sept. 2026 mitgesammelt, aber nie angezeigt, und ist entfernt;
+  alte `icon_d2`-Zeilen laufen nach 2 Tagen von selbst ab.
+- **Höhenwind (ICON-D2)** nur für Rittnerhorn und Leiterspitz
+  (`model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt): Wind der
+  freien Atmosphäre auf der nächsthöheren Druckfläche über der Station
+  (beide: **700 hPa, ca. 3000 m**), ohne Umrechnung und so beschriftet. Nur
+  Mittelwind und Richtung, keine Böen. Eigene Laufprüfung über
+  <https://api.open-meteo.com/data/dwd_icon_d2/static/meta.json>: Fehlt der
+  Höhenwind oder gibt es einen neuen ICON-D2-Lauf, holt ihn der nächste
+  Cron-Anstoß (16 Aufrufe am Tag). Weitere Stationen: `UPPER_WIND_STATIONS`
+  in `src/lib/wind.ts` (Druckfläche) **und** in der Edge Function (mit
+  Koordinaten) ergänzen, dann die Funktion neu deployen.
 - **Wann gibt es neue Daten?** ICON-CH1 rechnet **alle 3 Stunden** neu
   (Läufe um 00, 03, 06, … UTC). Bei Open-Meteo steht ein Lauf rund
   **2 h 20 min** nach dem Start bereit, also etwa um 02:20, 05:20, 08:20, …
@@ -401,13 +411,10 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 > führt einmalig den Inhalt von `supabase/remove-arome-forecasts.sql` im
 > **SQL Editor** aus.
 
-> **Früher gab es hier zusätzlich einen „Höhenwind"** (Wind auf einer
-> Druckfläche, `model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt).
-> Der ist wieder entfernt worden. Bestehende Datenbanken haben eventuell noch
-> alte Höhenwind-Zeilen und die zwei ungenutzten Spalten `pressure_level` /
-> `height_m`. Beides stört nicht (die Zeilen laufen nach 2 Tagen von selbst
-> ab). Wer sofort aufräumen möchte, führt einmalig den Inhalt von
-> `supabase/remove-upper-wind.sql` im **SQL Editor** aus.
+> **Alte Höhenwind-Spalten:** Eine frühere Fassung des Höhenwinds legte die
+> Spalten `pressure_level` / `height_m` an; der heutige Höhenwind braucht sie
+> nicht. Sie stören nicht. Wer sie entfernen möchte, führt einmalig den
+> Inhalt von `supabase/remove-upper-wind.sql` im **SQL Editor** aus.
 
 ### Einmalige Einrichtung
 
