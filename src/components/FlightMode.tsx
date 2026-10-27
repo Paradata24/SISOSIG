@@ -18,10 +18,12 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // muss offen und im Vordergrund bleiben — im Hintergrund hält der Browser GPS
 // und Abrufe an.
 
-// Zoomstufe der Rücksetztaste (und beim ersten GPS-Fix). 11 = Zahlen-Plakette
-// sichtbar (ab 10), aber noch ohne Stationsnamen (ab 12); am Handy sind das
-// rund 20 km Kartenbreite — genug Überblick für die nächsten Stationen.
-const FLIGHT_ZOOM = 11;
+// Zoomstufe der Rücksetztaste (und beim ersten GPS-Fix). 15 = höchste Stufe
+// der Karte (MAP_MAX_ZOOM in WindMap), Wunsch des Projektbesitzers (Okt. 2026,
+// vorher 11): am Handy rund 1–2 km Kartenbreite, Gelände, Kabel und deren
+// Höhen-Schilder (ab 15) im Detail. Für den Überblick über die Windstationen
+// herauszoomen.
+const FLIGHT_ZOOM = 15;
 
 // Unterhalb dieser Geschwindigkeit ist die GPS-Flugrichtung nur Rauschen
 // (rund 4 km/h). Dann bleibt die zuletzt gültige Richtung stehen.

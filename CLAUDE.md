@@ -324,7 +324,7 @@ also alle 3 h, wirklich neue Werte).
 - Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
   Spitze, **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
   Standort bis man sie verschiebt, große Tasten (+/− unten rechts,
-  Rücksetztaste unten links = eigener Standort auf Zoom 11 `FLIGHT_ZOOM`,
+  Rücksetztaste unten links = eigener Standort auf Zoom 15 `FLIGHT_ZOOM`,
   ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
   Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
   normale Karte bleibt ohne Zoom-Knöpfe.
