@@ -242,7 +242,7 @@ export default function TimeSlider({
   const clampPos = (value: number) => Math.min(latest.current.lastIndex, Math.max(0, value));
   const goTo = (i: number, tau = SNAP_TAU_MS) => animateTo(clampPos(Math.round(i)), tau);
 
-  // Kommt der Zeitpunkt von AUSSEN (Knopf "Aktuell" im Refresh, oder die
+  // Kommt der Zeitpunkt von AUSSEN (Knopf "Aktuell", oder die
   // Slot-Liste rückt nach 10 min weiter), das Rad nachdrehen. Beim eigenen
   // Drehen stimmt die Position schon (und animatingRef/dragRef sind gesetzt).
   useEffect(() => {

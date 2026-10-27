@@ -121,7 +121,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken (Aktualisieren, „GO", Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
+| `src/components/WindApp.tsx` | Titelbalken (Titel mit „GO", Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
@@ -269,7 +269,10 @@ also alle 3 h, wirklich neue Werte).
 - **Caching nicht entfernen** (`/api/wind` und die Verlaufs-Routen): Stationen
   messen nur alle 5–10 min. Ebenso bleibt der Abruf-Takt der Karte bei 3 min —
   „frischer" wird die Anzeige über den `visibilitychange`-Abruf, nicht über
-  einen kürzeren Takt. **Aber keine lange „Nachfrist" (stale-while-revalidate)
+  einen kürzeren Takt. **Kein Aktualisieren-Knopf** im Titel-Balken (Okt.
+  2026 entfernt, Wunsch des Projektbesitzers): Karte und ein offener
+  Verlaufsbalken laden alle 3 min und beim Zurückkehren zur Seite selbst
+  nach, der Zeitbalken alle 10 min. **Aber keine lange „Nachfrist" (stale-while-revalidate)
   in `/api/wind`:** Bis Okt. 2026 hingen die Live-Werte dadurch bis zu ~10 min
   hinter der Datenbank (Kopfzeile „Stand 15:40", Verlaufsbalken schon mit
   15:50). Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der

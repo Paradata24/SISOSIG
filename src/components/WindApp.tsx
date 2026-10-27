@@ -22,8 +22,8 @@ import WindMapLoader from "@/components/WindMapLoader";
 import StationFilterPicker from "@/components/StationFilterPicker";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
-// Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
-// Refresh-Button, ganz rechts das Filter-Schild (StationFilterPicker), das
+// Titel-Balken + Karte + Zeitbalken. Im Titel-Balken steht der Titel mit dem
+// "GO" für den Flugmodus, ganz rechts das Filter-Schild (StationFilterPicker), das
 // beim Antippen die Stationsfilter und darunter die Quellen aufklappt — seit
 // Okt. 2026 anstelle des früheren Menü-Knopfs (3 Linien). Im Flugmodus steht
 // das Schild auf der Karte (WindMap). Der Filter-Zustand lebt hier, weil
@@ -36,14 +36,6 @@ export default function WindApp() {
   // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
   // steht als "Zuletzt aktualisiert" mittig unter dem Rad im Zeitbalken.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  // --- Refresh-Button ---
-  // Zähler statt Ja/Nein: jede Erhöhung ist ein neuer Auftrag an Karte und
-  // Verlaufsbalken, sofort frisch zu laden (siehe refreshToken in WindMap).
-  const [refreshToken, setRefreshToken] = useState(0);
-  // Nur für die Dreh-Animation des Symbols, damit man sieht, dass der Klick
-  // angekommen ist.
-  const [refreshSpinning, setRefreshSpinning] = useState(false);
 
   // --- Zeitbalken ---
   // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
@@ -169,7 +161,7 @@ export default function WindApp() {
       .catch(() => setTimelineStatus("error"))
       .finally(() => {
         // Auch nach einem Fehlschlag wieder freigeben, damit der nächste
-        // Anlauf (neuer Rasterschritt, Refresh) es erneut versucht
+        // Anlauf (neuer Rasterschritt) es erneut versucht
         // (timelineFetchedAt bleibt dann auf 0, die Sperre oben greift nicht).
         timelineLoading.current = false;
       });
@@ -190,21 +182,6 @@ export default function WindApp() {
     [timeline, slots, viewportCodes],
   );
 
-  // Refresh: zurück auf "aktuell", neue Live-Werte holen und die Zeitbalken-
-  // Daten sofort frisch laden. Wird
-  // gerade (noch) geladen, bleibt der laufende Abruf einfach bestehen.
-  // Hinweis: "frischer" als der Wetterdienst selbst geht es nicht — die
-  // Stationen messen nur alle 5–10 min und /api/wind wird bis zu 60 s
-  // zwischengespeichert (Caching bewusst beibehalten, siehe CLAUDE.md).
-  const handleRefresh = useCallback(() => {
-    setSelectedTime(null);
-    timelineFetchedAt.current = 0;
-    ensureTimeline();
-    setRefreshToken((n) => n + 1);
-    setRefreshSpinning(true);
-    window.setTimeout(() => setRefreshSpinning(false), 700);
-  }, [ensureTimeline]);
-
   // Beim schnellen Ziehen feuert der Zeitbalken viele Male pro Sekunde. Mit
   // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
   // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
@@ -220,39 +197,17 @@ export default function WindApp() {
 
   return (
     <>
-      {/* Der Balken ist eine Flex-Reihe: links der Refresh-Button, in der
-          Mitte der Titel (nimmt den freien Platz und bricht bei Bedarf um),
-          rechts das Filter-Schild. Bewusst NICHT mit
+      {/* Der Balken ist eine Flex-Reihe: links der Titel (nimmt den freien
+          Platz und bricht bei Bedarf um), rechts das Filter-Schild. Einen
+          Aktualisieren-Knopf links gibt es seit Okt. 2026 nicht mehr (Wunsch
+          des Projektbesitzers): Die Seite holt alle 3 min und beim
+          Zurückkehren zur Seite von selbst neue Werte. Bewusst NICHT mit
           absolut gesetzten Knöpfen über einem mittigen Titel — auf schmalen
           Handys würden sich Titel und Knöpfe sonst überlappen. */}
       {/* Im Flugmodus ist der Titel-Balken weg (ganzer Bildschirm für die
           Karte); beendet wird er über die ✕-Taste auf der Karte. */}
       {!flightMode && (
         <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            aria-label="Aktualisieren"
-            title="Aktualisieren"
-            className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          >
-            {/* Kreispfeil, schwarz wie der Rahmen des Knopfs. */}
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              aria-hidden="true"
-              className={`text-zinc-900 dark:text-zinc-50 ${refreshSpinning ? "animate-spin" : ""}`}
-            >
-              <path
-                d="M16 10a6 6 0 1 1-1.76-4.24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-              <path d="M17 2v5h-5z" fill="currentColor" />
-            </svg>
-          </button>
           {/* Das "GO" im Titel ist der Knopf für den Flugmodus (Wunsch des
               Projektbesitzers): groß geschrieben und blau, damit man sieht,
               dass man es antippen kann. Etwas Innenabstand vergrößert die
@@ -320,7 +275,6 @@ export default function WindApp() {
           onStationFilterChange={setStationFilter}
           historyFrame={historyFrame}
           timeline={timeline}
-          refreshToken={refreshToken}
           onViewportStationsChange={setViewportCodes}
           selectedStationCode={selectedStationCode}
           // Im Flugmodus öffnet ein Antippen der Pfeile nichts: Mit

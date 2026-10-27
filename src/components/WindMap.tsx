@@ -622,7 +622,6 @@ export default function WindMap({
   onStationFilterChange,
   historyFrame,
   timeline,
-  refreshToken,
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
@@ -642,11 +641,6 @@ export default function WindMap({
    * Werte" lässt sich am einzelnen aktuellen Wert nicht erkennen.
    */
   timeline: TimelinePayload | null;
-  /**
-   * Zähler des Refresh-Buttons im Titel-Balken (WindApp). Jede Erhöhung holt
-   * sofort frische Live-Werte (und den Verlauf einer offenen Station).
-   */
-  refreshToken: number;
   /** Stationscodes im sichtbaren Kartenausschnitt (für den Zeitbalken). */
   onViewportStationsChange: (codes: string[]) => void;
   /**
@@ -784,11 +778,6 @@ export default function WindMap({
     return () => window.clearTimeout(timer);
   }, []);
 
-  // Zeigt auf die jeweils aktuelle loadWind-Funktion aus dem Abruf-Effekt
-  // unten, damit der Refresh-Button sie von außen anstoßen kann, ohne dass
-  // dafür Takt und visibilitychange-Zuhörer neu angemeldet werden müssen.
-  const loadWindRef = useRef<(() => Promise<void>) | null>(null);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -824,7 +813,6 @@ export default function WindMap({
     }
 
     loadWind(true);
-    loadWindRef.current = () => loadWind(false);
     // Im Hintergrund (Tab nicht sichtbar, Handy gesperrt, andere App im
     // Vordergrund) wird NICHT abgefragt: Werte, die gerade niemand sieht,
     // müssen auch nicht geladen werden. Das spart auf dem Handy Datenvolumen
@@ -844,7 +832,6 @@ export default function WindMap({
 
     return () => {
       cancelled = true;
-      loadWindRef.current = null;
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
@@ -855,14 +842,6 @@ export default function WindMap({
   useEffect(() => {
     leafletMap?.setMaxZoom(flightMode ? FLIGHT_MAX_ZOOM : MAP_MAX_ZOOM);
   }, [leafletMap, flightMode]);
-
-  // Refresh-Button: sofort frische Werte holen. Beim ersten Aufbau (Zähler 0)
-  // nichts tun — da lädt der Effekt oben ohnehin schon. Wie beim Takt bleiben
-  // bei einem Fehlschlag die bisherigen Pfeile stehen.
-  useEffect(() => {
-    if (refreshToken === 0) return;
-    void loadWindRef.current?.();
-  }, [refreshToken]);
 
   return (
     <div className="relative h-full w-full">
@@ -962,7 +941,11 @@ export default function WindMap({
         <WindHistoryPanel
           station={selectedStation}
           onClose={() => onSelectStation(null)}
-          refreshToken={refreshToken}
+          // Der Verlaufsbalken lädt den Verlauf der offenen Station bei jedem
+          // neuen Abruf der Live-Werte nach (alle 3 min und beim Zurückkehren
+          // zur Seite) — seit Okt. 2026 gibt es keinen Aktualisieren-Knopf
+          // mehr, der das früher angestoßen hat.
+          refreshToken={lastUpdated?.getTime() ?? 0}
         />
       )}
     </div>

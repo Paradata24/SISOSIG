@@ -17,7 +17,6 @@ export default function WindMapLoader({
   onStationFilterChange,
   historyFrame,
   timeline,
-  refreshToken,
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
@@ -33,8 +32,6 @@ export default function WindMapLoader({
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
   timeline: TimelinePayload | null;
-  /** Zähler des Refresh-Buttons, siehe WindMap. */
-  refreshToken: number;
   /** Meldet die Stationscodes im sichtbaren Kartenausschnitt, siehe WindMap. */
   onViewportStationsChange: (codes: string[]) => void;
   /** Geöffnete Station (null = keine), siehe WindMap. */
@@ -53,7 +50,6 @@ export default function WindMapLoader({
       onStationFilterChange={onStationFilterChange}
       historyFrame={historyFrame}
       timeline={timeline}
-      refreshToken={refreshToken}
       onViewportStationsChange={onViewportStationsChange}
       selectedStationCode={selectedStationCode}
       onSelectStation={onSelectStation}
