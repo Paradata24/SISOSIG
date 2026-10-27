@@ -338,7 +338,9 @@ also alle 3 h, wirklich neue Werte).
   Papierkorb), unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
   (eigener Standort auf Zoom 10 `OVERVIEW_ZOOM`). Abstände 12 px, unten
-  28 px (Wischleiste des iPhones).
+  28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
+  haben einen **halb durchsichtigen Hintergrund** (50 %, `zoomButtonLight`/
+  `zoomButtonDark`), Zeichen und Rand bleiben voll deckend.
 - **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
   aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
   reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,

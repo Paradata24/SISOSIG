@@ -1092,7 +1092,12 @@ export default function FlightMode({
   const bigButton =
     "pointer-events-auto flex h-[72px] w-[72px] items-center justify-center border-2 border-black shadow-lg select-none";
   const bigButtonLight = `${bigButton} bg-white text-zinc-900 active:bg-zinc-200`;
-  const bigButtonDark = `${bigButton} bg-zinc-900 text-white active:bg-zinc-700`;
+  // Zoomtasten (+/−, Rücksetzen, Übersicht) mit halb durchsichtigem
+  // Hintergrund, damit man die Karte darunter sieht (Wunsch des
+  // Projektbesitzers, Okt. 2026). Nur der Hintergrund: Zeichen und Rand
+  // bleiben voll deckend und gut lesbar.
+  const zoomButtonLight = `${bigButton} bg-white/50 text-zinc-900 active:bg-zinc-200/50`;
+  const zoomButtonDark = `${bigButton} bg-zinc-900/50 text-white active:bg-zinc-700/50`;
 
   return (
     <>
@@ -1179,7 +1184,7 @@ export default function FlightMode({
           onClick={handleZoomIn}
           aria-label="Hineinzoomen"
           title="Hineinzoomen"
-          className={bigButtonLight}
+          className={zoomButtonLight}
         >
           <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
             <path d="M18 4 V32 M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
@@ -1190,7 +1195,7 @@ export default function FlightMode({
           onClick={handleZoomOut}
           aria-label="Herauszoomen"
           title="Herauszoomen"
-          className={bigButtonLight}
+          className={zoomButtonLight}
         >
           <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
             <path d="M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
@@ -1308,7 +1313,7 @@ export default function FlightMode({
           onClick={() => handleReset(FLIGHT_ZOOM)}
           aria-label="Ansicht zurücksetzen"
           title="Ansicht zurücksetzen"
-          className={followingShown && position ? bigButtonDark : bigButtonLight}
+          className={followingShown && position ? zoomButtonDark : zoomButtonLight}
         >
           {/* Fadenkreuz */}
           <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
@@ -1326,7 +1331,7 @@ export default function FlightMode({
           onClick={() => handleReset(OVERVIEW_ZOOM)}
           aria-label="Übersicht"
           title="Übersicht"
-          className={bigButtonLight}
+          className={zoomButtonLight}
         >
           {/* Vier Ecken mit Pfeilen nach innen: "großes Gebiet" */}
           <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
