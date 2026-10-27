@@ -1,4 +1,5 @@
 import type { WindStation } from "./wind";
+import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der Südtiroler OpenWindMap-Stationen
 // (Pioupiou-Netzwerk). Genutzt von /api/wind (Live-Anzeige) und
@@ -54,12 +55,12 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // mit den Bozner SCODEs kollidieren (z. B. "pioupiou-413").
 const CODE_PREFIX = "pioupiou-";
 
-// Der Abruf wird 60 s im Next.js-Daten-Cache gehalten (gleiche Dauer wie
-// die Bozner Messwerte in /api/wind, siehe dort). Die Pioupiou-Stationen
+// Der Abruf wird 60 s zwischengespeichert (cachedFresh, holt nach Ablauf
+// sofort neu — siehe src/lib/freshCache.ts). Die Pioupiou-Stationen
 // melden ohnehin nur alle paar Minuten. Auch für /api/collect (läuft alle
 // 5 Minuten) sind bis zu 60 s alte Werte unschädlich: gespeichert wird der
 // Mess-Zeitstempel der Station, Duplikate fängt der Upsert ab.
-const REVALIDATE_S = 60;
+const CACHE_TTL_MS = 60 * 1000;
 
 interface PioupiouStation {
   id: number;
@@ -168,13 +169,14 @@ function round5(value: number): number {
  * stale-Verhalten, gleiche Karten-/Verlaufsbalken-Darstellung).
  */
 export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
-  const res = await fetch(`${API_BASE}/live/all`, {
-    next: { revalidate: REVALIDATE_S },
+  const url = `${API_BASE}/live/all`;
+  const body: unknown = await cachedFresh(url, CACHE_TTL_MS, async () => {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
+    }
+    return res.json() as Promise<unknown>;
   });
-  if (!res.ok) {
-    throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
-  }
-  const body: unknown = await res.json();
   const stations: PioupiouStation[] = Array.isArray(body)
     ? (body as PioupiouStation[])
     : ((body as { data?: PioupiouStation[] })?.data ?? []);

@@ -1,5 +1,6 @@
 import { isInAlps } from "./alps";
 import { WINDANZEIGER_STATION_CODES, type WindStation } from "./wind";
+import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der automatischen Messstationen von MeteoSchweiz
 // (Bundesamt für Meteorologie und Klimatologie, Netz "SwissMetNet"/SMN, rund
@@ -49,7 +50,9 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Neue Werte kommen alle 10 Minuten; 120 s Cache halten die Zahl der Abrufe
 // niedrig (/api/wind ≤ 30 pro Stunde), ohne die Anzeige spürbar zu verzögern.
-const MEASUREMENTS_REVALIDATE_S = 120;
+// Über cachedFresh (src/lib/freshCache.ts): nach Ablauf sofort frisch — mit
+// dem Next.js-Daten-Cache wurde jeder neue Wert 5 min später gespeichert.
+const MEASUREMENTS_TTL_MS = 120 * 1000;
 const METADATA_REVALIDATE_S = 6 * 60 * 60;
 
 interface MeteoSwissMeta {
@@ -138,12 +141,15 @@ async function fetchMeta(): Promise<Map<string, MeteoSwissMeta>> {
  * Stationsliste (kein Standort) erscheinen nicht.
  */
 export async function fetchMeteoSwissStations(): Promise<WindStation[]> {
-  const [meta, res] = await Promise.all([
+  const [meta, csv] = await Promise.all([
     fetchMeta(),
-    fetch(CURRENT_URL, { next: { revalidate: MEASUREMENTS_REVALIDATE_S } }),
+    cachedFresh(CURRENT_URL, MEASUREMENTS_TTL_MS, async () => {
+      const res = await fetch(CURRENT_URL, { cache: "no-store" });
+      if (!res.ok) throw new Error(`MeteoSchweiz-Messwerte: Status ${res.status}`);
+      return decodeText(await res.arrayBuffer());
+    }),
   ]);
-  if (!res.ok) throw new Error(`MeteoSchweiz-Messwerte: Status ${res.status}`);
-  const rows = parseCsv(decodeText(await res.arrayBuffer()));
+  const rows = parseCsv(csv);
 
   const now = Date.now();
   const result: WindStation[] = [];

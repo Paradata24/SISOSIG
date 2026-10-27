@@ -28,8 +28,13 @@ export interface HistoryEntry {
 // aus dem Zwischenspeicher — ohne Datenbankabfrage und spürbar schneller.
 // Fehlerantworten bekommen bewusst KEINEN solchen Header, damit sich eine
 // kurze Störung nicht 60 s lang festsetzt.
+// Die Nachfrist (stale-while-revalidate) ist bewusst kurz: Mit 300 s bekam,
+// wer eine Station öffnete, die vor ein paar Minuten schon jemand angesehen
+// hatte, zuerst deren alte Antwort — der neueste Messwert fehlte dann im
+// Verlaufsbalken (gleiche Ursache wie bei /api/wind, Okt. 2026). Die Abfrage
+// einer einzelnen Station ist schnell genug, um auf frische Daten zu warten.
 const RESPONSE_CACHE_CONTROL =
-  "public, s-maxage=60, stale-while-revalidate=300";
+  "public, s-maxage=60, stale-while-revalidate=30";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

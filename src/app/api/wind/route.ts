@@ -43,8 +43,10 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 //   ~10 min hinter der Datenbank her (Rittner Horn "Stand 15:40", obwohl der
 //   15:50-Wert seit 16:05 im Verlaufsbalken stand). Jetzt bleibt nur der
 //   CDN-Speicher, mit kurzer Nachfrist (RESPONSE_CACHE_CONTROL).
-// - Pioupiou (src/lib/pioupiou.ts), GeoSphere (Anfrage-Grenze!) und SLF
-//   behalten ihren eigenen Daten-Cache, siehe dort.
+// - Die übrigen Quellen (Pioupiou, GeoSphere mit Anfrage-Grenze, MeteoSchweiz,
+//   LWD Tirol, DWD, SLF) haben ihren eigenen kurzen Zwischenspeicher in
+//   src/lib/, der nach Ablauf ebenfalls sofort frisch holt
+//   (src/lib/freshCache.ts bzw. der eigene Speicher in slf.ts).
 // - Die Stationsmetadaten (/stations: Name, Koordinaten, Höhe) ändern sich
 //   praktisch nie und werden 6 h gehalten.
 // Das stale-Flag wird trotzdem bei jedem echten Routen-Lauf frisch gegen
