@@ -1086,7 +1086,7 @@ export default function FlightMode({
           : `${lastUpdated.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} `
       }${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
-  // Stand der Kabel: Datum und Uhrzeit, wann der Server sie zuletzt beim Land
+  // Stand der Kabel: Datum, wann der Server sie zuletzt beim Land
   // abgeholt hat (einmal am Tag, siehe /api/kabel). Gelb, wenn die
   // Aktualisierung nicht geklappt hat — die Karte zeigt dann weiter die Kabel
   // dieses Datums — oder wenn es gar keine Kabel gibt.
