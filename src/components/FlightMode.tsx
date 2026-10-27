@@ -1178,7 +1178,7 @@ export default function FlightMode({
 
       {/* Oben rechts: Plus über Minus, mit Abstand, damit man mit
           Handschuhen nicht beide zugleich trifft. */}
-      <div className="pointer-events-none absolute top-9 right-3 z-[1000] flex flex-col gap-3">
+      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col gap-3">
         <button
           type="button"
           onClick={handleZoomIn}
