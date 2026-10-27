@@ -1138,7 +1138,10 @@ export default function FlightMode({
           BEENDEN?" usw.), darunter erscheint ✕ zum Abbrechen (nicht daneben:
           dort steht oben mittig das Filter-Schild). Die gelben Tasten sind so
           breit wie die normalen, damit nichts seitlich verrutscht; die
-          Statuszeile rückt für das ✕ nach unten statt überdeckt zu werden. */}
+          Statuszeile rückt für das ✕ nach unten statt überdeckt zu werden.
+          ✕ und START/STOP haben wie die Zoomtasten einen halb durchsichtigen
+          Hintergrund (Wunsch des Projektbesitzers, Okt. 2026); die gelben
+          Nachfragen und ihr ✕ bleiben voll deckend, sie sollen auffallen. */}
       <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
         <div className="flex items-start gap-3">
           <div className="flex flex-col gap-3">
@@ -1171,7 +1174,7 @@ export default function FlightMode({
                 onClick={() => exitConfirm.arm("exit")}
                 aria-label="Flugmodus beenden"
                 title="Flugmodus beenden"
-                className={`${smallButton} bg-white active:bg-zinc-200`}
+                className={`${smallButton} bg-white/50 active:bg-zinc-200/50`}
               >
                 <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
@@ -1220,7 +1223,7 @@ export default function FlightMode({
                 onClick={() => trackConfirm.arm("stop")}
                 aria-label="Track-Aufzeichnung stoppen"
                 title="Track-Aufzeichnung stoppen"
-                className={`${smallButton} flex-col gap-0.5 bg-red-600 text-white active:bg-red-800`}
+                className={`${smallButton} flex-col gap-0.5 bg-red-600/50 text-white active:bg-red-800/50`}
               >
                 <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
                   <rect x="2" y="2" width="18" height="18" fill="currentColor" />
@@ -1233,7 +1236,7 @@ export default function FlightMode({
                 onClick={() => trackConfirm.arm("start")}
                 aria-label="Track-Aufzeichnung starten"
                 title="Track-Aufzeichnung starten"
-                className={`${smallButton} flex-col gap-0.5 bg-white text-zinc-900 active:bg-zinc-200`}
+                className={`${smallButton} flex-col gap-0.5 bg-white/50 text-zinc-900 active:bg-zinc-200/50`}
               >
                 <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
                   <circle cx="11" cy="11" r="10" fill="#dc2626" />
