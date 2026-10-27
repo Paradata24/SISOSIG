@@ -159,7 +159,9 @@ also alle 3 h, wirklich neue Werte).
   CARTO-Beschriftungen (20) mehr könnten — die Karte soll sich beim
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
-  echte Kacheln hat.
+  echte Kacheln hat. **Ausnahme Flugmodus: bis Zoom 16** (`FLIGHT_MAX_ZOOM`,
+  Wunsch des Projektbesitzers, Okt. 2026) — dort gibt es nur OpenTopoMap,
+  die echte Kacheln bis 17 hat. Standard-Zoom im Flugmodus bleibt 15.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
   alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (20-px-Pfeile, wie Region,
   keine Zahlen), Region Zoom 9–11 (20 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
