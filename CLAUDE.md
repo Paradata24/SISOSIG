@@ -121,11 +121,11 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken (Titel mit „GO", Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
+| `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -300,8 +300,12 @@ also alle 3 h, wirklich neue Werte).
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
-- Gestartet über das blaue **„GO"** im Titel („Should I stay or should I GO",
-  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte (mit
+- Gestartet über den **ganzen Titel als Knopf** („SHOULD I STAY OR SHOULD I
+  GO"; Okt. 2026, Wunsch des Projektbesitzers, vorher nur ein blaues „GO").
+  Stil nach den Plattencovern von **The Clash** und passend zum App-Symbol:
+  schwarzer Block, gelbe Großbuchstaben (`#fbb11a`), „GO" weiß, harter roter
+  Versatz (`#e0403a`) nach links unten, leicht schräg (−1,5°); auf sehr
+  schmalen Handys bricht er zweizeilig um. Beendet über die ✕-Taste oben links auf der Karte (mit
   zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).

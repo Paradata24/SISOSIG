@@ -208,20 +208,24 @@ export default function WindApp() {
           Karte); beendet wird er über die ✕-Taste auf der Karte. */}
       {!flightMode && (
         <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          {/* Das "GO" im Titel ist der Knopf für den Flugmodus (Wunsch des
-              Projektbesitzers): groß geschrieben und blau, damit man sieht,
-              dass man es antippen kann. Etwas Innenabstand vergrößert die
-              Tippfläche, ohne die Zeile höher zu machen (-my-1). */}
-          <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
-            Should I stay or should I{" "}
+          {/* Der GANZE Titel ist der Knopf für den Flugmodus (Wunsch des
+              Projektbesitzers, Okt. 2026; vorher war nur das blaue "GO"
+              antippbar). Gestaltet nach den Plattencovern von The Clash und
+              passend zum App-Symbol (gelber Stern, roter Schatten auf
+              Schwarz): schwarzer Block, gelbe Großbuchstaben, harter roter
+              Versatz nach links unten, leicht schräg wie ein aufgeklebter
+              Sticker. "GO" in Weiß hebt das Ziel hervor. Beim Antippen
+              rutscht der Block auf seinen Schatten (gedrückt-Effekt).
+              Farben = App-Symbol: Gelb #fbb11a, Rot #e0403a. */}
+          <h1 className="flex min-w-0 flex-1 justify-center">
             <button
               type="button"
               onClick={enterFlightMode}
-              aria-label="Flugmodus starten"
+              aria-label="Should I stay or should I GO – Flugmodus starten"
               title="Flugmodus starten"
-              className="-my-1 px-1 py-1 font-bold text-blue-600 uppercase hover:text-blue-800"
+              className="-rotate-[1.5deg] bg-black px-3 py-1.5 text-[15px] leading-tight font-bold tracking-wide text-[#fbb11a] uppercase shadow-[-4px_4px_0_#e0403a] transition-[translate,box-shadow] duration-75 active:-translate-x-1 active:translate-y-1 active:shadow-none sm:text-lg"
             >
-              go
+              Should I stay or should I <span className="text-white">GO</span>
             </button>
           </h1>
           {/* Oben rechts der Stationsfilter (Wunsch des Projektbesitzers,
