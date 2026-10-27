@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
@@ -175,6 +175,40 @@ function useWakeLock(): boolean | null {
   }, []);
 
   return active;
+}
+
+// Netz da oder nicht (Handy-Flugmodus, Funkloch). In der Web-App zeigt die
+// Karte ohne Netz die zuletzt gespeicherten Windwerte (public/sw.js) — die
+// Statuszeile sagt das dann deutlich.
+function subscribeOnline(onChange: () => void) {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+function useOnline(): boolean {
+  return useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+}
+
+// Ab diesem Alter gelten die angezeigten Windwerte als veraltet und die
+// Uhrzeit in der Statuszeile wird gelb hinterlegt. Normal sind sie höchstens
+// 3 min alt (Abruf-Takt); 15 min heißt: mehrere Abrufe sind gescheitert.
+const WIND_OUTDATED_MS = 15 * 60 * 1000;
+
+// Aktuelle Uhrzeit, alle 30 s aufgefrischt — nur für die Alters-Prüfung oben.
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
 }
 
 // --- Track-Aufzeichnung ---
@@ -418,6 +452,8 @@ export default function FlightMode({
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
+  const online = useOnline();
+  const now = useNow(30_000);
 
   // Mitführen: Die Karte folgt dem eigenen Standort, bis man sie selbst
   // verschiebt. Die Rücksetztaste schaltet es wieder ein. Als ref, weil der
@@ -535,9 +571,17 @@ export default function FlightMode({
         : status === "unavailable"
           ? "Kein GPS"
           : "GPS sucht…";
+  // Mit Datum, wenn die Werte nicht von heute sind (ohne Netz können die
+  // gespeicherten auch vom Vortag stammen).
   const updatedText = lastUpdated
-    ? `Wind ${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+    ? `Wind ${
+        lastUpdated.toDateString() === new Date(now).toDateString()
+          ? ""
+          : `${lastUpdated.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} `
+      }${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
+  const windOutdated =
+    lastUpdated !== null && now - lastUpdated.getTime() > WIND_OUTDATED_MS;
   const trackText =
     track.recording || track.lengthM > 0
       ? `Track ${(track.lengthM / 1000).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
@@ -572,7 +616,12 @@ export default function FlightMode({
           der Bildschirm wach gehalten wird). */}
       <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col items-end gap-1 text-right text-xs font-bold text-zinc-900">
         <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
-        <span className="bg-white/90 px-1.5 py-0.5 shadow">{updatedText}</span>
+        {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
+        {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
+            gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
+        <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
+          {updatedText}
+        </span>
         {trackText && (
           <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
             {trackText}

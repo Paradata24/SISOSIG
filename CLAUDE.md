@@ -118,6 +118,8 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
+| `src/app/manifest.ts`, `src/app/apple-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
+| `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
@@ -315,8 +317,36 @@ also alle 3 h, wirklich neue Werte).
   übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
   nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
   Seite; Pausen > 60 s bleiben als Lücke sichtbar.
-- Geplante weitere Schritte: Landeplätze vorübergehend setzen; Karte ohne
-  Netz (Kachel-Zwischenspeicher), „Zum Home-Bildschirm", Akku-Feinschliff.
+- Geplante weitere Schritte: Landeplätze vorübergehend setzen, Akku-Feinschliff.
+
+**Web-App „SISOSIG" (Okt. 2026, Wunsch des Projektbesitzers)**
+- **Eine Website, eine Adresse, ein Code.** Die Website im Browser bleibt wie
+  sie ist; als App (Home-Bildschirm / „App installieren") kommen Symbol,
+  Name und Offline-Fähigkeit dazu. Kein getrenntes Projekt, keine eigene
+  Unteradresse.
+- **Symbol:** gelber Stern mit rotem Schatten nach links unten auf Schwarz
+  (Vorlage vom Projektbesitzer). Name **SISOSIG**. Startet normal (Karte mit
+  Zeitbalken); Abkürzung „Flugmodus" (Android, langes Drücken) öffnet `/?flug`.
+- **Hintergrund-Helfer (`public/sw.js`) nur in der App angemeldet**
+  (`ServiceWorkerRegistration`, prüft `display-mode: standalone`). Bei
+  Android gilt er nach der Installation trotzdem auch für Chrome (gleicher
+  Speicher) — deshalb die Grundregel: **mit Netz verhält sich alles wie die
+  Website** (Seite und `/api/` immer zuerst aus dem Netz, Speicher nur bei
+  Netzausfall). Nicht auf „zuerst aus dem Speicher" umbauen.
+- Ohne Netz kommen gespeicherte Windwerte mit der Kopfzeile
+  `x-sisosig-gespeichert` (Speicherzeitpunkt); `WindMap` meldet dann diesen
+  Zeitpunkt statt „jetzt", der Flugmodus zeigt „Offline" und färbt die
+  Wind-Uhrzeit ab 15 min Alter gelb.
+- **Kartenstücke:** nur gespeichert, was man ansieht (max. 4000, nach 30
+  Tagen erneuert). **Kein „Gebiet herunterladen"** — die Nutzungsregeln von
+  OpenTopoMap/Esri verbieten Massen-Downloads. Gespeichert wird per
+  CORS-Abruf im Helfer (alle vier Kartendienste erlauben das, Okt. 2026
+  geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
+- Bei grundlegenden Änderungen am Helfer `VERSION` in `sw.js` hochzählen
+  (alte Speicher werden dann gelöscht). `sw.js` wird nie zwischengespeichert
+  (`next.config.ts`).
+- iPhone: App und Safari haben **getrennte Speicher** (Track, Standort-
+  Erlaubnis) — für den Flug immer die App benutzen.
 
 **Prognosemodelle**
 - Gezeichnet wird nur **ICON-CH1** — seit Sept. 2026 **dunkelgrau** statt

@@ -835,7 +835,12 @@ export default function WindMap({
         }
         setError(null);
         setStations(data as WindStation[]);
-        onDataLoaded(new Date());
+        // Ohne Netz liefert der Hintergrund-Helfer der Web-App (public/sw.js)
+        // die zuletzt gespeicherten Werte, mit dem Zeitpunkt des Speicherns
+        // in dieser Kopfzeile. Dann diesen Zeitpunkt melden, nicht "jetzt" —
+        // sonst sähen alte Werte im Flug wie frische aus.
+        const storedAt = res.headers.get("x-sisosig-gespeichert");
+        onDataLoaded(storedAt ? new Date(storedAt) : new Date());
       } catch {
         if (!cancelled && isInitial) {
           setError("Winddaten konnten nicht geladen werden");

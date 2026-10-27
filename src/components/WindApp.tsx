@@ -86,6 +86,20 @@ export default function WindApp() {
     setFlightMode(false);
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }, []);
+  // Abkürzung "Flugmodus" der Web-App (langes Drücken aufs App-Symbol bei
+  // Android, siehe shortcuts in src/app/manifest.ts): öffnet "/?flug" und
+  // startet direkt im Flugmodus. Danach wird "?flug" aus der Adresse
+  // entfernt, damit Neuladen wieder die normale Karte zeigt.
+  // Im requestAnimationFrame statt direkt im Effekt: Die Adresse gibt es erst
+  // im Browser, und so bleibt der erste Bildaufbau gleich dem vom Server.
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has("flug")) return;
+    const frame = requestAnimationFrame(() => {
+      setFlightMode(true);
+      window.history.replaceState(null, "", window.location.pathname);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
   // Startwert "loading": Die Daten werden gleich beim Seitenaufruf geholt
