@@ -21,8 +21,9 @@ export interface CablePayload {
  * Kabel bis 25 m haben Klasse 0 und kein Schild.
  *
  * Die Klasse gilt für das GANZE Kabel und meint seine höchste Stelle über dem
- * Boden (meist eine Talquerung) — deshalb steht auf dem Schild "max …". Eine
- * Höhe je Abschnitt gibt es in den Daten des Landes nicht.
+ * Boden (meist eine Talquerung). Eine Höhe je Abschnitt gibt es in den Daten
+ * des Landes nicht. Ein "max" vor der Angabe hat der Projektbesitzer bewusst
+ * weggelassen.
  *
  * code = Rangfolge beim Ausdünnen: Überdecken sich zwei Schilder, bleibt das
  * mit dem höheren code. "> 25 bis 60 m" ist eine ältere, gröbere Klasse des

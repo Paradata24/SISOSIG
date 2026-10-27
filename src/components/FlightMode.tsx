@@ -437,7 +437,7 @@ const CABLE_HALO_OPACITY = 0.9;
 const CABLE_PANE = "kabel";
 const CABLE_PANE_Z = 390;
 
-// Höhen-Schilder ("max 60–100 m") an Kabeln über 25 m über Grund (Klassen in
+// Höhen-Schilder ("60–100 m") an Kabeln über 25 m über Grund (Klassen in
 // src/lib/kabel.ts). Erst auf der höchsten Zoomstufe (Wunsch des
 // Projektbesitzers, Okt. 2026 — Vorschauen mit Schildern ab Zoom 11/12/13 waren
 // zu unruhig). Lange Kabel bekommen mehrere Schilder im festen
@@ -453,7 +453,9 @@ const CABLE_LABEL_HEIGHT_PX = 18;
 // Über den Kabel-Linien, unter Track/Standort und Windpfeilen.
 const CABLE_LABEL_PANE = "kabelschild";
 const CABLE_LABEL_PANE_Z = 395;
-const CABLE_LABEL_TEXT = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, `max ${c.label}`]));
+// Ohne "max" davor (Wunsch des Projektbesitzers, Okt. 2026), obwohl die
+// Klasse die höchste Stelle des Kabels meint (siehe src/lib/kabel.ts).
+const CABLE_LABEL_TEXT = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, c.label]));
 
 // Kann der Server die Kabel einmal nicht aktualisieren (Landesserver gestört)
 // oder ist kein Netz da, bleiben die zuletzt erfolgreich geladenen Kabel auf

@@ -336,12 +336,13 @@ also alle 3 h, wirklich neue Werte).
   `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
   gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`).
-  **Höhen-Schilder** („max 60–100 m") an Kabeln über 25 m über Grund, **erst
+  **Höhen-Schilder** („60–100 m") an Kabeln über 25 m über Grund, **erst
   ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
   Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
   Bildschirmabstand (`CABLE_LABEL_SPACING_PX`), überlappende ausgedünnt
-  (höhere Klasse gewinnt). „max", weil die Klasse des Landes für das ganze
-  Kabel gilt (höchste Stelle) — Höhen je Abschnitt gibt es nicht. Klassen in
+  (höhere Klasse gewinnt). Die Klasse des Landes gilt für das ganze Kabel
+  (höchste Stelle), Höhen je Abschnitt gibt es nicht — ein „max" davor hat
+  der Projektbesitzer trotzdem bewusst weggelassen. Klassen in
   `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
   `src/app/globals.css`. Masten
   (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:

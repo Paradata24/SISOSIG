@@ -114,7 +114,7 @@ body {
   outline-offset: -2px;
 }
 
-/* Höhen-Schild an einem Kabel im Flugmodus ("max 60–100 m", ab Zoom 15;
+/* Höhen-Schild an einem Kabel im Flugmodus ("60–100 m", ab Zoom 15;
    FlightMode.tsx, CABLE_LABEL_*). In der Kabelfarbe auf Weiß, eckig wie die
    Zahlen-Plaketten der Windpfeile. Der Leaflet-Kasten hat die Größe 0, das
    Schild wird darüber mittig auf die Stelle am Kabel gesetzt. */
