@@ -13,6 +13,7 @@ import {
   buildTimelineFrame,
   buildTimelineSlots,
   GRID_MS,
+  CABLE_SOURCE,
   MAP_SOURCES,
   type BaseLayer,
   type StationFilter,
@@ -362,6 +363,9 @@ export default function WindApp() {
                       {source.note ? ` (${source.note})` : null}
                     </li>
                   ))}
+                  <li>
+                    <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
+                  </li>
                   <li>
                     <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
                   </li>

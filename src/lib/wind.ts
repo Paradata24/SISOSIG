@@ -489,6 +489,17 @@ export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
   ],
 };
 
+/**
+ * Quelle der Kabel (Luftfahrthindernisse), die nur der Flugmodus zeigt
+ * (FlightMode.tsx, Daten über /api/kabel). Steht im Menü unter "Quellen" bei
+ * beiden Kartenhintergründen, weil der Flugmodus unabhängig vom gewählten
+ * Hintergrund immer OpenTopoMap zeigt.
+ */
+export const CABLE_SOURCE: SourceLink = {
+  label: "Kabel im Flugmodus © Autonome Provinz Bozen – Südtirol, Forstdienst",
+  url: "https://forstdienst.provinz.bz.it/de/wald-holz/erfassung-luftfahrthindernissen",
+};
+
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer

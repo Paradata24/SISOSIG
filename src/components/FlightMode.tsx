@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
+import type { CablePayload } from "@/app/api/kabel/route";
 
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
@@ -407,6 +408,106 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
   return { recording, lengthM, start, stop, clear };
 }
 
+// --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
+// Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
+// Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
+// Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
+// am Tag beim Land; die Statuszeile oben rechts sagt, von wann sie sind. In
+// der Web-App speichert public/sw.js die Liste, ohne Netz sind die Kabel
+// also trotzdem da.
+
+// Erst ab dieser Zoomstufe (= Flug-Zoomstufe): Herausgezoomt wären die Täler
+// nur noch ein Gewirr aus Leitungen, das die Windpfeile zudeckt.
+const CABLE_MIN_ZOOM = FLIGHT_ZOOM;
+// Farbe: kommt in der Windskala nicht vor und unterscheidet sich vom
+// violetten Track und vom blauen eigenen Standort.
+const CABLE_COLOR = "#111827";
+// Heller Saum unter der Linie, damit sie sich von Straßen und Höhenlinien
+// der Karte abhebt.
+const CABLE_HALO_COLOR = "#ffffff";
+// Linienbreite (px); Kabel mehr als 60 m über Grund (meist quer über ein Tal
+// gespannt, siehe /api/kabel) dicker.
+const CABLE_WEIGHT = 1.5;
+const CABLE_WEIGHT_HIGH = 3;
+const CABLE_HALO_PX = 3;
+// Eigene Ebene über den Kartenkacheln (200) und unter Track und
+// Standort-Kreis (overlayPane, 400) — die Windpfeile liegen ohnehin darüber.
+const CABLE_PANE = "kabel";
+const CABLE_PANE_Z = 390;
+
+type CableState = { stand: Date | null; status: "loading" | "ok" | "error" };
+
+function useCables(map: L.Map | null): CableState {
+  const [state, setState] = useState<CableState>({ stand: null, status: "loading" });
+
+  useEffect(() => {
+    if (!map) return;
+    let cancelled = false;
+    if (!map.getPane(CABLE_PANE)) {
+      map.createPane(CABLE_PANE).style.zIndex = String(CABLE_PANE_Z);
+    }
+    // Alle Kabel in vier Linien-Ebenen (Saum/Linie × normal/hoch) statt je
+    // Kabel einer eigenen — bei über 4000 Kabeln spart das viel Arbeit. Auf
+    // einer Zeichenfläche (canvas) statt als einzelne SVG-Elemente aus
+    // demselben Grund.
+    const renderer = L.canvas({ pane: CABLE_PANE, padding: 0.5 });
+    const group = L.layerGroup();
+
+    // Nur ab CABLE_MIN_ZOOM auf der Karte; darunter ganz weg (dann wird auch
+    // nichts gezeichnet).
+    const updateVisibility = () => {
+      if (map.getZoom() >= CABLE_MIN_ZOOM) group.addTo(map);
+      else group.remove();
+    };
+
+    fetch("/api/kabel")
+      .then(async (res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return (await res.json()) as CablePayload;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const normal: L.LatLngExpression[][] = [];
+        const high: L.LatLngExpression[][] = [];
+        for (const row of data.kabel) {
+          const line: L.LatLngExpression[] = [];
+          for (let i = 1; i + 1 < row.length; i += 2) line.push([row[i], row[i + 1]]);
+          (row[0] === 1 ? high : normal).push(line);
+        }
+        const common = { renderer, interactive: false, lineCap: "round", lineJoin: "round" } as const;
+        for (const [lines, weight] of [
+          [normal, CABLE_WEIGHT],
+          [high, CABLE_WEIGHT_HIGH],
+        ] as const) {
+          L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: weight + CABLE_HALO_PX, opacity: 0.85 }).addTo(group);
+        }
+        for (const [lines, weight] of [
+          [normal, CABLE_WEIGHT],
+          [high, CABLE_WEIGHT_HIGH],
+        ] as const) {
+          L.polyline(lines, { ...common, color: CABLE_COLOR, weight, opacity: 1 }).addTo(group);
+        }
+        updateVisibility();
+        map.on("zoomend", updateVisibility);
+        setState({ stand: new Date(data.stand), status: "ok" });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ stand: null, status: "error" });
+      });
+
+    return () => {
+      cancelled = true;
+      map.off("zoomend", updateVisibility);
+      group.remove();
+      // Die Zeichenfläche hängt Leaflet selbst an die Karte; ohne das hier
+      // bliebe bei jedem Beenden des Flugmodus eine leere zurück.
+      renderer.remove();
+    };
+  }, [map]);
+
+  return state;
+}
+
 // Icon des eigenen Standorts: blauer Punkt, davor eine Spitze in Flugrichtung.
 // Bewusst ein Kreis und kein Pfeil, damit er nicht mit den Windpfeilen
 // verwechselt wird. Ohne bekannte Richtung nur der Punkt.
@@ -452,6 +553,7 @@ export default function FlightMode({
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
+  const cables = useCables(map);
   const online = useOnline();
   const now = useNow(30_000);
 
@@ -580,6 +682,14 @@ export default function FlightMode({
           : `${lastUpdated.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} `
       }${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
+  // Stand der Kabel: Datum und Uhrzeit, wann der Server sie zuletzt beim Land
+  // abgeholt hat (einmal am Tag, siehe /api/kabel).
+  const cableText =
+    cables.status === "ok" && cables.stand
+      ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${cables.stand.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+      : cables.status === "loading"
+        ? "Kabel lädt…"
+        : "Keine Kabel";
   const windOutdated =
     lastUpdated !== null && now - lastUpdated.getTime() > WIND_OUTDATED_MS;
   const trackText =
@@ -621,6 +731,13 @@ export default function FlightMode({
             gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
         <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
           {updatedText}
+        </span>
+        {/* Gelb, wenn die Kabel nicht geladen werden konnten — dann fehlen
+            sie auf der Karte, und das soll niemand übersehen. */}
+        <span
+          className={`px-1.5 py-0.5 shadow ${cables.status === "error" ? "bg-amber-300" : "bg-white/90"}`}
+        >
+          {cableText}
         </span>
         {trackText && (
           <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>

@@ -115,6 +115,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
+| `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
@@ -324,6 +325,20 @@ also alle 3 h, wirklich neue Werte).
   sobald die Zahlen sichtbar sind (ab Zoom 10) — nicht erst in der
   Detail-Stufe wie auf der normalen Karte (`showAltitude` in
   `src/components/WindMap.tsx`).
+- **Kabel (Luftfahrthindernisse) nur im Flugmodus** (Okt. 2026, Wunsch des
+  Projektbesitzers): Stromleitungen, Material-/Seilbahnen, Schussdrähte und
+  Lifte aus der Hinderniskarte des Landes (Forstdienst, Meldepflicht nach
+  LG 1/2006; WFS `p_bz-FlightObstacles:LinearObstacles` auf
+  `geoservices6.civis.bz.it`). Abgeholt von `/api/kabel` und **einmal am Tag
+  aktualisiert** über den Vercel-CDN-Cache (`s-maxage` 24 h,
+  `stale-while-revalidate`) — kein Cron nötig. Gezeichnet in
+  `FlightMode.tsx` (`useCables`): dunkle Linie mit hellem Saum, Kabel
+  > 60 m über Grund dicker, **erst ab Zoom 11** (`CABLE_MIN_ZOOM`). Masten
+  (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
+  „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
+  **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
+  Offline: eigener Speicher `CABLE_CACHE` in `public/sw.js`. Quelle im Menü
+  unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
