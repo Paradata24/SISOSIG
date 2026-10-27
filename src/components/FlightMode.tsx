@@ -920,7 +920,7 @@ function createOwnPositionIcon(heading: number | null): L.DivIcon {
 // die Taste "KK7" unten links; die Wahl merkt sich das Handy.
 //
 // Bedingungen von KK7 (Okt. 2026 auf der Seite nachgelesen): Lizenz
-// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung im Menü unter "Quellen",
+// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung unter "Quellen" in der Filterliste,
 // KK7_SOURCE in src/lib/wind.ts), jede Anfrage trägt "src=<Adresse der
 // Seite>", die Kacheln liegen in TMS-Zählung (y von unten, daher tms: true)
 // und gibt es bis Zoom 12 — darüber vergrößert Leaflet sie.

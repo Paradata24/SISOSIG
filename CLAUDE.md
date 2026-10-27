@@ -63,6 +63,8 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
   Änderungen".
 
 ## Begriffe des Projektbesitzers
+- **Hauptseite** = die normale Seite mit Karte und Live-Werten (früher
+  „Live-Werte-Seite"), im Gegensatz zum Flugmodus
 - **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm einer Station
   (`src/components/WindHistoryPanel.tsx`)
 - **Zeitbalken** = das Zeitrad unter der Karte, mit dem man die ganze Karte
@@ -119,11 +121,11 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
+| `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
-| `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
+| `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
+| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -153,13 +155,10 @@ also alle 3 h, wirklich neue Werte).
   `src/components/WindMap.tsx`). Sie steht bewusst an der Karte selbst
   (`maxZoom` am `MapContainer`) und nicht an den Kachel-Ebenen — nur so hören
   auch Scrollrad, Doppelklick und Pinch-Zoom am Handy dort auf. Grund: Die
-  Esri-Schummerung liefert in Südtirol darüber hinaus nur noch graue
-  Platzhalter-Kacheln ("Map data not yet available"). Die Grenze gilt
-  **einheitlich für beide Basiskarten**, obwohl OpenTopoMap (17) und die
-  CARTO-Beschriftungen (20) mehr könnten — die Karte soll sich beim
-  Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
-  ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
-  echte Kacheln hat. **Ausnahme Flugmodus: bis Zoom 16** (`FLIGHT_MAX_ZOOM`,
+  Esri-Schummerung der früheren Karte „Relief (Grau)" lieferte darüber nur
+  graue Platzhalter-Kacheln. Seit Okt. 2026 gibt es auf der Hauptseite nur
+  noch OpenTopoMap (echte Kacheln bis 17); die Grenze 15 bleibt trotzdem,
+  bis der Projektbesitzer etwas anderes wünscht. **Ausnahme Flugmodus: bis Zoom 16** (`FLIGHT_MAX_ZOOM`,
   Wunsch des Projektbesitzers, Okt. 2026) — dort gibt es nur OpenTopoMap,
   die echte Kacheln bis 17 hat. Standard-Zoom im Flugmodus bleibt 15.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
@@ -190,59 +189,39 @@ also alle 3 h, wirklich neue Werte).
     Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
     bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
-  - **Aktiver Filter steht oben mittig auf der Karte** (Okt. 2026, Wunsch des
-    Projektbesitzers), immer in Großbuchstaben, auch „ALLE"
-    (`getStationFilterMapLabel` in `src/lib/wind.ts`; eine Fehlermeldung
-    steht darunter). **Das Schild ist zugleich der Filter-Schalter:**
-    Antippen klappt die Liste aller Filter auf
-    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindMap`).
-    Im Menü im Titel-Balken stehen seitdem nur noch Karte und Quellen,
-    keine Filter mehr (Wunsch des Projektbesitzers).
+  - **Aktiver Filter steht als Schild oben rechts im Titel-Balken** (Okt.
+    2026, Wunsch des Projektbesitzers; anstelle des früheren Menü-Knopfs mit
+    3 Linien, der nur noch die Quellen zeigte — den gibt es nicht mehr).
+    „ALLE"/„WINDANZEIGER" in Großbuchstaben, Höhenfilter nur kurz als
+    „≥3000m"/„≤1000m" (ohne „Stationen", ohne Tausenderpunkt; Wunsch des
+    Projektbesitzers; `getStationFilterMapLabel` in `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
+    Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
+    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
+    Im Flugmodus (kein Titel-Balken) steht das Schild wie vorher oben
+    mittig auf der Karte (`WindMap`), ohne Quellen; Fehlermeldungen stehen
+    immer oben mittig auf der Karte.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
-- **Standardkarte ist OpenTopoMap in sehr hellen Graustufen** (Sept. 2026,
-  Wunsch des Projektbesitzers; die frühere Karte „Standard" =
-  OpenStreetMap wurde dafür entfernt). Zwei Karten im Menü: „OpenTopoMap"
-  (Voreinstellung, `BaseLayer` = `"topo"`) und „Relief (Grau)". Kachel-Adresse
+- **Einzige Karte der Hauptseite ist OpenTopoMap in sehr hellen Graustufen**
+  (Sept. 2026, Wunsch des Projektbesitzers; die frühere Karte „Standard" =
+  OpenStreetMap wurde dafür entfernt, im Okt. 2026 auch „Relief (Grau)",
+  siehe „Nicht wieder einführen"). Es gibt deshalb keine Kartenauswahl
+  mehr. Kachel-Adresse
   `TOPO_URL` in `src/components/WindMap.tsx`; sie bringt Höhenlinien,
   Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
   Die Aufhellung macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
   (`grayscale` 100 %, `contrast` 30 %, `brightness` 165 % — am Bild
   ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
-  Kartendarstellung OpenTopoMap) steht im Menü unter „Quellen"
-  (`MAP_SOURCES.topo`) — nicht entfernen.
-- **Relief um ein Viertel aufgehellt** (`HILLSHADE_OPACITY` 0,75 auf weißem
-  Kartengrund `MAP_BACKGROUND`), damit die Windfarben stärker leuchten.
-- **Höhenlinien-Ebene nur bei „Relief (Grau)"**, nicht bei „OpenTopoMap"
-  (dort sind die Linien schon im Kartenbild).
-  Quelle ist der WMS-Dienst des Landes Südtirol
-  (`CONTOUR_WMS_URL`/`CONTOUR_WMS_LAYER` in `src/components/WindMap.tsx`,
-  Layer `p_bz-Elevation:ContourLines-ForLightBackgrounds` — die Variante für
-  helle Hintergründe; der Dienst dünnt beim Herauszoomen selbst aus, wir
-  bekommen also nicht die vollen 2,5 m Abstand des Geländemodells).
-  Sie liegt als transparentes PNG **über** der Esri-Schummerung und **unter**
-  den CARTO-Ortsnamen (`Z_HILLSHADE`/`Z_CONTOURS`/`Z_LABELS`); Windpfeile und
-  Auswahl-Ring liegen ohnehin über allen Kacheln.
-  Eingeblendet **erst ab Zoom 13** (`CONTOUR_MIN_ZOOM`) — darunter lädt
-  Leaflet gar keine Kacheln, das spart auch Anfragen an den Landesserver.
-  Zurückgenommen über `CONTOUR_OPACITY` (0,5) und den Graufilter
-  `.hoehenlinien-ebene` in `src/app/globals.css`; die Windpfeile müssen klar
-  im Vordergrund bleiben.
-  **Ausfallsicherheit:** `errorTileUrl` ist ein durchsichtiger 1×1-Punkt
-  (`TRANSPARENT_TILE`) — fehlende Kacheln sind damit nur fehlende Kacheln und
-  kein Fehlerzustand der Karte.
-  **Lizenz:** Die Geodaten des Landes stehen unter CC BY, die Quellenangabe
-  muss sichtbar bleiben. Sie steht (wie Esri, CARTO, OpenStreetMap) seit
-  Sept. 2026 **ganz unten im Menü-Popup unter „Quellen"** (`MAP_SOURCES` in
-  `src/lib/wind.ts`) — nicht entfernen.
+  Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
+  (`MAP_SOURCES`) — nicht entfernen.
 - **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
   mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
   `WindMap` meldet jeden Abruf über `onDataLoaded`, `WindApp` reicht ihn an
   `TimeSlider` weiter. Bei geöffneter Station (Zeitbalken weg) steht er nirgends.
   Leaflets Quellen-Zeile unten rechts ist per `attributionControl={false}`
   abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
-  Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
+  Die Quellenangaben stehen stattdessen unter der Filterliste (siehe oben).
 - **Zeitbalken = Zeitrad** (dritter Umbau, Okt. 2026, Wunsch des Projektbesitzers,
   Vorbild: die Höhenauswahl bei Meteoparapente): ein waagrecht liegendes **Rad**,
   das man nach vorne und hinten dreht (`src/components/TimeSlider.tsx`). Fester
@@ -272,7 +251,7 @@ also alle 3 h, wirklich neue Werte).
   - **Nicht auf Browser-Scrollen (scroll-snap) oder ein Band ohne Rad
     zurückbauen:** Beide früheren Fassungen (wischbares Band, Antipp-Band) waren
     am Handy laut Projektbesitzer nicht gut benutzbar.
-  - Farben **schwarz/grau wie der Menü-Knopf**, kein Grün (Wunsch des
+  - Farben **schwarz/grau wie die Knöpfe im Titel-Balken**, kein Grün (Wunsch des
     Projektbesitzers). Der Zustand „jetzt" heißt **„Aktuell"**, nicht „Live" oder
     „Jetzt".
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
@@ -290,7 +269,10 @@ also alle 3 h, wirklich neue Werte).
 - **Caching nicht entfernen** (`/api/wind` und die Verlaufs-Routen): Stationen
   messen nur alle 5–10 min. Ebenso bleibt der Abruf-Takt der Karte bei 3 min —
   „frischer" wird die Anzeige über den `visibilitychange`-Abruf, nicht über
-  einen kürzeren Takt. **Aber keine lange „Nachfrist" (stale-while-revalidate)
+  einen kürzeren Takt. **Kein Aktualisieren-Knopf** im Titel-Balken (Okt.
+  2026 entfernt, Wunsch des Projektbesitzers): Karte und ein offener
+  Verlaufsbalken laden alle 3 min und beim Zurückkehren zur Seite selbst
+  nach, der Zeitbalken alle 10 min. **Aber keine lange „Nachfrist" (stale-while-revalidate)
   in `/api/wind`:** Bis Okt. 2026 hingen die Live-Werte dadurch bis zu ~10 min
   hinter der Datenbank (Kopfzeile „Stand 15:40", Verlaufsbalken schon mit
   15:50). Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der
@@ -318,8 +300,18 @@ also alle 3 h, wirklich neue Werte).
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
-- Gestartet über das blaue **„GO"** im Titel („Should I stay or should I GO",
-  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte (mit
+- Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
+  GO"; Okt. 2026, Wunsch des Projektbesitzers, vorher nur ein blaues „GO").
+  Aussehen vom Projektbesitzer aus Entwürfen gewählt, **„London Calling"**
+  (Plattencover von The Clash): Der Satz steht schlicht in Schwarz, nur
+  **„GO" steht in Pink (`#f06ea9`) auf einem geraden schwarzen Feld** —
+  ohne grünen Schatten und nicht schräg (beides auf Wunsch des
+  Projektbesitzers wieder entfernt).
+  Antippbar ist die ganze Zeile. **Der Titel darf sich beim Filterwechsel
+  nicht verschieben** (Wunsch des Projektbesitzers): Das Filter-Schild
+  daneben hat deshalb eine feste Breite (`w-28`, passend für
+  „WINDANZEIGER"); ab 360 px Bildschirmbreite steht der Titel in einer
+  Zeile, darunter rutscht „GO" in die zweite. Beendet über die ✕-Taste oben links auf der Karte (mit
   zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
@@ -391,7 +383,7 @@ also alle 3 h, wirklich neue Werte).
   sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
   Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
-  Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
+  Quelle unter „Quellen" in der Filterliste (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
 - **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
   Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
@@ -400,8 +392,8 @@ also alle 3 h, wirklich neue Werte).
   = an), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
   Bewusst die **Ganzjahres-Karte** (`thermals_all_all`) — die Karten je
   Jahreszeit sind in Südtirol fast leer. Bedingungen von KK7: Lizenz
-  **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung im Menü unter
-  „Quellen" (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
+  **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung unter „Quellen"
+  in der Filterliste (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
   Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
   Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
@@ -447,9 +439,8 @@ also alle 3 h, wirklich neue Werte).
   Wind-Uhrzeit ab 15 min Alter gelb.
 - **Kartenstücke:** nur gespeichert, was man ansieht (max. 4000, nach 30
   Tagen erneuert). **Kein „Gebiet herunterladen"** — die Nutzungsregeln von
-  OpenTopoMap/Esri verbieten Massen-Downloads. Gespeichert wird per
-  CORS-Abruf im Helfer (alle Kartendienste inkl. KK7 erlauben das, Okt. 2026
-  geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
+  OpenTopoMap verbietet Massen-Downloads. Gespeichert wird per
+  CORS-Abruf im Helfer (OpenTopoMap und KK7 erlauben das, Okt. 2026 geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
 - Bei grundlegenden Änderungen am Helfer `VERSION` in `sw.js` hochzählen
   (alte Speicher werden dann gelöscht). `sw.js` wird nie zwischengespeichert
   (`next.config.ts`).
@@ -566,6 +557,10 @@ Projektbesitzers entfernt:
   frühere Filter oben links
 - Fußzeile mit dem OpenWindMap-Credit (siehe „Quellenangaben")
 - `{s}.`-Subdomains in den Kachel-URLs
+- Karte „Relief (Grau)" auf der Hauptseite (Esri-Schummerung, Höhenlinien
+  des Landes Südtirol, CARTO-/Esri-Ortsnamen; Okt. 2026 entfernt). Damit
+  entfiel auch die Umgebungsvariable `NEXT_PUBLIC_CARTO_API_KEY` — sie kann in
+  Vercel gelöscht werden.
 - Stil „Erklärfilm" (tiefblaue Balken, orange Rahmen, runde Creme-Knöpfe,
   Serifenschrift, Creme-Karte; Okt. 2026 eingebaut und zwei Tage später
   komplett zurückgenommen, PR #123)
@@ -622,8 +617,7 @@ Projektbesitzers entfernt:
   Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
   entfernt, wären es stündlich ≈ 14.000 — über der Grenze.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
-  `api.pioupiou.fr`, `dataset.api.hub.geosphere.at`, den Kartenkacheln (auch `server.arcgisonline.com` und
-  dem Höhenlinien-Dienst `geoservices9.civis.bz.it`) und Supabase sind in
+  `api.pioupiou.fr`, `dataset.api.hub.geosphere.at`, den Kartenkacheln und Supabase sind in
   manchen Entwicklungsumgebungen blockiert. Kartendienste lassen sich dort
   also **nicht** per `curl` prüfen — das geht nur am realen Kartenbild
   (Vercel-Vorschau) oder indem der Projektbesitzer eine Test-Adresse im
@@ -634,25 +628,13 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Esri, Höhenlinien des
-  Landes, CARTO, KK7-Thermikkarte im Flugmodus)
-  stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
-  `src/lib/wind.ts`).
-- **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, KK7-Thermikkarte im Flugmodus) stehen unter
+  „Quellen" unterhalb der Filterliste (Filter-Schild oben rechts;
+  `MAP_SOURCES` in `src/lib/wind.ts`).
+- **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,
   keine Doppelung), sondern stationsweise unten im Verlaufsbalken als
   „Quelle:"-Link (`SOURCE_INFO`). Offener Punkt: Die OpenWindMap-
   Community-Lizenz verlangt einen sichtbaren Credit mit Link, SLF und
   GeoSphere Austria stehen unter CC BY 4.0 — diese Nennungen sind damit nur
   sichtbar, wenn eine Station der jeweiligen Quelle geöffnet ist. Beim Thema erwähnen,
   die Fußzeile aber nicht ungefragt zurückbringen.
-
-## CARTO-Ortsnamen brauchen einen Schlüssel
-
-Seit Sept. 2026 liefert CARTO (`basemaps.cartocdn.com`) ohne Schlüssel nur
-Kacheln mit dem Wasserzeichen „API KEY REQUIRED". Der Schlüssel ist für
-nicht-kommerzielle Nutzung kostenlos und steht als Umgebungsvariable
-`NEXT_PUBLIC_CARTO_API_KEY` in Vercel (nach dem Eintragen neu deployen).
-**Ohne Schlüssel** nimmt die Karte automatisch die Esri-Ortsnamen
-(`World_Light_Gray_Reference`, keine Anmeldung nötig, aber nur italienische
-Namen) — so gibt es nie Wasserzeichen. Umschaltung in `src/components/WindMap.tsx`
-(`CARTO_API_KEY` aus `src/lib/wind.ts`), die Quellenzeile folgt automatisch.

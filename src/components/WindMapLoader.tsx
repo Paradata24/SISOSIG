@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { BaseLayer, StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
+import type { StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
 
 const WindMap = dynamic(() => import("@/components/WindMap"), {
   ssr: false,
@@ -13,12 +13,10 @@ const WindMap = dynamic(() => import("@/components/WindMap"), {
 });
 
 export default function WindMapLoader({
-  baseLayer,
   stationFilter,
   onStationFilterChange,
   historyFrame,
   timeline,
-  refreshToken,
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
@@ -27,7 +25,6 @@ export default function WindMapLoader({
   lastUpdated,
   onExitFlightMode,
 }: {
-  baseLayer: BaseLayer;
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
   onStationFilterChange: (filter: StationFilter) => void;
@@ -35,8 +32,6 @@ export default function WindMapLoader({
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
   timeline: TimelinePayload | null;
-  /** Zähler des Refresh-Buttons, siehe WindMap. */
-  refreshToken: number;
   /** Meldet die Stationscodes im sichtbaren Kartenausschnitt, siehe WindMap. */
   onViewportStationsChange: (codes: string[]) => void;
   /** Geöffnete Station (null = keine), siehe WindMap. */
@@ -51,12 +46,10 @@ export default function WindMapLoader({
 }) {
   return (
     <WindMap
-      baseLayer={baseLayer}
       stationFilter={stationFilter}
       onStationFilterChange={onStationFilterChange}
       historyFrame={historyFrame}
       timeline={timeline}
-      refreshToken={refreshToken}
       onViewportStationsChange={onViewportStationsChange}
       selectedStationCode={selectedStationCode}
       onSelectStation={onSelectStation}

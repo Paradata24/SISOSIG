@@ -16,38 +16,27 @@ import {
   CABLE_SOURCE,
   KK7_SOURCE,
   MAP_SOURCES,
-  type BaseLayer,
   type StationFilter,
   type TimelinePayload,
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
+import StationFilterPicker from "@/components/StationFilterPicker";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
-// Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
-// Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
-// Kartenhintergrund und Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
-// über das Filter-Schild oben mittig auf der Karte umgeschaltet
-// (StationFilterPicker in WindMap). Beide Zustände leben trotzdem hier (und
-// nicht in WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
+// Titel-Balken + Karte + Zeitbalken. Im Titel-Balken steht der Titel mit dem
+// "GO" für den Flugmodus, ganz rechts das Filter-Schild (StationFilterPicker), das
+// beim Antippen die Stationsfilter und darunter die Quellen aufklappt — seit
+// Okt. 2026 anstelle des früheren Menü-Knopfs (3 Linien). Im Flugmodus steht
+// das Schild auf der Karte (WindMap). Der Filter-Zustand lebt hier, weil
+// Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {
-  const [baseLayer, setBaseLayer] = useState<BaseLayer>("topo");
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
   // steht als "Zuletzt aktualisiert" mittig unter dem Rad im Zeitbalken.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-
-  // --- Refresh-Button ---
-  // Zähler statt Ja/Nein: jede Erhöhung ist ein neuer Auftrag an Karte und
-  // Verlaufsbalken, sofort frisch zu laden (siehe refreshToken in WindMap).
-  const [refreshToken, setRefreshToken] = useState(0);
-  // Nur für die Dreh-Animation des Symbols, damit man sieht, dass der Klick
-  // angekommen ist.
-  const [refreshSpinning, setRefreshSpinning] = useState(false);
 
   // --- Zeitbalken ---
   // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
@@ -77,7 +66,6 @@ export default function WindApp() {
   const [flightMode, setFlightMode] = useState(false);
   const enterFlightMode = useCallback(() => {
     setFlightMode(true);
-    setMenuOpen(false);
     setSelectedStationCode(null);
     setSelectedTime(null);
     // Vollbild blendet am Android-Handy auch die Adressleiste aus. iPhones
@@ -174,7 +162,7 @@ export default function WindApp() {
       .catch(() => setTimelineStatus("error"))
       .finally(() => {
         // Auch nach einem Fehlschlag wieder freigeben, damit der nächste
-        // Anlauf (neuer Rasterschritt, Refresh) es erneut versucht
+        // Anlauf (neuer Rasterschritt) es erneut versucht
         // (timelineFetchedAt bleibt dann auf 0, die Sperre oben greift nicht).
         timelineLoading.current = false;
       });
@@ -195,21 +183,6 @@ export default function WindApp() {
     [timeline, slots, viewportCodes],
   );
 
-  // Refresh: zurück auf "aktuell", neue Live-Werte holen und die Zeitbalken-
-  // Daten sofort frisch laden. Wird
-  // gerade (noch) geladen, bleibt der laufende Abruf einfach bestehen.
-  // Hinweis: "frischer" als der Wetterdienst selbst geht es nicht — die
-  // Stationen messen nur alle 5–10 min und /api/wind wird bis zu 60 s
-  // zwischengespeichert (Caching bewusst beibehalten, siehe CLAUDE.md).
-  const handleRefresh = useCallback(() => {
-    setSelectedTime(null);
-    timelineFetchedAt.current = 0;
-    ensureTimeline();
-    setRefreshToken((n) => n + 1);
-    setRefreshSpinning(true);
-    window.setTimeout(() => setRefreshSpinning(false), 700);
-  }, [ensureTimeline]);
-
   // Beim schnellen Ziehen feuert der Zeitbalken viele Male pro Sekunde. Mit
   // useDeferredValue bleibt die Uhrzeit im Balken sofort flüssig, während die
   // Karte (bis zu ~130 Pfeile neu zeichnen) in ihrem eigenen Tempo nachzieht.
@@ -223,171 +196,96 @@ export default function WindApp() {
     [timeline, deferredTime, selectedStationCode],
   );
 
-  // Popup schließen, sobald außerhalb von Button/Popup geklickt (oder auf dem
-  // Handy getippt) wird. "pointerdown" deckt Maus und Touch gemeinsam ab.
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen]);
-
-  function optionClass(active: boolean) {
-    return `w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
-      active
-        ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
-        : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
-    }`;
-  }
-
   return (
     <>
-      {/* Der Balken ist eine Flex-Reihe: links der Refresh-Button, in der
-          Mitte der Titel (nimmt den freien Platz und bricht bei Bedarf um),
-          rechts der Menü-Button. Beide Buttons sind gleich breit, dadurch
-          steht der Titel optisch genau in der Mitte. Bewusst NICHT mit
-          absolut gesetzten Buttons über einem mittigen Titel — auf schmalen
-          Handys würden sich Titel und Buttons sonst überlappen. */}
+      {/* Der Balken ist eine Flex-Reihe: links der Titel (nimmt den freien
+          Platz und bricht bei Bedarf um), rechts das Filter-Schild. Einen
+          Aktualisieren-Knopf links gibt es seit Okt. 2026 nicht mehr (Wunsch
+          des Projektbesitzers): Die Seite holt alle 3 min und beim
+          Zurückkehren zur Seite von selbst neue Werte. Bewusst NICHT mit
+          absolut gesetzten Knöpfen über einem mittigen Titel — auf schmalen
+          Handys würden sich Titel und Knöpfe sonst überlappen. */}
       {/* Im Flugmodus ist der Titel-Balken weg (ganzer Bildschirm für die
           Karte); beendet wird er über die ✕-Taste auf der Karte. */}
       {!flightMode && (
         <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <button
-            type="button"
-            onClick={handleRefresh}
-            aria-label="Aktualisieren"
-            title="Aktualisieren"
-            className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-          >
-            {/* Kreispfeil, gleiche Strichstärke und Farbe wie das Menü-Symbol. */}
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 20 20"
-              aria-hidden="true"
-              className={`text-zinc-900 dark:text-zinc-50 ${refreshSpinning ? "animate-spin" : ""}`}
-            >
-              <path
-                d="M16 10a6 6 0 1 1-1.76-4.24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              />
-              <path d="M17 2v5h-5z" fill="currentColor" />
-            </svg>
-          </button>
-          {/* Das "GO" im Titel ist der Knopf für den Flugmodus (Wunsch des
-              Projektbesitzers): groß geschrieben und blau, damit man sieht,
-              dass man es antippen kann. Etwas Innenabstand vergrößert die
-              Tippfläche, ohne die Zeile höher zu machen (-my-1). */}
-          <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
-            Should I stay or should I{" "}
+          {/* Der GANZE Titel ist der Knopf für den Flugmodus (Wunsch des
+              Projektbesitzers, Okt. 2026). Aussehen vom Projektbesitzer aus
+              Entwürfen gewählt ("London Calling", nach dem Plattencover von
+              The Clash): Der Satz steht schlicht da, nur "GO" ist ein
+              gerades schwarzes Feld mit pinker Schrift. Den grünen Schatten
+              und die Schräglage hat der Projektbesitzer danach wieder
+              entfernen lassen. Antippbar ist die ganze Zeile; beim Antippen
+              wird das Feld kurz blasser (group-active). */}
+          <h1 className="flex min-w-0 flex-1 justify-center">
             <button
               type="button"
               onClick={enterFlightMode}
-              aria-label="Flugmodus starten"
+              aria-label="Should I stay or should I GO – Flugmodus starten"
               title="Flugmodus starten"
-              className="-my-1 px-1 py-1 font-bold text-blue-600 uppercase hover:text-blue-800"
+              className="group text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50"
             >
-              go
+              Should I stay or should I{" "}
+              <span className="ml-1 inline-block bg-black px-2 py-0.5 align-middle text-[22px] leading-none font-extrabold tracking-wide text-[#f06ea9] uppercase group-active:opacity-70">
+                GO
+              </span>
             </button>
           </h1>
-          <div ref={menuRef} className="relative z-[1100] shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              aria-label="Menü"
-              aria-expanded={menuOpen}
-              className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
-            >
-              {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
-                  fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 20 20"
-                aria-hidden="true"
-                className="text-zinc-900 dark:text-zinc-50"
-              >
-                <rect x="2" y="4" width="16" height="2" fill="currentColor" />
-                <rect x="2" y="9" width="16" height="2" fill="currentColor" />
-                <rect x="2" y="14" width="16" height="2" fill="currentColor" />
-              </svg>
-            </button>
-            {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
-                Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
-                abgerundete Ecken, passend zum eckigen Menü-Button. */}
-            {menuOpen && (
-              <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
-                <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                  Karte
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {/* Reihenfolge = Standardkarte (OpenTopoMap) zuerst. */}
-                  <button
-                    type="button"
-                    onClick={() => setBaseLayer("topo")}
-                    aria-pressed={baseLayer === "topo"}
-                    className={optionClass(baseLayer === "topo")}
-                  >
-                    OpenTopoMap
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBaseLayer("relief")}
-                    aria-pressed={baseLayer === "relief"}
-                    className={optionClass(baseLayer === "relief")}
-                  >
-                    Relief (Grau)
-                  </button>
-                </div>
-                {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
-                    rechts auf der Karte, jetzt hier ganz unten im Popup
-                    (MAP_SOURCES in wind.ts, richtet sich nach dem gewählten
-                    Hintergrund). Die Quellen der Winddaten stehen bewusst NICHT
-                    hier, sondern stationsweise unten im Verlaufsbalken
-                    ("Quelle: …") — Wunsch des Projektbesitzers, keine
-                    Doppelung. Bewusst klein und grau: Pflichtangabe, aber keine
-                    Bedienung. */}
-                <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                  Quellen
-                </p>
-                <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
-                  {MAP_SOURCES[baseLayer].map((source) => (
-                    <li key={source.label}>
-                      <SourceLink url={source.url}>{source.label}</SourceLink>
-                      {source.note ? ` (${source.note})` : null}
+          {/* Oben rechts der Stationsfilter (Wunsch des Projektbesitzers,
+              Okt. 2026) — an der Stelle des früheren Menü-Knopfs (3 Linien),
+              der nur noch die Quellen zeigte. Die Quellen stehen jetzt unter
+              der Filterliste. z-[1100]: Die aufgeklappte Liste liegt über
+              der Karte. */}
+          <div className="relative z-[1100] shrink-0">
+            <StationFilterPicker
+              value={stationFilter}
+              onChange={setStationFilter}
+              align="right"
+              tall
+              footer={
+                <>
+                  {/* Quellenangaben der Karte (MAP_SOURCES in wind.ts) —
+                      früher als Leaflet-Zeile unten rechts auf der Karte, dann
+                      im Menü-Popup, seit Okt. 2026 hier unter den Filtern.
+                      Die Quellen der Winddaten stehen bewusst NICHT hier,
+                      sondern stationsweise unten im Verlaufsbalken
+                      ("Quelle: …") — Wunsch des Projektbesitzers, keine
+                      Doppelung. Bewusst klein und grau: Pflichtangabe, aber
+                      keine Bedienung. NICHT entfernen, die Nennung ist
+                      Lizenzpflicht. */}
+                  <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                    Quellen
+                  </p>
+                  <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                    {MAP_SOURCES.map((source) => (
+                      <li key={source.label}>
+                        <SourceLink url={source.url}>{source.label}</SourceLink>
+                        {source.note ? ` (${source.note})` : null}
+                      </li>
+                    ))}
+                    <li>
+                      <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
                     </li>
-                  ))}
-                  <li>
-                    <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
-                  </li>
-                  <li>
-                    <SourceLink url={KK7_SOURCE.url}>{KK7_SOURCE.label}</SourceLink>
-                    {` (${KK7_SOURCE.note})`}
-                  </li>
-                  <li>
-                    <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
-                  </li>
-                </ul>
-              </div>
-            )}
+                    <li>
+                      <SourceLink url={KK7_SOURCE.url}>{KK7_SOURCE.label}</SourceLink>
+                      {` (${KK7_SOURCE.note})`}
+                    </li>
+                    <li>
+                      <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
+                    </li>
+                  </ul>
+                </>
+              }
+            />
           </div>
         </header>
       )}
       <main className="min-h-0 flex-1">
         <WindMapLoader
-          baseLayer={baseLayer}
           stationFilter={stationFilter}
           onStationFilterChange={setStationFilter}
           historyFrame={historyFrame}
           timeline={timeline}
-          refreshToken={refreshToken}
           onViewportStationsChange={setViewportCodes}
           selectedStationCode={selectedStationCode}
           // Im Flugmodus öffnet ein Antippen der Pfeile nichts: Mit
@@ -422,7 +320,7 @@ export default function WindApp() {
 // Marker im Flugmodus nicht bei jedem Neuzeichnen neu angemeldet werden.
 function ignoreStationSelect() {}
 
-// Ein Link in der Quellenliste des Menü-Popups (öffnet in neuem Tab).
+// Ein Link in der Quellenliste unter den Filtern (öffnet in neuem Tab).
 function SourceLink({ url, children }: { url: string; children: ReactNode }) {
   return (
     <a
