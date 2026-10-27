@@ -20,6 +20,9 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 - Wenn ich etwas außerhalb des Codes tun muss (z.B. in GitHub, Vercel,
   Supabase klicken), gib mir genaue Schritt-für-Schritt-Anleitungen
   mit den exakten Menüpunkten/Buttons
+- Ausnahme: Den Ablauf Pull Request → Vercel-Vorschau → „Merge pull request"
+  kenne ich inzwischen. Nicht jedes Mal erklären; es reicht zu sagen, auf
+  welchem Zweig die Änderung liegt und ob ein Pull Request angelegt wurde.
 - Bei mehreren möglichen Lösungswegen: triff eine klare Empfehlung
   statt mich mit Optionen zu überfordern, außer ich frage explizit
   danach
