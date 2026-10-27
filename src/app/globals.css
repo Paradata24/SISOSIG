@@ -62,6 +62,17 @@ body {
   filter: grayscale(100%) contrast(30%) brightness(165%);
 }
 
+/* Dieselbe OpenTopoMap-Karte im Flugmodus (WindMap.tsx), deutlich kräftiger:
+   Im Flug muss das Gelände (Grate, Täler, Hänge, Höhenlinien) auch bei Sonne
+   auf dem Display erkennbar sein (Wunsch des Projektbesitzers, Okt. 2026).
+   Bewusst weiter grau und hell, nicht dunkel: Dunkle Flächen spiegeln in der
+   Sonne stark. Doppelt so viel Kontrast wie .topo-ebene, weniger aufgehellt —
+   am Kartenbild mit stärkeren Werten verglichen (80 %/110 % und 100 %/100 %):
+   Dort fingen die Windpfeile an, im Gelände unterzugehen. */
+.topo-ebene-flug {
+  filter: grayscale(100%) contrast(60%) brightness(125%);
+}
+
 /* Windpfeile der Karte (WindMap.tsx, className der Marker-Icons).
    Der Icon-Kasten ist breiter als der Pfeil, damit Zahlen-Plakette und
    Stationsname hineinpassen. Damit er Nachbarstationen keine Klicks

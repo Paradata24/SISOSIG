@@ -309,6 +309,15 @@ also alle 3 h, wirklich neue Werte).
   ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
   Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
   normale Karte bleibt ohne Zoom-Knöpfe.
+- **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
+  aber mit `.topo-ebene-flug` (`src/app/globals.css`, doppelter Kontrast,
+  weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Bewusst
+  hell, **kein Dunkelmodus und keine Umschalttaste** (Wunsch des
+  Projektbesitzers; dunkle Flächen spiegeln in der Sonne).
+- **Stationshöhe im Flugmodus direkt unter der Zahlen-Plakette** („2260 m"),
+  sobald die Zahlen sichtbar sind (ab Zoom 10) — nicht erst in der
+  Detail-Stufe wie auf der normalen Karte (`showAltitude` in
+  `src/components/WindMap.tsx`).
 - **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
