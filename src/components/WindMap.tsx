@@ -937,7 +937,8 @@ export default function WindMap({
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
         {flightMode ? (
           // Flugmodus: immer OpenTopoMap, aber KRÄFTIGER als die normale
-          // Karte (.topo-ebene-flug in globals.css) — im Flug muss man Grate,
+          // Karte und mit einem Hauch Farbe (.topo-ebene-flug in
+          // globals.css) — im Flug muss man Grate,
           // Täler und Hänge auch bei Sonne auf dem Display erkennen
           // (Wunsch des Projektbesitzers, Okt. 2026). Unabhängig von der im
           // Menü gewählten Karte: Das Menü ist im Flugmodus ohnehin weg, und

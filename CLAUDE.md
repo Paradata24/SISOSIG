@@ -313,8 +313,11 @@ also alle 3 h, wirklich neue Werte).
   Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
   normale Karte bleibt ohne Zoom-Knöpfe.
 - **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
-  aber mit `.topo-ebene-flug` (`src/app/globals.css`, doppelter Kontrast,
-  weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Bewusst
+  aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 40 % statt
+  reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
+  weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Nur
+  OpenTopoMap selbst, keine zweite Quelle darunter mischen (Wunsch des
+  Projektbesitzers; Höhen-Graustufen aus Fremd-Höhendaten verworfen). Bewusst
   hell, **kein Dunkelmodus und keine Umschalttaste** (Wunsch des
   Projektbesitzers; dunkle Flächen spiegeln in der Sonne).
 - **Stationshöhe im Flugmodus direkt unter der Zahlen-Plakette** („2260 m"),
