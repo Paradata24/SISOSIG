@@ -342,7 +342,7 @@ also alle 3 h, wirklich neue Werte).
   Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
   +/−; unten links IGC und Papierkorb; unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
-  (eigener Standort auf Zoom 10 `OVERVIEW_ZOOM`). Abstände 12 px, unten
+  (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
   haben einen **halb durchsichtigen Hintergrund** (50 %, `zoomButtonLight`/
   `zoomButtonDark`), Zeichen und Rand bleiben voll deckend. Ebenso ✕ und

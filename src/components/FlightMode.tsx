@@ -24,10 +24,10 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // Höhen-Schilder (ab 15) im Detail. Für den Überblick über die Windstationen
 // herauszoomen.
 const FLIGHT_ZOOM = 15;
-// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026):
-// eigener Standort mit rund 60 km Kartenbreite am Handy, die Zahlen der
-// Windpfeile sind ab hier sichtbar (LABEL_MIN_ZOOM in WindMap).
-const OVERVIEW_ZOOM = 10;
+// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026;
+// zuerst 10, dann 11): eigener Standort mit rund 20 km Kartenbreite am
+// Handy, Zahlen der Windpfeile (ab 10) und Kabel (ab 11) sind sichtbar.
+const OVERVIEW_ZOOM = 11;
 
 // Unterhalb dieser Geschwindigkeit ist die GPS-Flugrichtung nur Rauschen
 // (rund 4 km/h). Dann bleibt die zuletzt gültige Richtung stehen.
@@ -1337,7 +1337,7 @@ export default function FlightMode({
 
       {/* Unten rechts: oben die Rücksetztaste (eigener Standort, Flug-
           Zoomstufe 15; ohne Standort die Startansicht), darunter die
-          Übersichtstaste (eigener Standort, Zoom 10). Die Rücksetztaste ist
+          Übersichtstaste (eigener Standort, Zoom 11). Die Rücksetztaste ist
           gefüllt, solange die Karte dem Standort folgt — so sieht man, ob sie
           gerade mitläuft. */}
       <div className="pointer-events-none absolute right-3 bottom-7 z-[1000] flex flex-col gap-3">
