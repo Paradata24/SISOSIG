@@ -413,87 +413,45 @@ export function isWindanzeigerStation(station: WindStation): boolean {
   return WINDANZEIGER_NEEDLES.some((needle) => name.includes(needle));
 }
 
-// Gemeinsame Typen/Konstanten für das Menü im Titel-Balken (WindApp.tsx) und
-// die Karte (WindMap.tsx). Sie liegen hier zentral, damit Menü-Beschriftung
+// Gemeinsame Typen/Konstanten für das Filter-Schild mit Quellen (WindApp.tsx) und
+// die Karte (WindMap.tsx). Sie liegen hier zentral, damit Beschriftung
 // und Filterlogik nie auseinanderlaufen können.
-
-/** Welcher Kartenhintergrund angezeigt wird (Menüpunkt "Karte"). */
-export type BaseLayer = "topo" | "relief";
-
-/**
- * Zugangsschlüssel für die CARTO-Ortsnamen (Ebene "Beschriftung" über dem
- * Relief). Seit Sept. 2026 liefert CARTO ohne Schlüssel nur noch Kacheln mit
- * dem Wasserzeichen "API KEY REQUIRED". Der Schlüssel ist für nicht-
- * kommerzielle Nutzung kostenlos (https://carto.com/basemaps/apikey/).
- *
- * Er steht NICHT im Code, sondern als Umgebungsvariable
- * NEXT_PUBLIC_CARTO_API_KEY in Vercel. Er ist kein Geheimnis im engeren Sinn
- * — er steht zwangsläufig in jeder Kachel-Adresse, die der Browser lädt —,
- * so lässt er sich aber ohne Code-Änderung tauschen. Wichtig: NEXT_PUBLIC_-
- * Variablen werden beim Bauen eingesetzt; nach dem Eintragen in Vercel muss
- * also einmal neu deployt werden.
- *
- * Fehlt der Schlüssel, nimmt die Karte ersatzweise die Esri-Ortsnamen
- * (ohne Schlüssel nutzbar, aber nur italienische Namen) — siehe WindMap.tsx.
- */
-export const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY || "";
 
 type SourceLink = { label: string; url: string; note?: string };
 
 /**
- * Quellenangaben der Kartenkacheln je Kartenhintergrund.
+ * Quellenangaben der Kartenkacheln (OpenTopoMap).
  *
  * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
  * der Karte (die hat auf dem Handy zwei Zeilen belegt und die
- * "Zuletzt aktualisiert"-Plakette überdeckt), sondern ganz unten im Menü-Popup
- * unter "Quellen" (WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
+ * "Zuletzt aktualisiert"-Plakette überdeckt), sondern unter "Quellen" unter
+ * der Filterliste (Filter-Schild oben rechts, WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
  * attributionControl={false} abgeschaltet (WindMap.tsx).
  *
- * Wichtig: Die Höhenlinien des Landes stehen unter CC BY 4.0 — die Nennung
- * ist Pflicht und darf hier nicht wegfallen, solange die Ebene angezeigt wird.
- * CARTO verlangt laut seinen Bedingungen "© OpenStreetMap contributors,
- * © CARTO"; Gleiches gilt sinngemäß für Esri. OpenTopoMap steht unter
- * CC BY-SA und verlangt "Kartendaten: © OpenStreetMap-Mitwirkende, SRTM |
- * Kartendarstellung: © OpenTopoMap" — beides muss sichtbar bleiben.
- * Die Beschriftungs-Zeile folgt automatisch der tatsächlich genutzten Quelle
- * (CARTO mit Schlüssel, sonst Esri).
+ * Wichtig: OpenTopoMap steht unter CC BY-SA und verlangt "Kartendaten:
+ * © OpenStreetMap-Mitwirkende, SRTM | Kartendarstellung: © OpenTopoMap" —
+ * beides muss sichtbar bleiben.
+ *
+ * Seit Okt. 2026 gibt es nur noch diese eine Karte (die frühere zweite Karte
+ * "Relief (Grau)" mit Esri, Höhenlinien des Landes und CARTO-Ortsnamen hat der
+ * Projektbesitzer entfernen lassen), deshalb ist das hier nur noch eine Liste.
  */
-export const MAP_SOURCES: Record<BaseLayer, SourceLink[]> = {
-  topo: [
-    {
-      label: "Kartendaten © OpenStreetMap-Mitwirkende, SRTM",
-      url: "https://www.openstreetmap.org/copyright",
-    },
-    {
-      label: "Kartendarstellung © OpenTopoMap",
-      url: "https://opentopomap.org",
-      note: "CC BY-SA",
-    },
-  ],
-  relief: [
-    { label: "Relief © Esri", url: "https://www.esri.com" },
-    {
-      label: "Höhenlinien © Autonome Provinz Bozen – Südtirol",
-      url: "https://geoportal.buergernetz.bz.it",
-      note: "CC BY 4.0",
-    },
-    CARTO_API_KEY
-      ? {
-          label: "Beschriftung © OpenStreetMap-Mitwirkende, © CARTO",
-          url: "https://carto.com/attributions",
-        }
-      : {
-          label: "Beschriftung © Esri, HERE, Garmin, OpenStreetMap-Mitwirkende",
-          url: "https://www.esri.com",
-        },
-  ],
-};
+export const MAP_SOURCES: SourceLink[] = [
+  {
+    label: "Kartendaten © OpenStreetMap-Mitwirkende, SRTM",
+    url: "https://www.openstreetmap.org/copyright",
+  },
+  {
+    label: "Kartendarstellung © OpenTopoMap",
+    url: "https://opentopomap.org",
+    note: "CC BY-SA",
+  },
+];
 
 /**
  * Quelle der Kabel (Luftfahrthindernisse), die nur der Flugmodus zeigt
- * (FlightMode.tsx, Daten über /api/kabel). Steht im Menü unter "Quellen" bei
- * beiden Kartenhintergründen, weil der Flugmodus unabhängig vom gewählten
- * Hintergrund immer OpenTopoMap zeigt.
+ * (FlightMode.tsx, Daten über /api/kabel). Steht unter "Quellen"
+ * gleich unter den Kartenquellen.
  */
 export const CABLE_SOURCE: SourceLink = {
   label: "Kabel im Flugmodus © Autonome Provinz Bozen – Südtirol, Forstdienst",
@@ -535,7 +493,7 @@ export const ALTITUDE_FILTERS: Record<
   veryHigh: { thresholdM: VERY_HIGH_ALTITUDE_THRESHOLD_M, direction: "above" },
 };
 
-/** Reihenfolge der Filter-Schaltflächen im Menü: von unten nach oben. */
+/** Reihenfolge der Filter-Schaltflächen in der Filterliste: von unten nach oben. */
 export const STATION_FILTER_ORDER: StationFilter[] = [
   "all",
   "below1000",
@@ -546,7 +504,7 @@ export const STATION_FILTER_ORDER: StationFilter[] = [
 ];
 
 /**
- * Beschriftung einer Filter-Schaltfläche im Menü, z. B. "Stationen ≤1.000m".
+ * Beschriftung einer Filter-Schaltfläche in der Filterliste, z. B. "Stationen ≤1.000m".
  * "≥"/"≤" statt ">"/"<", weil die Schwelle selbst mit dazugehört.
  */
 export function getStationFilterLabel(filter: StationFilter): string {
@@ -558,10 +516,13 @@ export function getStationFilterLabel(filter: StationFilter): string {
 }
 
 /**
- * Beschriftung des Filter-Schildes oben mittig auf der Karte: dieselbe wie im
- * Menü, aber immer in Großbuchstaben (Wunsch des Projektbesitzers), z. B.
- * "ALLE", "WINDANZEIGER", "STATIONEN ≤1.000 m". Nur die Einheit "m" bleibt
- * klein — ein großes "M" läse sich wie "Millionen".
+ * Beschriftung des Filter-Schildes (oben rechts im Titel-Balken, im
+ * Flugmodus oben mittig auf der Karte). "ALLE" und "WINDANZEIGER" in
+ * Großbuchstaben (Wunsch des Projektbesitzers). Die Höhenfilter seit Okt. 2026
+ * nur kurz als Zeichen + Höhe, z. B. "≥3000m" (Wunsch des Projektbesitzers:
+ * ohne "STATIONEN" und ohne Tausenderpunkt, damit das Schild schmal bleibt
+ * und der Titel daneben nicht umbricht). Die Einheit "m" bleibt klein — ein
+ * großes "M" läse sich wie "Millionen".
  */
 export function getStationFilterMapLabel(filter: StationFilter): string {
   if (filter === "all" || filter === "windanzeiger") {
@@ -569,7 +530,7 @@ export function getStationFilterMapLabel(filter: StationFilter): string {
   }
   const { thresholdM, direction } = ALTITUDE_FILTERS[filter];
   const sign = direction === "above" ? "≥" : "≤";
-  return `STATIONEN ${sign}${thresholdM.toLocaleString("de-DE")} m`;
+  return `${sign}${thresholdM}m`;
 }
 
 /**

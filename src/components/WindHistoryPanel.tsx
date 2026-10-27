@@ -494,8 +494,8 @@ export default function WindHistoryPanel({
   station: WindStation;
   onClose: () => void;
   /**
-   * Zähler des Refresh-Buttons im Titel-Balken. Ändert er sich, wird der
-   * Verlauf der offenen Station neu geladen. Die bisherige Kurve bleibt dabei
+   * Wechselt bei jedem neuen Abruf der Live-Werte (WindMap, alle 3 min und
+   * beim Zurückkehren zur Seite). Ändert er sich, wird der Verlauf der offenen Station neu geladen. Die bisherige Kurve bleibt dabei
    * stehen, bis die neuen Daten da sind (kein Flackern), weil der
    * Stationscode im Ergebnis gleich bleibt.
    */
