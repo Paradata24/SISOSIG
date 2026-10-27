@@ -347,7 +347,7 @@ also alle 3 h, wirklich neue Werte).
   Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
   (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
   Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
-  +/−; unten links IGC und Papierkorb (darüber die Taste „KK7"); unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  +/−; unten links IGC und Papierkorb (darüber die Menü-Taste mit drei Strichen); unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
   (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
@@ -404,8 +404,7 @@ also alle 3 h, wirklich neue Werte).
 - **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
   Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
   durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `FlightMode.tsx`).
-  Ein/aus über die Taste **„KK7"** unten links (über IGC/Papierkorb, gefüllt
-  = an), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
+  Ein/aus im **Menü** (siehe nächster Punkt), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
   **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
   (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
   Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). Deckkraft
@@ -416,6 +415,13 @@ also alle 3 h, wirklich neue Werte).
   in der Filterliste (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
   Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
   Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
+- **Menü im Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers): Taste mit
+  drei Strichen unten links öffnet ein großes Menü (56-px-Zeilen für
+  Handschuhe) mit „Ebenen" (KK7 an/aus) und „Windstationen" (alle
+  Stationsfilter). **Eingeschaltetes hat gelben Hintergrund.** Ein Tipp
+  schaltet um, das Menü bleibt offen; zu über ✕. Das Filter-Schild oben
+  mittig bleibt vorerst zusätzlich stehen (Rückfrage beim Projektbesitzer
+  offen). In `FlightMode.tsx` (`menuOpen`, `menuOption`).
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum

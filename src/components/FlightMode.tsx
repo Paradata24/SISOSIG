@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
+import { getStationFilterLabel, STATION_FILTER_ORDER, type StationFilter } from "@/lib/wind";
 
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
@@ -1067,12 +1068,21 @@ function useKk7Layer(
   return { enabled, toggle };
 }
 
+// Eine Zeile im Menü: groß (56 px hoch) für Handschuhe, eingeschaltet gelb.
+function menuOption(active: boolean): string {
+  return `flex h-14 w-full items-center border-2 border-black px-4 text-left text-base font-bold select-none ${
+    active ? "bg-amber-300 active:bg-amber-400" : "bg-white active:bg-zinc-200"
+  }`;
+}
+
 export default function FlightMode({
   map,
   defaultCenter,
   defaultZoom,
   lastUpdated,
   onExit,
+  stationFilter,
+  onStationFilterChange,
 }: {
   /** Die Leaflet-Karte (aus WindMap); null, solange sie noch aufgebaut wird. */
   map: L.Map | null;
@@ -1082,6 +1092,9 @@ export default function FlightMode({
   /** Letzter erfolgreicher Abruf der Windwerte (für die Statuszeile). */
   lastUpdated: Date | null;
   onExit: () => void;
+  /** Stationsfilter (Zustand in WindApp), umschaltbar im Menü unten links. */
+  stationFilter: StationFilter;
+  onStationFilterChange: (filter: StationFilter) => void;
 }) {
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
@@ -1090,6 +1103,16 @@ export default function FlightMode({
   const exitConfirm = useConfirmStep<"exit">();
   const cables = useCables(map);
   const kk7 = useKk7Layer(map, position, defaultCenter);
+  // Menü unten links (Taste mit drei Strichen): KK7 und Stationsfilter.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
   const online = useOnline();
   const now = useNow(30_000);
 
@@ -1493,23 +1516,22 @@ export default function FlightMode({
         </button>
       </div>
 
-      {/* Unten links: die Taste der KK7-Thermikkarte (gefüllt = an), darunter
-          bei gestopptem Track die Tasten IGC-Export und Löschen (die
-          START/STOP-Taste steht oben neben Beenden). */}
+      {/* Unten links: die Menü-Taste (drei Striche), darunter bei gestopptem
+          Track die Tasten IGC-Export und Löschen (die START/STOP-Taste steht
+          oben neben Beenden). */}
       <div className="pointer-events-none absolute bottom-7 left-3 z-[1000] flex flex-col items-start gap-3">
         <button
           type="button"
-          onClick={kk7.toggle}
-          aria-pressed={kk7.enabled}
-          aria-label={kk7.enabled ? "Thermikkarte KK7 ausblenden" : "Thermikkarte KK7 einblenden"}
-          title={kk7.enabled ? "Thermikkarte KK7 ausblenden" : "Thermikkarte KK7 einblenden"}
-          className={`${smallButton} text-xs font-bold ${
-            kk7.enabled
-              ? "bg-zinc-900/50 text-white active:bg-zinc-700/50"
-              : "bg-white/50 text-zinc-900 active:bg-zinc-200/50"
-          }`}
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menü"
+          aria-expanded={menuOpen}
+          title="Menü"
+          className={`${smallButton} bg-white/50 text-zinc-900 active:bg-zinc-200/50`}
         >
-          KK7
+          {/* Drei Striche mit geraden Enden wie früher der Menü-Knopf im Titel. */}
+          <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5 H21 M3 12 H21 M3 19 H21" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
         </button>
         <div className="flex items-end gap-3">
           {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
@@ -1592,6 +1614,67 @@ export default function FlightMode({
           </svg>
         </button>
       </div>
+      {/* Menü (Wunsch des Projektbesitzers, Okt. 2026): öffnet sich über die
+          Taste mit den drei Strichen unten links. Groß und mit hohen Zeilen,
+          damit man es mit Handschuhen trifft. Eingeschaltete Ebenen und der
+          aktive Stationsfilter haben einen GELBEN Hintergrund (wie die
+          Nachfragen START/STOP), alles andere ist weiß. Ein Tipp schaltet um,
+          das Menü bleibt offen; geschlossen wird es mit ✕ oben rechts. Es
+          liegt über den Tasten unten (z-[1001]); oben bleiben Beenden,
+          Statuszeile und +/− sichtbar. */}
+      {menuOpen && (
+        <div
+          role="dialog"
+          aria-label="Menü"
+          className="absolute right-3 bottom-7 left-3 z-[1001] max-h-[calc(100%-120px)] overflow-y-auto border-2 border-black bg-white text-zinc-900 shadow-2xl sm:right-auto sm:w-96"
+        >
+          <div className="flex items-center justify-between border-b-2 border-black pl-4">
+            <span className="text-base font-extrabold tracking-wide">MENÜ</span>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              aria-label="Menü schließen"
+              title="Menü schließen"
+              className="flex h-14 w-14 items-center justify-center border-l-2 border-black active:bg-zinc-200"
+            >
+              <svg width="24" height="24" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex flex-col gap-4 p-3">
+            <section>
+              <h2 className="mb-2 text-xs font-bold tracking-wide text-zinc-500">EBENEN</h2>
+              <button
+                type="button"
+                onClick={kk7.toggle}
+                aria-pressed={kk7.enabled}
+                className={`${menuOption(kk7.enabled)} justify-between`}
+              >
+                <span>KK7-Thermikkarte</span>
+                <span className="text-sm">{kk7.enabled ? "AN" : "AUS"}</span>
+              </button>
+            </section>
+            <section>
+              <h2 className="mb-2 text-xs font-bold tracking-wide text-zinc-500">WINDSTATIONEN</h2>
+              <ul aria-label="Stationsfilter" className="flex flex-col gap-2">
+                {STATION_FILTER_ORDER.map((filter) => (
+                  <li key={filter}>
+                    <button
+                      type="button"
+                      onClick={() => onStationFilterChange(filter)}
+                      aria-pressed={filter === stationFilter}
+                      className={menuOption(filter === stationFilter)}
+                    >
+                      {getStationFilterLabel(filter)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -926,6 +926,8 @@ export default function WindMap({
           defaultZoom={SOUTH_TYROL_ZOOM}
           lastUpdated={lastUpdated}
           onExit={onExitFlightMode}
+          stationFilter={stationFilter}
+          onStationFilterChange={onStationFilterChange}
         />
       )}
       {selectedStation && (
