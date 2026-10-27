@@ -1141,16 +1141,26 @@ export default function FlightMode({
     };
   }, [map, setFollowing]);
 
-  // Zoomen im Flugmodus NUR über die +/−-Tasten (Wunsch des Projektbesitzers,
-  // Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und Rahmen-Zoom sind
-  // aus — im Flug zoomt sonst jede unruhige Berührung mit. Verschieben geht
-  // weiter. Beim Verlassen ist auf der normalen Karte alles wieder an.
+  // Zoomen im Flugmodus über die +/−-Tasten und mit zwei Fingern. Den
+  // Zwei-Finger-Zoom hatte der Projektbesitzer zuerst auch abgeschaltet und im
+  // Okt. 2026 ausdrücklich zurückgewünscht. Doppeltippen, Mausrad und
+  // Rahmen-Zoom bleiben aus — im Flug zoomt sonst jede unruhige Berührung mit.
+  // Verschieben geht weiter. Beim Verlassen ist auf der normalen Karte alles
+  // wieder wie vorher.
+  //
+  // Zwei-Finger-Zoom um die Kartenmitte ("center") statt um die Stelle
+  // zwischen den Fingern: Folgt die Karte dem Standort, bleibt er so beim
+  // Zoomen in der Mitte, statt seitlich wegzurutschen.
   useEffect(() => {
     if (!map) return;
-    const handlers = [map.doubleClickZoom, map.touchZoom, map.scrollWheelZoom, map.boxZoom];
+    const handlers = [map.doubleClickZoom, map.scrollWheelZoom, map.boxZoom];
     for (const handler of handlers) handler.disable();
+    const previousTouchZoom = map.options.touchZoom;
+    L.Util.setOptions(map, { touchZoom: "center" });
+    map.touchZoom.enable();
     return () => {
       for (const handler of handlers) handler.enable();
+      L.Util.setOptions(map, { touchZoom: previousTouchZoom });
     };
   }, [map]);
 

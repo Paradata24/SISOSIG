@@ -329,10 +329,12 @@ also alle 3 h, wirklich neue Werte).
   Projektbesitzers nach Vorbild burnair Go), große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
-- **Zoomen im Flugmodus nur über die +/−-Tasten** (Wunsch des
-  Projektbesitzers, Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und
-  Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter. Die normale
-  Karte zoomt wie bisher.
+- **Zoomen im Flugmodus über die +/−-Tasten und mit zwei Fingern** (Wunsch
+  des Projektbesitzers, Okt. 2026; der Zwei-Finger-Zoom war zuerst auch aus
+  und wurde ausdrücklich zurückgewünscht). Er zoomt um die Kartenmitte, damit
+  der eigene Standort beim Mitführen in der Mitte bleibt. Doppeltippen,
+  Mausrad und Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter.
+  Die normale Karte zoomt wie bisher.
 - **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
   Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
   (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
