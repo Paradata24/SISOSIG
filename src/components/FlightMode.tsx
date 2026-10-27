@@ -419,17 +419,19 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
 // Erst ab dieser Zoomstufe (= Flug-Zoomstufe): Herausgezoomt wären die Täler
 // nur noch ein Gewirr aus Leitungen, das die Windpfeile zudeckt.
 const CABLE_MIN_ZOOM = FLIGHT_ZOOM;
-// Farbe: kommt in der Windskala nicht vor und unterscheidet sich vom
-// violetten Track und vom blauen eigenen Standort.
-const CABLE_COLOR = "#111827";
-// Heller Saum unter der Linie, damit sie sich von Straßen und Höhenlinien
+// Darstellung vom Projektbesitzer am Probebild gewählt (Okt. 2026): eine
+// einheitliche magentarote Linie mit weißem Saum, alle Kabel gleich breit.
+// Die Farbe kommt in der Windskala nicht vor; vom violetten Track
+// (TRACK_COLOR) und vom blauen eigenen Standort unterscheidet sie sich
+// deutlich. Eine erste Fassung (dunkle Linie, hohe Kabel dicker) wurde
+// dafür ersetzt.
+const CABLE_COLOR = "#c2255c";
+const CABLE_WEIGHT = 2;
+// Weißer Saum unter der Linie, damit sie sich von Straßen und Höhenlinien
 // der Karte abhebt.
 const CABLE_HALO_COLOR = "#ffffff";
-// Linienbreite (px); Kabel mehr als 60 m über Grund (meist quer über ein Tal
-// gespannt, siehe /api/kabel) dicker.
-const CABLE_WEIGHT = 1.5;
-const CABLE_WEIGHT_HIGH = 3;
-const CABLE_HALO_PX = 3;
+const CABLE_HALO_WEIGHT = 4.5;
+const CABLE_HALO_OPACITY = 0.9;
 // Eigene Ebene über den Kartenkacheln (200) und unter Track und
 // Standort-Kreis (overlayPane, 400) — die Windpfeile liegen ohnehin darüber.
 const CABLE_PANE = "kabel";
@@ -497,8 +499,8 @@ function useCables(map: L.Map | null): CableState {
     if (!map.getPane(CABLE_PANE)) {
       map.createPane(CABLE_PANE).style.zIndex = String(CABLE_PANE_Z);
     }
-    // Alle Kabel in vier Linien-Ebenen (Saum/Linie × normal/hoch) statt je
-    // Kabel einer eigenen — bei über 4000 Kabeln spart das viel Arbeit. Auf
+    // Alle Kabel in zwei Linien-Ebenen (Saum und Linie) statt je Kabel einer
+    // eigenen — bei über 4000 Kabeln spart das viel Arbeit. Auf
     // einer Zeichenfläche (canvas) statt als einzelne SVG-Elemente aus
     // demselben Grund.
     const renderer = L.canvas({ pane: CABLE_PANE, padding: 0.5 });
@@ -515,27 +517,17 @@ function useCables(map: L.Map | null): CableState {
     map.on("zoomend", updateVisibility);
 
     const draw = (data: CablePayload) => {
-      const normal: L.LatLngExpression[][] = [];
-      const high: L.LatLngExpression[][] = [];
+      const lines: L.LatLngExpression[][] = [];
       for (const row of data.kabel) {
+        // row[0] ist die Höhenklasse (siehe /api/kabel), für die Linie egal.
         const line: L.LatLngExpression[] = [];
         for (let i = 1; i + 1 < row.length; i += 2) line.push([row[i], row[i + 1]]);
-        (row[0] === 1 ? high : normal).push(line);
+        lines.push(line);
       }
       group.clearLayers();
       const common = { renderer, interactive: false, lineCap: "round", lineJoin: "round" } as const;
-      for (const [lines, weight] of [
-        [normal, CABLE_WEIGHT],
-        [high, CABLE_WEIGHT_HIGH],
-      ] as const) {
-        L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: weight + CABLE_HALO_PX, opacity: 0.85 }).addTo(group);
-      }
-      for (const [lines, weight] of [
-        [normal, CABLE_WEIGHT],
-        [high, CABLE_WEIGHT_HIGH],
-      ] as const) {
-        L.polyline(lines, { ...common, color: CABLE_COLOR, weight, opacity: 1 }).addTo(group);
-      }
+      L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: CABLE_HALO_WEIGHT, opacity: CABLE_HALO_OPACITY }).addTo(group);
+      L.polyline(lines, { ...common, color: CABLE_COLOR, weight: CABLE_WEIGHT, opacity: 1 }).addTo(group);
       shownStand = Date.parse(data.stand);
       updateVisibility();
     };

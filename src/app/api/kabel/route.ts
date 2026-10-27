@@ -46,8 +46,9 @@ const RESPONSE_CACHE_CONTROL =
   "public, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=2592000";
 
 // Kabel, die so hoch über Grund hängen, sind meist quer über Täler gespannt
-// — die gefährlichsten für Gleitschirme. FlightMode zeichnet sie dicker.
-// Die Werte sind die Höhenklassen des Landes (Feld BAS_BEZ_DE).
+// — die gefährlichsten für Gleitschirme. Die Werte sind die Höhenklassen des
+// Landes (Feld BAS_BEZ_DE). FlightMode zeichnet derzeit alle Kabel gleich
+// (Wunsch des Projektbesitzers); das Kennzeichen bleibt für später.
 const HIGH_CLASSES = new Set([
   "> 60 bis < 100 m",
   ">= 100 bis 150 m",

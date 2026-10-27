@@ -332,8 +332,9 @@ also alle 3 h, wirklich neue Werte).
   `geoservices6.civis.bz.it`). Abgeholt von `/api/kabel` und **einmal am Tag
   aktualisiert** über den Vercel-CDN-Cache (`s-maxage` 24 h,
   `stale-while-revalidate`) — kein Cron nötig. Gezeichnet in
-  `FlightMode.tsx` (`useCables`): dunkle Linie mit hellem Saum, Kabel
-  > 60 m über Grund dicker, **erst ab Zoom 11** (`CABLE_MIN_ZOOM`). Masten
+  `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
+  weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
+  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`). Masten
   (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
   „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
   **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
