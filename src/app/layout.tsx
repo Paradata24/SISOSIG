@@ -15,11 +15,20 @@ export const metadata: Metadata = {
   // Für die Web-App am iPhone (Home-Bildschirm): Name unter dem Symbol und
   // ohne Safari-Leisten öffnen. Die Uhrzeit-Leiste oben bleibt hell
   // ("default"), die Seite beginnt darunter — so verdeckt nichts den
-  // Titelbalken. Symbol: src/app/apple-icon.png, Rest in manifest.ts.
+  // Titelbalken. Rest der App-Beschreibung in manifest.ts.
   appleWebApp: {
     capable: true,
     title: "SISOSIG",
     statusBarStyle: "default",
+  },
+  // iPhone-Symbol unter der festen Standard-Adresse /apple-touch-icon.png
+  // (Datei in public/, dazu eine gleiche "-precomposed"-Kopie für ältere
+  // iPhones). Bewusst NICHT mehr über die Next.js-Datei src/app/apple-icon.png:
+  // Die hängt eine Kennung an die Adresse an ("?apple-icon.…"), und am
+  // iPhone des Projektbesitzers erschien damit beim Hinzufügen kein Symbol.
+  // Die Standard-Adresse sucht das iPhone zur Not auch von selbst.
+  icons: {
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 
