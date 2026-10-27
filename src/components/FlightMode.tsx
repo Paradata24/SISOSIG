@@ -1091,66 +1091,138 @@ export default function FlightMode({
   // Menü-Knopf im Titel, 72 px groß (mit Handschuhen gut zu treffen).
   const bigButton =
     "pointer-events-auto flex h-[72px] w-[72px] items-center justify-center border-2 border-black shadow-lg select-none";
-  const bigButtonLight = `${bigButton} bg-white text-zinc-900 active:bg-zinc-200`;
   // Zoomtasten (+/−, Rücksetzen, Übersicht) mit halb durchsichtigem
   // Hintergrund, damit man die Karte darunter sieht (Wunsch des
   // Projektbesitzers, Okt. 2026). Nur der Hintergrund: Zeichen und Rand
   // bleiben voll deckend und gut lesbar.
   const zoomButtonLight = `${bigButton} bg-white/50 text-zinc-900 active:bg-zinc-200/50`;
   const zoomButtonDark = `${bigButton} bg-zinc-900/50 text-white active:bg-zinc-700/50`;
+  // Kleinere Tasten oben links (Beenden, START/STOP und deren Nachfragen):
+  // 48 px, Farbe kommt je Taste dazu.
+  const smallButton =
+    "pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black shadow-lg select-none";
 
   return (
     <>
       {/* Anordnung der Tasten vom Projektbesitzer in einer Layout-Vorschau
-          festgelegt (Okt. 2026): oben links Beenden und darunter die
-          Statuszeile, oben rechts Plus/Minus, unten links die Track-Taste,
-          unten rechts Rücksetz- über Übersichtstaste. Abstände 12 px, unten
-          28 px (Abstand zur Wischleiste des iPhones). */}
+          festgelegt (Okt. 2026) und danach nachgeschärft: oben links Beenden
+          und rechts daneben START/STOP (beide 48 px), darunter die
+          Statuszeile; oben rechts Plus/Minus; unten links IGC und
+          Papierkorb; unten rechts Rücksetz- über Übersichtstaste. Abstände
+          12 px, unten 28 px (Abstand zur Wischleiste des iPhones). */}
 
-      {/* Oben links: Flugmodus beenden, darunter die Statuszeile. Die
-          Beenden-Taste ist etwas kleiner als die Bedientasten, damit man sie
-          im Flug nicht aus Versehen trifft, und hat wie die Track-Taste einen
-          zweiten Tipper (CONFIRM_MS): Der erste macht daraus das gelbe
-          "WIRKLICH BEENDEN?", darunter ✕ zum Abbrechen (nicht daneben: dort
-          steht oben mittig das Filter-Schild). Alles in EINER Spalte, damit
-          die Statuszeile für das ✕ nach unten rückt statt überdeckt zu werden. */}
+      {/* Oben links: Beenden und START/STOP nebeneinander, darunter die
+          Statuszeile. Beide Tasten sind kleiner als die Zoomtasten, damit man
+          sie im Flug nicht aus Versehen trifft, und brauchen einen zweiten
+          Tipper (CONFIRM_MS): Der erste macht die Taste gelb ("WIRKLICH
+          BEENDEN?" usw.), darunter erscheint ✕ zum Abbrechen (nicht daneben:
+          dort steht oben mittig das Filter-Schild). Die gelben Tasten sind so
+          breit wie die normalen, damit nichts seitlich verrutscht; die
+          Statuszeile rückt für das ✕ nach unten statt überdeckt zu werden. */}
       <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
-        {exitConfirm.armed ? (
-          <>
-            <button
-              type="button"
-              onClick={onExit}
-              aria-label="Flugmodus wirklich beenden"
-              className="pointer-events-auto flex h-12 flex-col items-center justify-center border-2 border-black bg-amber-300 px-2 text-zinc-900 shadow-lg select-none active:bg-amber-500"
-            >
-              <span className="text-[11px] font-bold leading-tight">WIRKLICH</span>
-              <span className="text-[11px] font-bold leading-tight">BEENDEN?</span>
-            </button>
-            <button
-              type="button"
-              onClick={exitConfirm.cancel}
-              aria-label="Abbrechen"
-              title="Abbrechen"
-              className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
-            >
-              <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
-                <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
-              </svg>
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => exitConfirm.arm("exit")}
-            aria-label="Flugmodus beenden"
-            title="Flugmodus beenden"
-            className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
-          >
-            <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
-            </svg>
-          </button>
-        )}
+        <div className="flex items-start gap-3">
+          <div className="flex flex-col gap-3">
+            {exitConfirm.armed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onExit}
+                  aria-label="Flugmodus wirklich beenden"
+                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+                >
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">BEENDEN?</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={exitConfirm.cancel}
+                  aria-label="Abbrechen"
+                  title="Abbrechen"
+                  className={`${smallButton} bg-white active:bg-zinc-200`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => exitConfirm.arm("exit")}
+                aria-label="Flugmodus beenden"
+                title="Flugmodus beenden"
+                className={`${smallButton} bg-white active:bg-zinc-200`}
+              >
+                <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-3">
+            {trackConfirm.pending ? (
+              <>
+                {/* Zweiter Tipper an derselben Stelle bestätigt (CONFIRM_MS). */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (trackConfirm.pending === "stop") track.stop();
+                    else track.start();
+                    trackConfirm.cancel();
+                  }}
+                  aria-label={
+                    trackConfirm.pending === "stop"
+                      ? "Track-Aufzeichnung wirklich stoppen"
+                      : "Track-Aufzeichnung wirklich starten"
+                  }
+                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+                >
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">
+                    {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={trackConfirm.cancel}
+                  aria-label="Abbrechen"
+                  title="Abbrechen"
+                  className={`${smallButton} bg-white active:bg-zinc-200`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </button>
+              </>
+            ) : track.recording ? (
+              <button
+                type="button"
+                onClick={() => trackConfirm.arm("stop")}
+                aria-label="Track-Aufzeichnung stoppen"
+                title="Track-Aufzeichnung stoppen"
+                className={`${smallButton} flex-col gap-0.5 bg-red-600 text-white active:bg-red-800`}
+              >
+                <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
+                  <rect x="2" y="2" width="18" height="18" fill="currentColor" />
+                </svg>
+                <span className="text-[10px] leading-none font-bold">STOP</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => trackConfirm.arm("start")}
+                aria-label="Track-Aufzeichnung starten"
+                title="Track-Aufzeichnung starten"
+                className={`${smallButton} flex-col gap-0.5 bg-white text-zinc-900 active:bg-zinc-200`}
+              >
+                <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
+                  <circle cx="11" cy="11" r="10" fill="#dc2626" />
+                </svg>
+                <span className="text-[10px] leading-none font-bold">START</span>
+              </button>
+            )}
+          </div>
+        </div>
         {/* Statuszeile (GPS-Genauigkeit, Stand der Windwerte und Kabel,
             Track-Länge, ob der Bildschirm wach gehalten wird). */}
         <div className="flex flex-col items-start gap-1 text-left text-xs font-bold text-zinc-900">
@@ -1203,72 +1275,10 @@ export default function FlightMode({
         </button>
       </div>
 
-      {/* Unten links: die Track-Taste (Start/Stop mit Bestätigung, daneben
-          bei gestopptem Track die kleineren Tasten IGC-Export und Löschen
-          bzw. während der Bestätigung die Abbrechen-Taste). */}
+      {/* Unten links: bei gestopptem Track die Tasten IGC-Export und
+          Löschen (die START/STOP-Taste steht oben neben Beenden). */}
       <div className="pointer-events-none absolute bottom-7 left-3 z-[1000]">
         <div className="flex items-end gap-3">
-          {trackConfirm.pending ? (
-            <>
-              {/* Zweiter Tipper an derselben Stelle bestätigt (CONFIRM_MS). */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (trackConfirm.pending === "stop") track.stop();
-                  else track.start();
-                  trackConfirm.cancel();
-                }}
-                aria-label={
-                  trackConfirm.pending === "stop"
-                    ? "Track-Aufzeichnung wirklich stoppen"
-                    : "Track-Aufzeichnung wirklich starten"
-                }
-                className={`${bigButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
-              >
-                <span className="text-[11px] font-bold leading-tight">WIRKLICH</span>
-                <span className="text-[11px] font-bold leading-tight">
-                  {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={trackConfirm.cancel}
-                aria-label="Abbrechen"
-                title="Abbrechen"
-                className={bigButtonLight}
-              >
-                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-                  <path d="M5 5 L23 23 M23 5 L5 23" stroke="currentColor" strokeWidth="3.5" />
-                </svg>
-              </button>
-            </>
-          ) : track.recording ? (
-            <button
-              type="button"
-              onClick={() => trackConfirm.arm("stop")}
-              aria-label="Track-Aufzeichnung stoppen"
-              title="Track-Aufzeichnung stoppen"
-              className={`${bigButton} flex-col gap-1 bg-red-600 text-white active:bg-red-800`}
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <rect x="2" y="2" width="18" height="18" fill="currentColor" />
-              </svg>
-              <span className="text-xs font-bold">STOP</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => trackConfirm.arm("start")}
-              aria-label="Track-Aufzeichnung starten"
-              title="Track-Aufzeichnung starten"
-              className={`${bigButtonLight} flex-col gap-1`}
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <circle cx="11" cy="11" r="10" fill="#dc2626" />
-              </svg>
-              <span className="text-xs font-bold">START</span>
-            </button>
-          )}
           {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button
               type="button"

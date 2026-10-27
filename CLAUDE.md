@@ -333,9 +333,10 @@ also alle 3 h, wirklich neue Werte).
   Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter. Die normale
   Karte zoomt wie bisher.
 - **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
-  Layout-Vorschau festgelegt): oben links ✕ (Beenden) und darunter die
-  Statuszeile, oben rechts +/−, unten links START/STOP (daneben IGC und
-  Papierkorb), unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
+  (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
+  Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
+  +/−; unten links IGC und Papierkorb; unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
   (eigener Standort auf Zoom 10 `OVERVIEW_ZOOM`). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
@@ -386,10 +387,10 @@ also alle 3 h, wirklich neue Werte).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
   Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
-- **Track-Aufzeichnung** (Taste START/STOP unten links): violette
+- **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Der erste macht die Taste gelb („WIRKLICH STARTEN?" /
-  „WIRKLICH STOPPEN?") mit ✕ daneben, erst der zweite löst aus; nach 5 s
+  „WIRKLICH STOPPEN?") mit ✕ darunter, erst der zweite löst aus; nach 5 s
   (`CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
   Projektbesitzers; bewusst kein Handy-Nachfragefenster, dessen Knöpfe sind
   mit Handschuhen zu klein). STOP unterbricht nur,
@@ -399,7 +400,7 @@ also alle 3 h, wirklich neue Werte).
   übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
   nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
   Seite; Pausen > 60 s bleiben als Lücke sichtbar.
-- **IGC-Export** (Taste „IGC" neben dem Papierkorb, bei gestopptem Track):
+- **IGC-Export** (Taste „IGC" unten links neben dem Papierkorb, bei gestopptem Track):
   Datei mit Zeit, Position und **GPS-Höhe** je Punkt, am Handy über das
   Teilen-Menü, sonst als Download (`buildIgc`/`exportIgc` in
   `FlightMode.tsx`). Keine Druckhöhe (Browser haben keinen Zugriff auf den
