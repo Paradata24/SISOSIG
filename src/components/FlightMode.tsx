@@ -242,9 +242,9 @@ function useNow(intervalMs: number): number {
 // sichtbar als Lücke in der Linie (TRACK_GAP_MS).
 
 // Start, Stop und das Beenden des Flugmodus brauchen zwei Tipper (Wunsch des
-// Projektbesitzers, Okt. 2026): Der erste macht die Taste gelb ("WIRKLICH
-// STARTEN?", "STOPPEN?" bzw. "BEENDEN?") und zeigt daneben ✕ zum Abbrechen,
-// erst der zweite an derselben Stelle löst aus.
+// Projektbesitzers, Okt. 2026): Nach dem ersten steht an derselben Stelle ✕
+// zum Abbrechen, darunter die gelbe Bestätigung ("STARTEN?", "STOPPEN?" bzw.
+// "BEENDEN?", ohne "WIRKLICH" — Wunsch des Projektbesitzers); erst die löst aus.
 // Bewusst kein window.confirm: dessen kleine OK-/Abbrechen-Knöpfe trifft man
 // mit Handschuhen im Flug schlecht. Ohne zweiten Tipper springt die Taste nach
 // dieser Zeit von selbst zurück, damit sie nicht "scharf" stehen bleibt.
@@ -1135,7 +1135,7 @@ export default function FlightMode({
           Statuszeile. Beide Tasten sind kleiner als die Zoomtasten, damit man
           sie im Flug nicht aus Versehen trifft, und brauchen einen zweiten
           Tipper (CONFIRM_MS): Nach dem ersten steht an derselben Stelle ✕ zum
-          Abbrechen und darunter die gelbe Bestätigung ("WIRKLICH BEENDEN?"
+          Abbrechen und darunter die gelbe Bestätigung ("BEENDEN?"
           usw.; Reihenfolge Wunsch des Projektbesitzers — zweimal Tippen an
           derselben Stelle bricht also ab, statt auszulösen). Nicht daneben:
           dort steht oben mittig das Filter-Schild. Die gelben Tasten sind so
@@ -1166,8 +1166,7 @@ export default function FlightMode({
                   aria-label="Flugmodus wirklich beenden"
                   className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
                 >
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">BEENDEN?</span>
+                  <span className="text-[10px] leading-tight font-bold tracking-tight">BEENDEN?</span>
                 </button>
               </>
             ) : (
@@ -1213,8 +1212,7 @@ export default function FlightMode({
                   }
                   className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
                 >
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">
+                  <span className="text-[10px] leading-tight font-bold tracking-tight">
                     {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
                   </span>
                 </button>
