@@ -392,8 +392,12 @@ also alle 3 h, wirklich neue Werte).
   durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `FlightMode.tsx`).
   Ein/aus über die Taste **„KK7"** unten links (über IGC/Papierkorb, gefüllt
   = an), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
-  Bewusst die **Ganzjahres-Karte** (`thermals_all_all`) — die Karten je
-  Jahreszeit sind in Südtirol fast leer. Bedingungen von KK7: Lizenz
+  **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
+  (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
+  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). Deckkraft
+  `KK7_OPACITY` 0,6 (30 % weniger als zuerst, Wunsch des Projektbesitzers).
+  Folge: Im Winter und morgens ist die Karte in Südtirol deutlich lückenhafter
+  (Datenmenge im Okt. 2026 gezählt, steht im Code) — kein Fehler. Bedingungen von KK7: Lizenz
   **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung unter „Quellen"
   in der Filterliste (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
   Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
