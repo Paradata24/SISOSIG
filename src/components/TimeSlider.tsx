@@ -28,7 +28,7 @@ import { getWindColor, GRID_MS, type TimelinePayload } from "@/lib/wind";
 // am Handy nicht benutzen (Schwung nicht steuerbar, Position kämpfte gegen den
 // Finger) — deshalb hier bewusst eigene, einfache Physik.
 //
-// Farben schwarz/grau wie der Menü-Knopf (kein Grün, Wunsch des
+// Farben schwarz/grau wie die Knöpfe im Titelbalken (kein Grün, Wunsch des
 // Projektbesitzers). Der Zustand "jetzt" heißt "Aktuell". Bei geöffneter
 // Station ist der Zeitbalken ganz ausgeblendet (WindApp).
 
@@ -140,7 +140,7 @@ function formatHourLabel(date: Date): string {
   return `${String(date.getHours()).padStart(2, "0")}:00`;
 }
 
-// Knopf-Stil wie der Menü-Knopf im Titelbalken: eckig, schwarzer Rand.
+// Knopf-Stil wie die Knöpfe im Titelbalken: eckig, schwarzer Rand.
 const BUTTON_CLASS =
   "flex h-10 shrink-0 items-center justify-center border border-black bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-white dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
 

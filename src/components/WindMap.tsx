@@ -81,7 +81,7 @@ const FLIGHT_MAX_ZOOM = 16;
 
 // --- OpenTopoMap (Standardkarte) ---
 // Frei nutzbare Topografie-Karte auf Basis von OpenStreetMap und SRTM-
-// Höhendaten (CC BY-SA, Quellenangabe im Menü unter "Quellen"). Ohne
+// Höhendaten (CC BY-SA, Quellenangabe unter "Quellen" in der Filterliste). Ohne
 // "{s}."-Unterdomain, siehe Kommentar im JSX weiter unten. OpenTopoMap
 // liefert nur bis Zoom 17; die eigene Obergrenze der Karte (MAP_MAX_ZOOM)
 // liegt darunter, der Wert hier schützt nur vor einer späteren Änderung.
@@ -874,7 +874,7 @@ export default function WindMap({
         zoomControl={false}
         // Leaflets Quellen-Zeile unten rechts ist aus: Sie belegte auf dem
         // Handy zwei Zeilen und schob sich über "Zuletzt aktualisiert". Die
-        // Quellenangaben stehen stattdessen im Menü-Popup (MAP_SOURCES in
+        // Quellenangaben stehen stattdessen unter der Filterliste (MAP_SOURCES in
         // src/lib/wind.ts) — NICHT ersatzlos streichen, sie sind Pflicht.
         attributionControl={false}
         className="h-full w-full"
@@ -932,16 +932,17 @@ export default function WindMap({
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
           Projektbesitzers). */}
-      {/* Oben mittig: welcher Stationsfilter aktiv ist (immer sichtbar, auch
-          bei "ALLE"; Wunsch des Projektbesitzers), darunter ggf. die
-          Fehlermeldung. Beide in EINER Spalte, damit sie sich nicht
-          überdecken. Das Schild ist zugleich der Schalter: Antippen klappt
-          die Filterliste auf (StationFilterPicker, Okt. 2026 — vorher im
-          Menü). pointer-events-none an der Spalte: Neben dem Schild gehen
-          Ziehen und Antippen der Karte hindurch; das Schild selbst fängt
-          Tipps ab. */}
+      {/* Oben mittig: im Flugmodus das Filter-Schild (auf der Hauptseite
+          steht es seit Okt. 2026 oben rechts im Titel-Balken, WindApp),
+          darunter ggf. die Fehlermeldung. Beide in EINER Spalte, damit sie
+          sich nicht überdecken. Das Schild ist zugleich der Schalter:
+          Antippen klappt die Filterliste auf (StationFilterPicker).
+          pointer-events-none an der Spalte: Neben dem Schild gehen Ziehen
+          und Antippen der Karte hindurch; das Schild selbst fängt Tipps ab. */}
       <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
-        <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
+        {flightMode && (
+          <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
+        )}
         {error && (
           <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
             {error}

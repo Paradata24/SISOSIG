@@ -413,8 +413,8 @@ export function isWindanzeigerStation(station: WindStation): boolean {
   return WINDANZEIGER_NEEDLES.some((needle) => name.includes(needle));
 }
 
-// Gemeinsame Typen/Konstanten für das Menü im Titel-Balken (WindApp.tsx) und
-// die Karte (WindMap.tsx). Sie liegen hier zentral, damit Menü-Beschriftung
+// Gemeinsame Typen/Konstanten für das Filter-Schild mit Quellen (WindApp.tsx) und
+// die Karte (WindMap.tsx). Sie liegen hier zentral, damit Beschriftung
 // und Filterlogik nie auseinanderlaufen können.
 
 type SourceLink = { label: string; url: string; note?: string };
@@ -424,8 +424,8 @@ type SourceLink = { label: string; url: string; note?: string };
  *
  * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
  * der Karte (die hat auf dem Handy zwei Zeilen belegt und die
- * "Zuletzt aktualisiert"-Plakette überdeckt), sondern ganz unten im Menü-Popup
- * unter "Quellen" (WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
+ * "Zuletzt aktualisiert"-Plakette überdeckt), sondern unter "Quellen" unter
+ * der Filterliste (Filter-Schild oben rechts, WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
  * attributionControl={false} abgeschaltet (WindMap.tsx).
  *
  * Wichtig: OpenTopoMap steht unter CC BY-SA und verlangt "Kartendaten:
@@ -450,7 +450,7 @@ export const MAP_SOURCES: SourceLink[] = [
 
 /**
  * Quelle der Kabel (Luftfahrthindernisse), die nur der Flugmodus zeigt
- * (FlightMode.tsx, Daten über /api/kabel). Steht im Menü unter "Quellen"
+ * (FlightMode.tsx, Daten über /api/kabel). Steht unter "Quellen"
  * gleich unter den Kartenquellen.
  */
 export const CABLE_SOURCE: SourceLink = {
@@ -493,7 +493,7 @@ export const ALTITUDE_FILTERS: Record<
   veryHigh: { thresholdM: VERY_HIGH_ALTITUDE_THRESHOLD_M, direction: "above" },
 };
 
-/** Reihenfolge der Filter-Schaltflächen im Menü: von unten nach oben. */
+/** Reihenfolge der Filter-Schaltflächen in der Filterliste: von unten nach oben. */
 export const STATION_FILTER_ORDER: StationFilter[] = [
   "all",
   "below1000",
@@ -504,7 +504,7 @@ export const STATION_FILTER_ORDER: StationFilter[] = [
 ];
 
 /**
- * Beschriftung einer Filter-Schaltfläche im Menü, z. B. "Stationen ≤1.000m".
+ * Beschriftung einer Filter-Schaltfläche in der Filterliste, z. B. "Stationen ≤1.000m".
  * "≥"/"≤" statt ">"/"<", weil die Schwelle selbst mit dazugehört.
  */
 export function getStationFilterLabel(filter: StationFilter): string {
@@ -516,8 +516,8 @@ export function getStationFilterLabel(filter: StationFilter): string {
 }
 
 /**
- * Beschriftung des Filter-Schildes oben mittig auf der Karte: dieselbe wie im
- * Menü, aber immer in Großbuchstaben (Wunsch des Projektbesitzers), z. B.
+ * Beschriftung des Filter-Schildes (oben rechts im Titel-Balken, im
+ * Flugmodus oben mittig auf der Karte): dieselbe wie in der Filterliste, aber immer in Großbuchstaben (Wunsch des Projektbesitzers), z. B.
  * "ALLE", "WINDANZEIGER", "STATIONEN ≤1.000 m". Nur die Einheit "m" bleibt
  * klein — ein großes "M" läse sich wie "Millionen".
  */

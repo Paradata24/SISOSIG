@@ -19,20 +19,19 @@ import {
   type TimelinePayload,
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
+import StationFilterPicker from "@/components/StationFilterPicker";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
-// Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
-// den Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
-// über das Filter-Schild oben mittig auf der Karte umgeschaltet
-// (StationFilterPicker in WindMap). Sein Zustand lebt trotzdem hier (und
-// nicht in WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
+// Refresh-Button, ganz rechts das Filter-Schild (StationFilterPicker), das
+// beim Antippen die Stationsfilter und darunter die Quellen aufklappt — seit
+// Okt. 2026 anstelle des früheren Menü-Knopfs (3 Linien). Im Flugmodus steht
+// das Schild auf der Karte (WindMap). Der Filter-Zustand lebt hier, weil
+// Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
   // steht als "Zuletzt aktualisiert" mittig unter dem Rad im Zeitbalken.
@@ -74,7 +73,6 @@ export default function WindApp() {
   const [flightMode, setFlightMode] = useState(false);
   const enterFlightMode = useCallback(() => {
     setFlightMode(true);
-    setMenuOpen(false);
     setSelectedStationCode(null);
     setSelectedTime(null);
     // Vollbild blendet am Android-Handy auch die Adressleiste aus. iPhones
@@ -220,28 +218,13 @@ export default function WindApp() {
     [timeline, deferredTime, selectedStationCode],
   );
 
-  // Popup schließen, sobald außerhalb von Button/Popup geklickt (oder auf dem
-  // Handy getippt) wird. "pointerdown" deckt Maus und Touch gemeinsam ab.
-  useEffect(() => {
-    if (!menuOpen) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [menuOpen]);
-
   return (
     <>
       {/* Der Balken ist eine Flex-Reihe: links der Refresh-Button, in der
           Mitte der Titel (nimmt den freien Platz und bricht bei Bedarf um),
-          rechts der Menü-Button. Beide Buttons sind gleich breit, dadurch
-          steht der Titel optisch genau in der Mitte. Bewusst NICHT mit
-          absolut gesetzten Buttons über einem mittigen Titel — auf schmalen
-          Handys würden sich Titel und Buttons sonst überlappen. */}
+          rechts das Filter-Schild. Bewusst NICHT mit
+          absolut gesetzten Knöpfen über einem mittigen Titel — auf schmalen
+          Handys würden sich Titel und Knöpfe sonst überlappen. */}
       {/* Im Flugmodus ist der Titel-Balken weg (ganzer Bildschirm für die
           Karte); beendet wird er über die ✕-Taste auf der Karte. */}
       {!flightMode && (
@@ -253,7 +236,7 @@ export default function WindApp() {
             title="Aktualisieren"
             className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
           >
-            {/* Kreispfeil, gleiche Strichstärke und Farbe wie das Menü-Symbol. */}
+            {/* Kreispfeil, schwarz wie der Rahmen des Knopfs. */}
             <svg
               width="20"
               height="20"
@@ -286,62 +269,48 @@ export default function WindApp() {
               go
             </button>
           </h1>
-          <div ref={menuRef} className="relative z-[1100] shrink-0">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              aria-label="Menü"
-              aria-expanded={menuOpen}
-              className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
-            >
-              {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
-                  fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 20 20"
-                aria-hidden="true"
-                className="text-zinc-900 dark:text-zinc-50"
-              >
-                <rect x="2" y="4" width="16" height="2" fill="currentColor" />
-                <rect x="2" y="9" width="16" height="2" fill="currentColor" />
-                <rect x="2" y="14" width="16" height="2" fill="currentColor" />
-              </svg>
-            </button>
-            {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
-                Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
-                abgerundete Ecken, passend zum eckigen Menü-Button. */}
-            {menuOpen && (
-              <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
-                {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
-                    rechts auf der Karte, jetzt hier ganz unten im Popup
-                    (MAP_SOURCES in wind.ts). Seit Okt. 2026 gibt es nur noch
-                    die Karte OpenTopoMap, deshalb steht im Popup keine
-                    Kartenauswahl mehr (die frühere Karte "Relief (Grau)" hat
-                    der Projektbesitzer entfernen lassen). Die Quellen der
-                    Winddaten stehen bewusst NICHT hier, sondern stationsweise unten im Verlaufsbalken
-                    ("Quelle: …") — Wunsch des Projektbesitzers, keine
-                    Doppelung. Bewusst klein und grau: Pflichtangabe, aber keine
-                    Bedienung. */}
-                <p className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                  Quellen
-                </p>
-                <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
-                  {MAP_SOURCES.map((source) => (
-                    <li key={source.label}>
-                      <SourceLink url={source.url}>{source.label}</SourceLink>
-                      {source.note ? ` (${source.note})` : null}
+          {/* Oben rechts der Stationsfilter (Wunsch des Projektbesitzers,
+              Okt. 2026) — an der Stelle des früheren Menü-Knopfs (3 Linien),
+              der nur noch die Quellen zeigte. Die Quellen stehen jetzt unter
+              der Filterliste. z-[1100]: Die aufgeklappte Liste liegt über
+              der Karte. */}
+          <div className="relative z-[1100] shrink-0">
+            <StationFilterPicker
+              value={stationFilter}
+              onChange={setStationFilter}
+              align="right"
+              tall
+              footer={
+                <>
+                  {/* Quellenangaben der Karte (MAP_SOURCES in wind.ts) —
+                      früher als Leaflet-Zeile unten rechts auf der Karte, dann
+                      im Menü-Popup, seit Okt. 2026 hier unter den Filtern.
+                      Die Quellen der Winddaten stehen bewusst NICHT hier,
+                      sondern stationsweise unten im Verlaufsbalken
+                      ("Quelle: …") — Wunsch des Projektbesitzers, keine
+                      Doppelung. Bewusst klein und grau: Pflichtangabe, aber
+                      keine Bedienung. NICHT entfernen, die Nennung ist
+                      Lizenzpflicht. */}
+                  <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                    Quellen
+                  </p>
+                  <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                    {MAP_SOURCES.map((source) => (
+                      <li key={source.label}>
+                        <SourceLink url={source.url}>{source.label}</SourceLink>
+                        {source.note ? ` (${source.note})` : null}
+                      </li>
+                    ))}
+                    <li>
+                      <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
                     </li>
-                  ))}
-                  <li>
-                    <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
-                  </li>
-                  <li>
-                    <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
-                  </li>
-                </ul>
-              </div>
-            )}
+                    <li>
+                      <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
+                    </li>
+                  </ul>
+                </>
+              }
+            />
           </div>
         </header>
       )}
@@ -386,7 +355,7 @@ export default function WindApp() {
 // Marker im Flugmodus nicht bei jedem Neuzeichnen neu angemeldet werden.
 function ignoreStationSelect() {}
 
-// Ein Link in der Quellenliste des Menü-Popups (öffnet in neuem Tab).
+// Ein Link in der Quellenliste unter den Filtern (öffnet in neuem Tab).
 function SourceLink({ url, children }: { url: string; children: ReactNode }) {
   return (
     <a

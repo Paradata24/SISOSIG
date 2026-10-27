@@ -121,9 +121,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
+| `src/components/WindApp.tsx` | Titelbalken (Aktualisieren, „GO", Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
@@ -189,28 +189,30 @@ also alle 3 h, wirklich neue Werte).
     Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
     bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
-  - **Aktiver Filter steht oben mittig auf der Karte** (Okt. 2026, Wunsch des
-    Projektbesitzers), immer in Großbuchstaben, auch „ALLE"
-    (`getStationFilterMapLabel` in `src/lib/wind.ts`; eine Fehlermeldung
-    steht darunter). **Das Schild ist zugleich der Filter-Schalter:**
-    Antippen klappt die Liste aller Filter auf
-    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindMap`).
-    Im Menü im Titel-Balken stehen seitdem nur noch die Quellen,
-    keine Filter mehr (Wunsch des Projektbesitzers).
+  - **Aktiver Filter steht als Schild oben rechts im Titel-Balken** (Okt.
+    2026, Wunsch des Projektbesitzers; anstelle des früheren Menü-Knopfs mit
+    3 Linien, der nur noch die Quellen zeigte — den gibt es nicht mehr).
+    Immer in Großbuchstaben, auch „ALLE" (`getStationFilterMapLabel` in
+    `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
+    Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
+    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
+    Im Flugmodus (kein Titel-Balken) steht das Schild wie vorher oben
+    mittig auf der Karte (`WindMap`), ohne Quellen; Fehlermeldungen stehen
+    immer oben mittig auf der Karte.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Einzige Karte der Hauptseite ist OpenTopoMap in sehr hellen Graustufen**
   (Sept. 2026, Wunsch des Projektbesitzers; die frühere Karte „Standard" =
   OpenStreetMap wurde dafür entfernt, im Okt. 2026 auch „Relief (Grau)",
-  siehe „Nicht wieder einführen"). Im Menü steht deshalb keine Kartenauswahl
-  mehr, nur noch „Quellen". Kachel-Adresse
+  siehe „Nicht wieder einführen"). Es gibt deshalb keine Kartenauswahl
+  mehr. Kachel-Adresse
   `TOPO_URL` in `src/components/WindMap.tsx`; sie bringt Höhenlinien,
   Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
   Die Aufhellung macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
   (`grayscale` 100 %, `contrast` 30 %, `brightness` 165 % — am Bild
   ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
-  Kartendarstellung OpenTopoMap) steht im Menü unter „Quellen"
+  Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
   (`MAP_SOURCES`) — nicht entfernen.
 - **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
   mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
@@ -218,7 +220,7 @@ also alle 3 h, wirklich neue Werte).
   `TimeSlider` weiter. Bei geöffneter Station (Zeitbalken weg) steht er nirgends.
   Leaflets Quellen-Zeile unten rechts ist per `attributionControl={false}`
   abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
-  Die Quellenangaben stehen stattdessen im Menü-Popup (siehe oben).
+  Die Quellenangaben stehen stattdessen unter der Filterliste (siehe oben).
 - **Zeitbalken = Zeitrad** (dritter Umbau, Okt. 2026, Wunsch des Projektbesitzers,
   Vorbild: die Höhenauswahl bei Meteoparapente): ein waagrecht liegendes **Rad**,
   das man nach vorne und hinten dreht (`src/components/TimeSlider.tsx`). Fester
@@ -248,7 +250,7 @@ also alle 3 h, wirklich neue Werte).
   - **Nicht auf Browser-Scrollen (scroll-snap) oder ein Band ohne Rad
     zurückbauen:** Beide früheren Fassungen (wischbares Band, Antipp-Band) waren
     am Handy laut Projektbesitzer nicht gut benutzbar.
-  - Farben **schwarz/grau wie der Menü-Knopf**, kein Grün (Wunsch des
+  - Farben **schwarz/grau wie die Knöpfe im Titel-Balken**, kein Grün (Wunsch des
     Projektbesitzers). Der Zustand „jetzt" heißt **„Aktuell"**, nicht „Live" oder
     „Jetzt".
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
@@ -367,7 +369,7 @@ also alle 3 h, wirklich neue Werte).
   sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
   Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
-  Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
+  Quelle unter „Quellen" in der Filterliste (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
@@ -601,9 +603,10 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM) stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
-  `src/lib/wind.ts`).
-- **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM) stehen unter
+  „Quellen" unterhalb der Filterliste (Filter-Schild oben rechts;
+  `MAP_SOURCES` in `src/lib/wind.ts`).
+- **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,
   keine Doppelung), sondern stationsweise unten im Verlaufsbalken als
   „Quelle:"-Link (`SOURCE_INFO`). Offener Punkt: Die OpenWindMap-
   Community-Lizenz verlangt einen sichtbaren Credit mit Link, SLF und
