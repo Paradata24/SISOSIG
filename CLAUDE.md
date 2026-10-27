@@ -282,7 +282,11 @@ also alle 3 h, wirklich neue Werte).
 - **Caching nicht entfernen** (`/api/wind` und die Verlaufs-Routen): Stationen
   messen nur alle 5–10 min. Ebenso bleibt der Abruf-Takt der Karte bei 3 min —
   „frischer" wird die Anzeige über den `visibilitychange`-Abruf, nicht über
-  einen kürzeren Takt.
+  einen kürzeren Takt. **Aber keine lange „Nachfrist" (stale-while-revalidate)
+  in `/api/wind`:** Bis Okt. 2026 hingen die Live-Werte dadurch bis zu ~10 min
+  hinter der Datenbank (Kopfzeile „Stand 15:40", Verlaufsbalken schon mit
+  15:50). Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der
+  60-s-CDN-Speicher der Antwort bleibt (Begründung oben in der Route).
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
   `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".
