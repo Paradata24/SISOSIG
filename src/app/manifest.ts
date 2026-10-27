@@ -7,8 +7,8 @@ import type { MetadataRoute } from "next";
 // Projektbesitzer). Für Besucher im Browser ändert diese Datei nichts.
 //
 // Die Symbole liegen in public/icons/; das iPhone-Symbol ist
-// src/app/apple-icon.png (Next.js bindet es selbst ein, siehe metadata in
-// layout.tsx). Die "maskable"-Fassung hat mehr schwarzen Rand: Android
+// public/apple-touch-icon.png (eingebunden über metadata in layout.tsx).
+// Die "maskable"-Fassung hat mehr schwarzen Rand: Android
 // schneidet Symbole je nach Handy rund oder eckig zu, der Stern muss dabei
 // ganz bleiben.
 export default function manifest(): MetadataRoute.Manifest {
