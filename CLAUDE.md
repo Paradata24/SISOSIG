@@ -195,7 +195,7 @@ also alle 3 h, wirklich neue Werte).
     steht darunter). **Das Schild ist zugleich der Filter-Schalter:**
     Antippen klappt die Liste aller Filter auf
     (`src/components/StationFilterPicker.tsx`, eingebunden in `WindMap`).
-    Im Menü im Titel-Balken stehen seitdem nur noch Karte und Quellen,
+    Im Menü im Titel-Balken stehen seitdem nur noch die Quellen,
     keine Filter mehr (Wunsch des Projektbesitzers).
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
@@ -211,7 +211,7 @@ also alle 3 h, wirklich neue Werte).
   ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
   Kartendarstellung OpenTopoMap) steht im Menü unter „Quellen"
-  (`MAP_SOURCES.topo`) — nicht entfernen.
+  (`MAP_SOURCES`) — nicht entfernen.
 - **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
   mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
   `WindMap` meldet jeden Abruf über `onDataLoaded`, `WindApp` reicht ihn an
