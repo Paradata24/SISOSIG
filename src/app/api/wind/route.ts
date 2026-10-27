@@ -29,14 +29,26 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // --- Zwischenspeicherung (Caching) ---
 // Die Stationen messen nur alle 5-10 Minuten, daher muss nicht jeder
 // Seitenaufruf die Upstream-Dienste neu abfragen:
-// - Die Messwerte (/sensors) werden 60 s im Next.js-Daten-Cache gehalten
-//   (fetch-Option `next.revalidate`); dasselbe gilt für den Pioupiou-Abruf
-//   in src/lib/pioupiou.ts.
+// - Die fertige JSON-Antwort wird über den Cache-Control-Header (s-maxage)
+//   60 s vom CDN (Vercel) geteilt: gleichzeitige Besucher bekommen dieselbe
+//   Antwort, ohne dass die Route erneut läuft. Damit fragt die Route den
+//   Bozner Dienst höchstens etwa einmal pro Minute ab.
+// - Die Bozner Messwerte (/sensors) holt die Route selbst dann immer frisch
+//   (`cache: "no-store"`). Bis Okt. 2026 lagen sie zusätzlich 60 s im
+//   Next.js-Daten-Cache, und das CDN durfte eine abgelaufene Antwort noch
+//   240 s weiter ausliefern (stale-while-revalidate). Beide Speicher geben
+//   nach Ablauf ZUERST den alten Stand heraus und holen erst danach im
+//   Hintergrund neu — bei wenigen Besuchern und dem 3-min-Takt der Karte sah
+//   man so den Stand von vor zwei Abrufen. Ergebnis: Die Karte hing bis zu
+//   ~10 min hinter der Datenbank her (Rittner Horn "Stand 15:40", obwohl der
+//   15:50-Wert seit 16:05 im Verlaufsbalken stand). Jetzt bleibt nur der
+//   CDN-Speicher, mit kurzer Nachfrist (RESPONSE_CACHE_CONTROL).
+// - Die übrigen Quellen (Pioupiou, GeoSphere mit Anfrage-Grenze, MeteoSchweiz,
+//   LWD Tirol, DWD, SLF) haben ihren eigenen kurzen Zwischenspeicher in
+//   src/lib/, der nach Ablauf ebenfalls sofort frisch holt
+//   (src/lib/freshCache.ts bzw. der eigene Speicher in slf.ts).
 // - Die Stationsmetadaten (/stations: Name, Koordinaten, Höhe) ändern sich
 //   praktisch nie und werden 6 h gehalten.
-// - Zusätzlich wird die fertige JSON-Antwort über den Cache-Control-Header
-//   (s-maxage) 60 s vom CDN (Vercel) geteilt: gleichzeitige Besucher
-//   bekommen dieselbe Antwort, ohne dass die Route erneut läuft.
 // Das stale-Flag wird trotzdem bei jedem echten Routen-Lauf frisch gegen
 // die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
 // alte Cache-Daten dafür bedeutungslos.
@@ -50,10 +62,11 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 // gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
 // die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
 // wie alle zusammen.
-const SENSORS_REVALIDATE_S = 60;
 const STATIONS_REVALIDATE_S = 6 * 60 * 60;
+// Nachfrist (stale-while-revalidate) bewusst nur 30 s: Gerade wenn kaum
+// jemand zuschaut, wäre jede abgelaufene Antwort sonst noch Minuten alt.
 const RESPONSE_CACHE_CONTROL =
-  "public, s-maxage=60, stale-while-revalidate=240";
+  "public, s-maxage=60, stale-while-revalidate=30";
 
 interface SensorReading {
   SCODE: string;
@@ -139,9 +152,8 @@ async function fetchSensors(): Promise<{
   error?: string;
 }> {
   try {
-    const res = await fetch(`${API_BASE}/sensors`, {
-      next: { revalidate: SENSORS_REVALIDATE_S },
-    });
+    // Immer frisch, siehe "Zwischenspeicherung" oben.
+    const res = await fetch(`${API_BASE}/sensors`, { cache: "no-store" });
     if (!res.ok) {
       return { error: `Wetterdienst antwortete mit Status ${res.status}` };
     }
