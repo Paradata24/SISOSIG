@@ -947,6 +947,19 @@ export default function FlightMode({
     };
   }, [map, setFollowing]);
 
+  // Zoomen im Flugmodus NUR über die +/−-Tasten (Wunsch des Projektbesitzers,
+  // Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und Rahmen-Zoom sind
+  // aus — im Flug zoomt sonst jede unruhige Berührung mit. Verschieben geht
+  // weiter. Beim Verlassen ist auf der normalen Karte alles wieder an.
+  useEffect(() => {
+    if (!map) return;
+    const handlers = [map.doubleClickZoom, map.touchZoom, map.scrollWheelZoom, map.boxZoom];
+    for (const handler of handlers) handler.disable();
+    return () => {
+      for (const handler of handlers) handler.enable();
+    };
+  }, [map]);
+
   // Marker des eigenen Standorts (direkt über Leaflet, nicht über
   // react-leaflet: FlightMode liegt außerhalb von <MapContainer>, damit die
   // Tasten keine Karten-Gesten auslösen). Ein eigener Marker für die ganze

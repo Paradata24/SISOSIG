@@ -328,6 +328,10 @@ also alle 3 h, wirklich neue Werte).
   Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
+- **Zoomen im Flugmodus nur über die +/−-Tasten** (Wunsch des
+  Projektbesitzers, Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und
+  Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter. Die normale
+  Karte zoomt wie bisher.
 - **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
   Layout-Vorschau festgelegt): oben links ✕ (Beenden) und darunter die
   Statuszeile, oben rechts +/−, unten links START/STOP (daneben IGC und
