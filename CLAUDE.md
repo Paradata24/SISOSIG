@@ -123,7 +123,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -340,7 +340,7 @@ also alle 3 h, wirklich neue Werte).
   Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
   (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
   Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
-  +/−; unten links IGC und Papierkorb; unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  +/−; unten links IGC und Papierkorb (darüber die Taste „KK7"); unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
   (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
@@ -393,6 +393,17 @@ also alle 3 h, wirklich neue Werte).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
   Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
+- **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
+  Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
+  durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `FlightMode.tsx`).
+  Ein/aus über die Taste **„KK7"** unten links (über IGC/Papierkorb, gefüllt
+  = an), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
+  Bewusst die **Ganzjahres-Karte** (`thermals_all_all`) — die Karten je
+  Jahreszeit sind in Südtirol fast leer. Bedingungen von KK7: Lizenz
+  **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung im Menü unter
+  „Quellen" (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
+  Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
+  Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum
@@ -437,7 +448,7 @@ also alle 3 h, wirklich neue Werte).
 - **Kartenstücke:** nur gespeichert, was man ansieht (max. 4000, nach 30
   Tagen erneuert). **Kein „Gebiet herunterladen"** — die Nutzungsregeln von
   OpenTopoMap/Esri verbieten Massen-Downloads. Gespeichert wird per
-  CORS-Abruf im Helfer (alle vier Kartendienste erlauben das, Okt. 2026
+  CORS-Abruf im Helfer (alle Kartendienste inkl. KK7 erlauben das, Okt. 2026
   geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
 - Bei grundlegenden Änderungen am Helfer `VERSION` in `sw.js` hochzählen
   (alte Speicher werden dann gelöscht). `sw.js` wird nie zwischengespeichert
@@ -624,7 +635,7 @@ Projektbesitzers entfernt:
 ## Quellenangaben (Lizenzpflicht)
 
 - **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Esri, Höhenlinien des
-  Landes, CARTO)
+  Landes, CARTO, KK7-Thermikkarte im Flugmodus)
   stehen ganz unten im Menü-Popup unter „Quellen" (`MAP_SOURCES` in
   `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT im Menü (Wunsch des Projektbesitzers,

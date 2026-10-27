@@ -912,6 +912,78 @@ function createOwnPositionIcon(heading: number | null): L.DivIcon {
   });
 }
 
+// --- KK7-Thermikkarte (Wunsch des Projektbesitzers, Okt. 2026) ---
+// Wahrscheinlichkeit, eine Thermik zu finden, berechnet aus Millionen
+// hochgeladener Streckenflüge (thermal.kk7.ch): je wärmer die Farbe, desto
+// eher steigt es dort. Nur im Flugmodus, als halb durchsichtige Ebene über
+// OpenTopoMap und unter Kabeln, Track und Windpfeilen. Ein-/Ausschalten über
+// die Taste "KK7" unten links; die Wahl merkt sich das Handy.
+//
+// Bedingungen von KK7 (Okt. 2026 auf der Seite nachgelesen): Lizenz
+// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung im Menü unter "Quellen",
+// KK7_SOURCE in src/lib/wind.ts), jede Anfrage trägt "src=<Adresse der
+// Seite>", die Kacheln liegen in TMS-Zählung (y von unten, daher tms: true)
+// und gibt es bis Zoom 12 — darüber vergrößert Leaflet sie.
+//
+// KK7 hat auch Karten je Jahreszeit und Tageszeit. Wir nehmen bewusst die
+// Karte über das ganze Jahr und den ganzen Tag ("all_all"): Die Teilkarten
+// sind in Südtirol fast leer (Okt. 2026 geprüft — z. B. "Oktober" über dem
+// Ritten ohne einen einzigen Bildpunkt), weil es dort für eine Jahreszeit zu
+// wenige Flüge gibt. Im Flug will man außerdem keine Filter einstellen.
+const KK7_URL = "https://thermal.kk7.ch/tiles/thermals_all_all/{z}/{x}/{y}.png";
+const KK7_MAX_NATIVE_ZOOM = 12;
+// Die Kacheln von KK7 sind schon selbst halb durchsichtig; leicht
+// zurückgenommen bleiben Gelände und Ortsnamen darunter lesbar.
+const KK7_OPACITY = 0.85;
+// Über OpenTopoMap (zIndex 1) in derselben Kachel-Ebene.
+const KK7_Z_INDEX = 2;
+// Ohne Flüge in der Gegend liefert KK7 keine Kachel; dann bleibt die Stelle
+// einfach leer (durchsichtiger 1×1-Punkt, wie bei den Höhenlinien in WindMap).
+const KK7_EMPTY_TILE =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const KK7_STORAGE_KEY = "sisosig-kk7-v1";
+
+function loadKk7Enabled(): boolean {
+  try {
+    return window.localStorage.getItem(KK7_STORAGE_KEY) !== "aus";
+  } catch {
+    return true;
+  }
+}
+
+function useKk7Layer(map: L.Map | null) {
+  // Standard: eingeschaltet. Direkt aus dem Speicher gelesen — der Flugmodus
+  // läuft nur im Browser (WindMap wird ohne Server-Rendering geladen).
+  const [enabled, setEnabled] = useState(loadKk7Enabled);
+
+  useEffect(() => {
+    if (!map || !enabled) return;
+    const layer = L.tileLayer(`${KK7_URL}?src=${encodeURIComponent(window.location.hostname)}`, {
+      tms: true,
+      maxNativeZoom: KK7_MAX_NATIVE_ZOOM,
+      opacity: KK7_OPACITY,
+      zIndex: KK7_Z_INDEX,
+      errorTileUrl: KK7_EMPTY_TILE,
+    }).addTo(map);
+    return () => {
+      layer.remove();
+    };
+  }, [map, enabled]);
+
+  const toggle = useCallback(() => {
+    setEnabled((was) => {
+      try {
+        window.localStorage.setItem(KK7_STORAGE_KEY, was ? "aus" : "an");
+      } catch {
+        // Ohne Speicher gilt die Wahl eben nur bis zum Neuladen.
+      }
+      return !was;
+    });
+  }, []);
+
+  return { enabled, toggle };
+}
+
 export default function FlightMode({
   map,
   defaultCenter,
@@ -934,6 +1006,7 @@ export default function FlightMode({
   const trackConfirm = useTrackConfirm(track.recording);
   const exitConfirm = useConfirmStep<"exit">();
   const cables = useCables(map);
+  const kk7 = useKk7Layer(map);
   const online = useOnline();
   const now = useNow(30_000);
 
@@ -1130,7 +1203,7 @@ export default function FlightMode({
           festgelegt (Okt. 2026) und danach nachgeschärft: oben links Beenden
           und rechts daneben START/STOP (beide 48 px), darunter die
           Statuszeile; oben rechts Plus/Minus; unten links IGC und
-          Papierkorb; unten rechts Rücksetz- über Übersichtstaste. Abstände
+          Papierkorb, darüber die Taste der KK7-Thermikkarte; unten rechts Rücksetz- über Übersichtstaste. Abstände
           12 px, unten 28 px (Abstand zur Wischleiste des iPhones). */}
 
       {/* Oben links: Beenden und START/STOP nebeneinander, darunter die
@@ -1300,9 +1373,24 @@ export default function FlightMode({
         </button>
       </div>
 
-      {/* Unten links: bei gestopptem Track die Tasten IGC-Export und
-          Löschen (die START/STOP-Taste steht oben neben Beenden). */}
-      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000]">
+      {/* Unten links: die Taste der KK7-Thermikkarte (gefüllt = an), darunter
+          bei gestopptem Track die Tasten IGC-Export und Löschen (die
+          START/STOP-Taste steht oben neben Beenden). */}
+      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000] flex flex-col items-start gap-3">
+        <button
+          type="button"
+          onClick={kk7.toggle}
+          aria-pressed={kk7.enabled}
+          aria-label={kk7.enabled ? "Thermikkarte KK7 ausblenden" : "Thermikkarte KK7 einblenden"}
+          title={kk7.enabled ? "Thermikkarte KK7 ausblenden" : "Thermikkarte KK7 einblenden"}
+          className={`${smallButton} text-xs font-bold ${
+            kk7.enabled
+              ? "bg-zinc-900/50 text-white active:bg-zinc-700/50"
+              : "bg-white/50 text-zinc-900 active:bg-zinc-200/50"
+          }`}
+        >
+          KK7
+        </button>
         <div className="flex items-end gap-3">
           {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button

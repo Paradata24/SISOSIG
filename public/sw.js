@@ -48,13 +48,15 @@ const TILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STORED_HEADER = "x-sisosig-gespeichert";
 
 // Kartendienste, deren Kartenstücke gespeichert werden (gleiche Liste wie in
-// src/components/WindMap.tsx). Alle vier erlauben den Abruf von fremden Seiten
+// src/components/WindMap.tsx). Alle erlauben den Abruf von fremden Seiten
 // (CORS, im Okt. 2026 geprüft) — nur so lassen sich die Stücke speichern.
 const TILE_HOSTS = [
   "tile.opentopomap.org",
   "server.arcgisonline.com",
   "basemaps.cartocdn.com",
   "geoservices9.civis.bz.it",
+  // KK7-Thermikkarte (nur Flugmodus, FlightMode.tsx), CORS im Okt. 2026 geprüft.
+  "thermal.kk7.ch",
 ];
 
 self.addEventListener("install", () => {
