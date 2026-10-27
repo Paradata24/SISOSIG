@@ -209,23 +209,25 @@ export default function WindApp() {
       {!flightMode && (
         <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
           {/* Der GANZE Titel ist der Knopf für den Flugmodus (Wunsch des
-              Projektbesitzers, Okt. 2026; vorher war nur das blaue "GO"
-              antippbar). Gestaltet nach den Plattencovern von The Clash und
-              passend zum App-Symbol (gelber Stern, roter Schatten auf
-              Schwarz): schwarzer Block, gelbe Großbuchstaben, harter roter
-              Versatz nach links unten, leicht schräg wie ein aufgeklebter
-              Sticker. "GO" in Weiß hebt das Ziel hervor. Beim Antippen
-              rutscht der Block auf seinen Schatten (gedrückt-Effekt).
-              Farben = App-Symbol: Gelb #fbb11a, Rot #e0403a. */}
+              Projektbesitzers, Okt. 2026). Aussehen vom Projektbesitzer aus
+              Entwürfen gewählt ("London Calling", nach dem Plattencover von
+              The Clash): Der Satz steht schlicht da, nur "GO" ist ein
+              schwarzer, leicht schräger Sticker mit pinker Schrift und
+              hartem grünem Versatz nach links unten. Antippbar ist trotzdem
+              die ganze Zeile; beim Antippen rutscht der Sticker auf seinen
+              Schatten (gedrückt-Effekt, group-active). */}
           <h1 className="flex min-w-0 flex-1 justify-center">
             <button
               type="button"
               onClick={enterFlightMode}
               aria-label="Should I stay or should I GO – Flugmodus starten"
               title="Flugmodus starten"
-              className="-rotate-[1.5deg] bg-black px-2.5 py-1.5 text-[15px] leading-tight font-bold text-[#fbb11a] uppercase shadow-[-4px_4px_0_#e0403a] transition-[translate,box-shadow] duration-75 active:-translate-x-1 active:translate-y-1 active:shadow-none sm:text-lg"
+              className="group text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50"
             >
-              Should I stay or should I <span className="text-white">GO</span>
+              Should I stay or should I{" "}
+              <span className="ml-1 inline-block -rotate-3 bg-black px-2 py-0.5 align-middle text-[22px] leading-none font-extrabold tracking-wide text-[#f06ea9] uppercase shadow-[-4px_4px_0_#3fae49] transition-[translate,box-shadow] duration-75 group-active:-translate-x-1 group-active:translate-y-1 group-active:shadow-none">
+                GO
+              </span>
             </button>
           </h1>
           {/* Oben rechts der Stationsfilter (Wunsch des Projektbesitzers,

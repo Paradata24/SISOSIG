@@ -300,15 +300,17 @@ also alle 3 h, wirklich neue Werte).
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
-- Gestartet über den **ganzen Titel als Knopf** („SHOULD I STAY OR SHOULD I
+- Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
   GO"; Okt. 2026, Wunsch des Projektbesitzers, vorher nur ein blaues „GO").
-  Stil nach den Plattencovern von **The Clash** und passend zum App-Symbol:
-  schwarzer Block, gelbe Großbuchstaben (`#fbb11a`), „GO" weiß, harter roter
-  Versatz (`#e0403a`) nach links unten, leicht schräg (−1,5°). **Der Titel
-  darf sich beim Filterwechsel nicht verschieben** (Wunsch des
-  Projektbesitzers): Das Filter-Schild daneben hat deshalb eine feste Breite
-  (`w-28`, passend für „WINDANZEIGER"); ab 360 px Bildschirmbreite steht der
-  Titel in einer Zeile. Beendet über die ✕-Taste oben links auf der Karte (mit
+  Aussehen vom Projektbesitzer aus Entwürfen gewählt, **„London Calling"**
+  (Plattencover von The Clash): Der Satz steht schlicht in Schwarz, nur
+  **„GO" ist ein schwarzer, leicht schräger Sticker mit pinker Schrift
+  (`#f06ea9`) und hartem grünem Versatz (`#3fae49`)** nach links unten.
+  Antippbar ist die ganze Zeile. **Der Titel darf sich beim Filterwechsel
+  nicht verschieben** (Wunsch des Projektbesitzers): Das Filter-Schild
+  daneben hat deshalb eine feste Breite (`w-28`, passend für
+  „WINDANZEIGER"); ab 360 px Bildschirmbreite steht der Titel in einer
+  Zeile, darunter rutscht „GO" in die zweite. Beendet über die ✕-Taste oben links auf der Karte (mit
   zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
