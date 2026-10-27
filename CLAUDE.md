@@ -336,9 +336,16 @@ also alle 3 h, wirklich neue Werte).
   > 60 m über Grund dicker, **erst ab Zoom 11** (`CABLE_MIN_ZOOM`). Masten
   (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
   „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
+  **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
+  Projektbesitzers): Das Handy merkt sich die letzte Fassung
+  (`CABLE_STORAGE_KEY`, localStorage), das CDN gibt bei Fehlern die alte
+  weiter (`stale-if-error`). Das Feld oben rechts wird dann **gelb** und
+  zeigt weiter das Datum dieser Fassung — auch wenn die Kabel älter als 30 h
+  sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
+  Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
-  Offline: eigener Speicher `CABLE_CACHE` in `public/sw.js`. Quelle im Menü
-  unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur Südtirol.
+  Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
+  Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu

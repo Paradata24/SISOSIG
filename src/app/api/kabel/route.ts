@@ -36,10 +36,14 @@ const WFS_URL =
 // bekommt der nächste Aufruf noch sofort die alte Antwort, und im Hintergrund
 // holt die Route frische Daten beim Land (stale-while-revalidate). So fragt
 // nicht jedes Handy den Landesserver ab, und niemand wartet auf ihn.
+// Ist das Land gestört, gibt das CDN bis zu 30 Tage lang die letzte gute
+// Fassung weiter (stale-if-error) — mit ihrem alten Stand, den FlightMode
+// dann gelb anzeigt. Zusätzlich merkt sich jedes Handy die letzte Fassung
+// selbst (CABLE_STORAGE_KEY in FlightMode.tsx).
 // Fehlerantworten bekommen bewusst KEINEN solchen Header, damit sich eine
 // Störung beim Land nicht einen Tag lang festsetzt.
 const RESPONSE_CACHE_CONTROL =
-  "public, s-maxage=86400, stale-while-revalidate=86400";
+  "public, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=2592000";
 
 // Kabel, die so hoch über Grund hängen, sind meist quer über Täler gespannt
 // — die gefährlichsten für Gleitschirme. FlightMode zeichnet sie dicker.

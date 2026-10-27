@@ -29,12 +29,7 @@ const PAGE_CACHE = `sisosig-seite-${VERSION}`;
 const STATIC_CACHE = `sisosig-programm-${VERSION}`;
 const DATA_CACHE = `sisosig-daten-${VERSION}`;
 const TILE_CACHE = `sisosig-karte-${VERSION}`;
-// Kabel des Flugmodus (/api/kabel) in einem eigenen Speicher ohne Obergrenze
-// (nur ein Eintrag): Im gemeinsamen Datenspeicher könnten sie sonst von vielen
-// angeschauten Stationen (MAX_DATA) verdrängt werden — und im Flug ohne Netz
-// fehlen.
-const CABLE_CACHE = `sisosig-kabel-${VERSION}`;
-const ALL_CACHES = [PAGE_CACHE, STATIC_CACHE, DATA_CACHE, TILE_CACHE, CABLE_CACHE];
+const ALL_CACHES = [PAGE_CACHE, STATIC_CACHE, DATA_CACHE, TILE_CACHE];
 
 // Obergrenzen, damit das Handy nicht vollläuft. Ein Kartenstück hat rund
 // 10–30 KB, 4000 Stück sind also höchstens ~100 MB — genug für ein Fluggebiet
@@ -128,10 +123,8 @@ self.addEventListener("fetch", (event) => {
       event.respondWith(pageNetworkFirst(request));
     } else if (url.pathname.startsWith("/_next/static/")) {
       event.respondWith(cacheFirst(request, STATIC_CACHE, MAX_STATIC));
-    } else if (url.pathname === "/api/kabel") {
-      event.respondWith(dataNetworkFirst(request, CABLE_CACHE, null));
     } else if (url.pathname.startsWith("/api/")) {
-      event.respondWith(dataNetworkFirst(request, DATA_CACHE, MAX_DATA));
+      event.respondWith(dataNetworkFirst(request));
     }
     // Alles andere (Symbole, Manifest …) geht unverändert ans Netz.
     return;
@@ -172,15 +165,14 @@ async function cacheFirst(request, cacheName, maxEntries) {
 
 // Windwerte & Co.: immer zuerst frisch aus dem Netz (die Seite verhält sich
 // mit Netz also wie bisher). Ohne Netz die zuletzt gespeicherte Antwort, mit
-// dem Zeitpunkt des Speicherns als Kopfzeile. maxEntries null = ohne
-// Obergrenze (Kabel, siehe CABLE_CACHE).
-async function dataNetworkFirst(request, cacheName, maxEntries) {
-  const cache = await caches.open(cacheName);
+// dem Zeitpunkt des Speicherns als Kopfzeile.
+async function dataNetworkFirst(request) {
+  const cache = await caches.open(DATA_CACHE);
   try {
     const response = await fetch(request);
     if (response.ok) {
       await cache.put(request, await withStoredTime(response.clone()));
-      if (maxEntries !== null) void trimCache(cacheName, maxEntries);
+      void trimCache(DATA_CACHE, MAX_DATA);
     }
     return response;
   } catch (error) {

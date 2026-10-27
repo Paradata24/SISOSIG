@@ -412,9 +412,9 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
 // Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
 // Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
 // Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
-// am Tag beim Land; die Statuszeile oben rechts sagt, von wann sie sind. In
-// der Web-App speichert public/sw.js die Liste, ohne Netz sind die Kabel
-// also trotzdem da.
+// am Tag beim Land; die Statuszeile oben rechts sagt, von wann sie sind. Das
+// Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
+// Kabel also trotzdem da.
 
 // Erst ab dieser Zoomstufe (= Flug-Zoomstufe): Herausgezoomt wären die Täler
 // nur noch ein Gewirr aus Leitungen, das die Windpfeile zudeckt.
@@ -435,14 +435,65 @@ const CABLE_HALO_PX = 3;
 const CABLE_PANE = "kabel";
 const CABLE_PANE_Z = 390;
 
-type CableState = { stand: Date | null; status: "loading" | "ok" | "error" };
+// Kann der Server die Kabel einmal nicht aktualisieren (Landesserver gestört)
+// oder ist kein Netz da, bleiben die zuletzt erfolgreich geladenen Kabel auf
+// der Karte (Wunsch des Projektbesitzers). Dafür merkt sich das Handy die
+// letzte erfolgreich geladene Fassung im Browser-Speicher (localStorage, wie
+// der Track) — das gilt für die Web-App UND die Website im Browser. Das Feld
+// "Kabel …" oben rechts wird dann gelb und zeigt weiter das Datum dieser
+// Fassung.
+const CABLE_STORAGE_KEY = "sisosig-kabel-v1";
+// Normal sind die Kabel höchstens einen Tag alt (der Server holt sie einmal am
+// Tag, siehe /api/kabel). Älter = die tägliche Aktualisierung hat nicht
+// geklappt → gelb. Etwas Luft über 24 h, damit es nicht am Stichtag flackert.
+const CABLE_OUTDATED_MS = 30 * 60 * 60 * 1000;
+// Kommt vom Server eine alte Fassung, ist das meist nur der Zwischenspeicher,
+// der gerade im Hintergrund frische Kabel holt (dauert ein paar Sekunden).
+// Deshalb nach dieser Wartezeit einmal nachfragen, bevor gelb angezeigt wird.
+const CABLE_RECHECK_DELAY_MS = 20_000;
+
+type CableState = {
+  /** Stand der Kabel auf der Karte (Abruf beim Land); null = keine Kabel. */
+  stand: Date | null;
+  /** Der letzte Versuch, frische Kabel zu holen, ist gescheitert. */
+  updateFailed: boolean;
+  /** Abruf läuft noch (dann noch nicht gelb anzeigen). */
+  checking: boolean;
+};
+
+function loadStoredCables(): { text: string; data: CablePayload } | null {
+  try {
+    const text = window.localStorage.getItem(CABLE_STORAGE_KEY);
+    if (!text) return null;
+    const data = JSON.parse(text) as CablePayload;
+    if (typeof data.stand !== "string" || !Array.isArray(data.kabel)) return null;
+    return { text, data };
+  } catch {
+    // Privater Modus, gesperrter Speicher, kaputter Inhalt: wie nie geladen.
+    return null;
+  }
+}
+
+function storeCables(text: string) {
+  try {
+    window.localStorage.setItem(CABLE_STORAGE_KEY, text);
+  } catch {
+    // Speicher voll oder gesperrt: Die Kabel sind trotzdem auf der Karte, nur
+    // beim nächsten Mal ohne Netz nicht.
+  }
+}
 
 function useCables(map: L.Map | null): CableState {
-  const [state, setState] = useState<CableState>({ stand: null, status: "loading" });
+  const [state, setState] = useState<CableState>({
+    stand: null,
+    updateFailed: false,
+    checking: true,
+  });
 
   useEffect(() => {
     if (!map) return;
     let cancelled = false;
+    let recheckTimer: ReturnType<typeof setTimeout> | undefined;
     if (!map.getPane(CABLE_PANE)) {
       map.createPane(CABLE_PANE).style.zIndex = String(CABLE_PANE_Z);
     }
@@ -452,6 +503,8 @@ function useCables(map: L.Map | null): CableState {
     // demselben Grund.
     const renderer = L.canvas({ pane: CABLE_PANE, padding: 0.5 });
     const group = L.layerGroup();
+    // Stand der gerade gezeichneten Kabel (ms), null = noch keine.
+    let shownStand: number | null = null;
 
     // Nur ab CABLE_MIN_ZOOM auf der Karte; darunter ganz weg (dann wird auch
     // nichts gezeichnet).
@@ -459,44 +512,87 @@ function useCables(map: L.Map | null): CableState {
       if (map.getZoom() >= CABLE_MIN_ZOOM) group.addTo(map);
       else group.remove();
     };
+    map.on("zoomend", updateVisibility);
 
-    fetch("/api/kabel")
-      .then(async (res) => {
+    const draw = (data: CablePayload) => {
+      const normal: L.LatLngExpression[][] = [];
+      const high: L.LatLngExpression[][] = [];
+      for (const row of data.kabel) {
+        const line: L.LatLngExpression[] = [];
+        for (let i = 1; i + 1 < row.length; i += 2) line.push([row[i], row[i + 1]]);
+        (row[0] === 1 ? high : normal).push(line);
+      }
+      group.clearLayers();
+      const common = { renderer, interactive: false, lineCap: "round", lineJoin: "round" } as const;
+      for (const [lines, weight] of [
+        [normal, CABLE_WEIGHT],
+        [high, CABLE_WEIGHT_HIGH],
+      ] as const) {
+        L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: weight + CABLE_HALO_PX, opacity: 0.85 }).addTo(group);
+      }
+      for (const [lines, weight] of [
+        [normal, CABLE_WEIGHT],
+        [high, CABLE_WEIGHT_HIGH],
+      ] as const) {
+        L.polyline(lines, { ...common, color: CABLE_COLOR, weight, opacity: 1 }).addTo(group);
+      }
+      shownStand = Date.parse(data.stand);
+      updateVisibility();
+    };
+
+    // Zuerst sofort die gespeicherte Fassung zeigen (auch ohne Netz), dann
+    // frisch nachladen. setState im nächsten Bild, wie beim Track.
+    const stored = loadStoredCables();
+    if (stored) draw(stored.data);
+    const frame = requestAnimationFrame(() => {
+      if (shownStand !== null) {
+        setState({ stand: new Date(shownStand), updateFailed: false, checking: true });
+      }
+    });
+
+    const load = async (isRecheck: boolean) => {
+      let text: string;
+      let data: CablePayload;
+      try {
+        const res = await fetch("/api/kabel");
         if (!res.ok) throw new Error(String(res.status));
-        return (await res.json()) as CablePayload;
-      })
-      .then((data) => {
+        text = await res.text();
+        data = JSON.parse(text) as CablePayload;
+      } catch {
+        // Keine frischen Kabel: Die bisherigen bleiben stehen, das Feld wird
+        // gelb (bzw. "Keine Kabel", wenn es nie welche gab).
         if (cancelled) return;
-        const normal: L.LatLngExpression[][] = [];
-        const high: L.LatLngExpression[][] = [];
-        for (const row of data.kabel) {
-          const line: L.LatLngExpression[] = [];
-          for (let i = 1; i + 1 < row.length; i += 2) line.push([row[i], row[i + 1]]);
-          (row[0] === 1 ? high : normal).push(line);
-        }
-        const common = { renderer, interactive: false, lineCap: "round", lineJoin: "round" } as const;
-        for (const [lines, weight] of [
-          [normal, CABLE_WEIGHT],
-          [high, CABLE_WEIGHT_HIGH],
-        ] as const) {
-          L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: weight + CABLE_HALO_PX, opacity: 0.85 }).addTo(group);
-        }
-        for (const [lines, weight] of [
-          [normal, CABLE_WEIGHT],
-          [high, CABLE_WEIGHT_HIGH],
-        ] as const) {
-          L.polyline(lines, { ...common, color: CABLE_COLOR, weight, opacity: 1 }).addTo(group);
-        }
-        updateVisibility();
-        map.on("zoomend", updateVisibility);
-        setState({ stand: new Date(data.stand), status: "ok" });
-      })
-      .catch(() => {
-        if (!cancelled) setState({ stand: null, status: "error" });
-      });
+        setState({
+          stand: shownStand === null ? null : new Date(shownStand),
+          updateFailed: true,
+          checking: false,
+        });
+        return;
+      }
+      if (cancelled) return;
+      const stand = Date.parse(data.stand);
+      // Nur eine NEUERE Fassung ersetzt die gezeichnete (ohne Netz kann der
+      // Hintergrund-Helfer der Web-App auch eine ältere liefern).
+      if (shownStand === null || stand > shownStand) {
+        draw(data);
+        storeCables(text);
+      }
+      const shown = shownStand ?? stand;
+      if (!isRecheck && Date.now() - shown > CABLE_OUTDATED_MS) {
+        // Alte Fassung vom Server: einmal nachfragen (siehe
+        // CABLE_RECHECK_DELAY_MS), erst dann gelb.
+        setState({ stand: new Date(shown), updateFailed: false, checking: true });
+        recheckTimer = setTimeout(() => void load(true), CABLE_RECHECK_DELAY_MS);
+        return;
+      }
+      setState({ stand: new Date(shown), updateFailed: false, checking: false });
+    };
+    void load(false);
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
+      clearTimeout(recheckTimer);
       map.off("zoomend", updateVisibility);
       group.remove();
       // Die Zeichenfläche hängt Leaflet selbst an die Karte; ohne das hier
@@ -683,13 +779,19 @@ export default function FlightMode({
       }${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
   // Stand der Kabel: Datum und Uhrzeit, wann der Server sie zuletzt beim Land
-  // abgeholt hat (einmal am Tag, siehe /api/kabel).
-  const cableText =
-    cables.status === "ok" && cables.stand
-      ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${cables.stand.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
-      : cables.status === "loading"
-        ? "Kabel lädt…"
-        : "Keine Kabel";
+  // abgeholt hat (einmal am Tag, siehe /api/kabel). Gelb, wenn die
+  // Aktualisierung nicht geklappt hat — die Karte zeigt dann weiter die Kabel
+  // dieses Datums — oder wenn es gar keine Kabel gibt.
+  const cableText = cables.stand
+    ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${cables.stand.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+    : cables.checking
+      ? "Kabel lädt…"
+      : "Keine Kabel";
+  const cableWarning =
+    !cables.checking &&
+    (cables.stand === null ||
+      cables.updateFailed ||
+      now - cables.stand.getTime() > CABLE_OUTDATED_MS);
   const windOutdated =
     lastUpdated !== null && now - lastUpdated.getTime() > WIND_OUTDATED_MS;
   const trackText =
@@ -732,11 +834,8 @@ export default function FlightMode({
         <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
           {updatedText}
         </span>
-        {/* Gelb, wenn die Kabel nicht geladen werden konnten — dann fehlen
-            sie auf der Karte, und das soll niemand übersehen. */}
-        <span
-          className={`px-1.5 py-0.5 shadow ${cables.status === "error" ? "bg-amber-300" : "bg-white/90"}`}
-        >
+        {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
+        <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
           {cableText}
         </span>
         {trackText && (
