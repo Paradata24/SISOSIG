@@ -345,7 +345,9 @@ also alle 3 h, wirklich neue Werte).
   LG 1/2006; WFS `p_bz-FlightObstacles:LinearObstacles` auf
   `geoservices6.civis.bz.it`). Abgeholt von `/api/kabel` und **einmal am Tag
   aktualisiert** über den Vercel-CDN-Cache (`s-maxage` 24 h,
-  `stale-while-revalidate`) — kein Cron nötig. Gezeichnet in
+  `stale-while-revalidate`) — kein Cron nötig. Die lange Nachfrist ist hier
+  Absicht (Kabel sind keine Live-Werte; die Regel „kurze Nachfrist" unter
+  „Caching nicht entfernen" gilt für sie nicht). Gezeichnet in
   `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
   gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`).

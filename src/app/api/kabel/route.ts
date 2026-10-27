@@ -43,6 +43,11 @@ const WFS_URL =
 // selbst (CABLE_STORAGE_KEY in FlightMode.tsx).
 // Fehlerantworten bekommen bewusst KEINEN solchen Header, damit sich eine
 // Störung beim Land nicht einen Tag lang festsetzt.
+// Die lange Nachfrist ist hier Absicht — anders als bei /api/wind und
+// /api/history, wo sie seit Okt. 2026 kurz ist, weil Live-Werte sonst
+// minutenlang hinterherhingen: Kabel ändern sich selten, und FlightMode fragt
+// bei einer alten Fassung nach 20 s noch einmal nach (CABLE_RECHECK_DELAY_MS),
+// dann ist die im Hintergrund geholte frische da.
 const RESPONSE_CACHE_CONTROL =
   "public, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=2592000";
 
