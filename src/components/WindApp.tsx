@@ -223,7 +223,7 @@ export default function WindApp() {
               onClick={enterFlightMode}
               aria-label="Should I stay or should I GO – Flugmodus starten"
               title="Flugmodus starten"
-              className="-rotate-[1.5deg] bg-black px-3 py-1.5 text-[15px] leading-tight font-bold tracking-wide text-[#fbb11a] uppercase shadow-[-4px_4px_0_#e0403a] transition-[translate,box-shadow] duration-75 active:-translate-x-1 active:translate-y-1 active:shadow-none sm:text-lg"
+              className="-rotate-[1.5deg] bg-black px-2.5 py-1.5 text-[15px] leading-tight font-bold text-[#fbb11a] uppercase shadow-[-4px_4px_0_#e0403a] transition-[translate,box-shadow] duration-75 active:-translate-x-1 active:translate-y-1 active:shadow-none sm:text-lg"
             >
               Should I stay or should I <span className="text-white">GO</span>
             </button>

@@ -32,7 +32,12 @@ export default function StationFilterPicker({
   onChange: (filter: StationFilter) => void;
   /** Liste mittig unter dem Schild (Karte) oder rechtsbündig (Titel-Balken). */
   align?: "center" | "right";
-  /** Gleiche Höhe wie die Knöpfe im Titel-Balken (36 px). */
+  /**
+   * Für den Titel-Balken: 36 px hoch und FESTE Breite (passend für den
+   * längsten Namen "WINDANZEIGER"). Sonst verschöbe jeder Filterwechsel den
+   * Titel daneben bzw. ließe ihn umbrechen (Wunsch des Projektbesitzers: der
+   * Titel bleibt immer gleich).
+   */
   tall?: boolean;
   /** Zusätzlicher Inhalt unter der Filterliste (Quellen im Titel-Balken). */
   footer?: ReactNode;
@@ -71,7 +76,7 @@ export default function StationFilterPicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={`Stationsfilter: ${getStationFilterLabel(value)}`}
-        className={`flex items-center gap-1.5 border border-black bg-white px-2 text-xs ${tall ? "h-9" : "py-0.5"} font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`}
+        className={`flex items-center gap-1.5 border border-black bg-white px-2 text-xs ${tall ? "h-9 w-28 justify-between" : "py-0.5"} font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`}
       >
         {getStationFilterMapLabel(value)}
         <svg
