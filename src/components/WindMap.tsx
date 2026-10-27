@@ -29,6 +29,7 @@ import {
 import { assessLive } from "@/lib/plausibility";
 import staatsgrenzen from "@/data/staatsgrenzen.json";
 import StationFilterPicker from "@/components/StationFilterPicker";
+import FlightMode from "@/components/FlightMode";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
 // ersten Klick auf eine Station) und steckt deshalb in einem eigenen
@@ -650,6 +651,9 @@ export default function WindMap({
   selectedStationCode,
   onSelectStation,
   onDataLoaded,
+  flightMode,
+  lastUpdated,
+  onExitFlightMode,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -682,8 +686,20 @@ export default function WindMap({
    * ihn als "Zuletzt aktualisiert" unter dem Rad. Muss eine feste Referenz sein.
    */
   onDataLoaded: (time: Date) => void;
+  /**
+   * Flugmodus an ("GO" im Titel, siehe FlightMode.tsx): Standort, große
+   * Zoom-Tasten und Bildschirm-Wachhalten über der Karte.
+   */
+  flightMode: boolean;
+  /** Letzter Abruf der Live-Werte, für die Statuszeile im Flugmodus. */
+  lastUpdated: Date | null;
+  onExitFlightMode: () => void;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
+  // Die Leaflet-Karte selbst, für den Flugmodus: Er liegt außerhalb von
+  // <MapContainer> (seine Tasten sollen keine Karten-Gesten auslösen) und
+  // steuert die Karte deshalb über dieses Objekt.
+  const [leafletMap, setLeafletMap] = useState<L.Map | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
@@ -819,7 +835,12 @@ export default function WindMap({
         }
         setError(null);
         setStations(data as WindStation[]);
-        onDataLoaded(new Date());
+        // Ohne Netz liefert der Hintergrund-Helfer der Web-App (public/sw.js)
+        // die zuletzt gespeicherten Werte, mit dem Zeitpunkt des Speicherns
+        // in dieser Kopfzeile. Dann diesen Zeitpunkt melden, nicht "jetzt" —
+        // sonst sähen alte Werte im Flug wie frische aus.
+        const storedAt = res.headers.get("x-sisosig-gespeichert");
+        onDataLoaded(storedAt ? new Date(storedAt) : new Date());
       } catch {
         if (!cancelled && isInitial) {
           setError("Winddaten konnten nicht geladen werden");
@@ -865,6 +886,7 @@ export default function WindMap({
   return (
     <div className="relative h-full w-full">
       <MapContainer
+        ref={setLeafletMap}
         center={SOUTH_TYROL_CENTER}
         zoom={SOUTH_TYROL_ZOOM}
         maxZoom={MAP_MAX_ZOOM}
@@ -980,6 +1002,15 @@ export default function WindMap({
           </div>
         )}
       </div>
+      {flightMode && (
+        <FlightMode
+          map={leafletMap}
+          defaultCenter={SOUTH_TYROL_CENTER}
+          defaultZoom={SOUTH_TYROL_ZOOM}
+          lastUpdated={lastUpdated}
+          onExit={onExitFlightMode}
+        />
+      )}
       {selectedStation && (
         <WindHistoryPanel
           station={selectedStation}

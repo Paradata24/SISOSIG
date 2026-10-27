@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow_Semi_Condensed } from "next/font/google";
 import "./globals.css";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const barlowSemiCondensed = Barlow_Semi_Condensed({
   variable: "--font-barlow-semi-condensed",
@@ -11,6 +12,15 @@ const barlowSemiCondensed = Barlow_Semi_Condensed({
 export const metadata: Metadata = {
   title: "Should I stay or should I go",
   description: "Live-Windwerte Südtiroler Wetterstationen auf einer Karte",
+  // Für die Web-App am iPhone (Home-Bildschirm): Name unter dem Symbol und
+  // ohne Safari-Leisten öffnen. Die Uhrzeit-Leiste oben bleibt hell
+  // ("default"), die Seite beginnt darunter — so verdeckt nichts den
+  // Titelbalken. Symbol: src/app/apple-icon.png, Rest in manifest.ts.
+  appleWebApp: {
+    capable: true,
+    title: "SISOSIG",
+    statusBarStyle: "default",
+  },
 };
 
 // Färbt die Browserleiste am Handy passend zum hellen Modus ein.
@@ -49,7 +59,10 @@ export default function RootLayout({
         <link rel="dns-prefetch" href="https://server.arcgisonline.com" />
         <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <ServiceWorkerRegistration />
+      </body>
     </html>
   );
 }

@@ -23,6 +23,9 @@ export default function WindMapLoader({
   selectedStationCode,
   onSelectStation,
   onDataLoaded,
+  flightMode,
+  lastUpdated,
+  onExitFlightMode,
 }: {
   baseLayer: BaseLayer;
   stationFilter: StationFilter;
@@ -41,6 +44,10 @@ export default function WindMapLoader({
   onSelectStation: (stationCode: string | null) => void;
   /** Zeitpunkt jedes erfolgreichen Abrufs der Live-Werte, siehe WindMap. */
   onDataLoaded: (time: Date) => void;
+  /** Flugmodus an/aus und was er braucht, siehe WindMap/FlightMode. */
+  flightMode: boolean;
+  lastUpdated: Date | null;
+  onExitFlightMode: () => void;
 }) {
   return (
     <WindMap
@@ -54,6 +61,9 @@ export default function WindMapLoader({
       selectedStationCode={selectedStationCode}
       onSelectStation={onSelectStation}
       onDataLoaded={onDataLoaded}
+      flightMode={flightMode}
+      lastUpdated={lastUpdated}
+      onExitFlightMode={onExitFlightMode}
     />
   );
 }
