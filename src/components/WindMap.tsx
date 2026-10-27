@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   CircleMarker,
-  GeoJSON,
   MapContainer,
   Marker,
   TileLayer,
@@ -24,7 +23,6 @@ import {
   type WindStation,
 } from "@/lib/wind";
 import { assessLive } from "@/lib/plausibility";
-import staatsgrenzen from "@/data/staatsgrenzen.json";
 import StationFilterPicker from "@/components/StationFilterPicker";
 import FlightMode from "@/components/FlightMode";
 
@@ -48,8 +46,6 @@ const WindHistoryPanel = dynamic(loadHistoryPanel, {
     </div>
   ),
 });
-
-const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
@@ -598,11 +594,12 @@ function ViewportReporter({
   return null;
 }
 
-// Leaflet merkt nur Änderungen der FENSTER-Größe. Blendet WindApp den Zeitbalken
-// aus oder ein (Station geöffnet/geschlossen), wird der Kartenbereich höher
-// bzw. niedriger — ohne diese Meldung bliebe die Karte im alten Format stehen
-// (Kacheln fehlen am unteren Rand, Kartenmitte verrutscht). Muss innerhalb von
-// <MapContainer> stehen.
+// Leaflet merkt nur Änderungen der FENSTER-Größe. Ändert sich der
+// Kartenbereich auf anderem Weg, bliebe die Karte ohne diese Meldung im alten
+// Format stehen (Kacheln fehlen am Rand, Kartenmitte verrutscht). Früher
+// passierte das beim Ein-/Ausblenden des Zeitbalkens; seit Okt. 2026 liegt er
+// halb durchsichtig ÜBER der Karte (WindApp), die Karte füllt immer den ganzen
+// Bildschirm. Bleibt als Absicherung. Muss innerhalb von <MapContainer> stehen.
 function ContainerResizeWatcher() {
   const map = useMap();
   useEffect(() => {
@@ -629,6 +626,7 @@ export default function WindMap({
   flightMode,
   lastUpdated,
   onExitFlightMode,
+  topInset,
 }: {
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild oben mittig auf der Karte). */
@@ -663,6 +661,12 @@ export default function WindMap({
   /** Letzter Abruf der Live-Werte, für die Statuszeile im Flugmodus. */
   lastUpdated: Date | null;
   onExitFlightMode: () => void;
+  /**
+   * Höhe des halb durchsichtigen Titel-Balkens (px), der auf der Hauptseite
+   * ÜBER der Karte liegt (WindApp); im Flugmodus 0. Die Fehlermeldung oben
+   * mittig rückt um so viel nach unten, sonst läge sie unter dem Balken.
+   */
+  topInset: number;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   // Die Leaflet-Karte selbst, für den Flugmodus: Er liegt außerhalb von
@@ -883,16 +887,6 @@ export default function WindMap({
           className="topo-ebene"
           maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
         />
-        {/* Eigene Staatsgrenzen-Linie nur noch im Flugmodus. Auf der
-            Hauptseite auf Wunsch des Projektbesitzers entfernt (Okt. 2026) —
-            OpenTopoMap zeichnet die Grenzen ohnehin selbst ein. */}
-        {flightMode && (
-          <GeoJSON
-            data={staatsgrenzen as GeoJSON.GeoJsonObject}
-            style={STAATSGRENZE_STYLE}
-            interactive={false}
-          />
-        )}
         <WindMarkers
           stations={displayStations}
           onSelect={handleSelect}
@@ -912,7 +906,10 @@ export default function WindMap({
           Antippen klappt die Filterliste auf (StationFilterPicker).
           pointer-events-none an der Spalte: Neben dem Schild gehen Ziehen
           und Antippen der Karte hindurch; das Schild selbst fängt Tipps ab. */}
-      <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
+      <div
+        className="pointer-events-none absolute left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2"
+        style={{ top: topInset + 12 }}
+      >
         {flightMode && (
           <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
         )}

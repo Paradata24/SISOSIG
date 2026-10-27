@@ -174,6 +174,21 @@ export default function WindApp() {
     ensureTimeline();
   }, [slots, ensureTimeline]);
 
+  // Titel- und Zeitbalken liegen auf der Hauptseite halb durchsichtig ÜBER der
+  // Karte (Wunsch des Projektbesitzers, Okt. 2026): Die Karte füllt dafür den
+  // ganzen Bildschirm, die Balken schweben oben und unten darüber. Die Höhe
+  // des Titel-Balkens bekommt WindMap, damit die Fehlermeldung darunter
+  // rückt. Gemessen statt fest eingetragen: Unter 360 px Breite bricht der
+  // Titel in zwei Zeilen um. Im Flugmodus gibt es den Balken nicht (0).
+  const [headerEl, setHeaderEl] = useState<HTMLElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useEffect(() => {
+    if (!headerEl) return;
+    const observer = new ResizeObserver(() => setHeaderHeight(headerEl.offsetHeight));
+    observer.observe(headerEl);
+    return () => observer.disconnect();
+  }, [headerEl]);
+
   // Welche Stationen gerade im Kartenausschnitt sichtbar sind (meldet
   // WindMap nach jedem Verschieben/Zoomen). Daraus entsteht der Farbstrich
   // im Zeitbalken — er zeigt also immer das Gebiet, das man gerade ansieht.
@@ -208,7 +223,11 @@ export default function WindApp() {
       {/* Im Flugmodus ist der Titel-Balken weg (ganzer Bildschirm für die
           Karte); beendet wird er über die ✕-Taste auf der Karte. */}
       {!flightMode && (
-        <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        // Halb durchsichtig (bg-white/50) über der Karte, siehe headerHeight.
+        <header
+          ref={setHeaderEl}
+          className="absolute inset-x-0 top-0 z-[1100] flex items-center gap-2 border-b border-zinc-200 bg-white/50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/50"
+        >
           {/* Der GANZE Titel ist der Knopf für den Flugmodus (Wunsch des
               Projektbesitzers, Okt. 2026). Aussehen vom Projektbesitzer aus
               Entwürfen gewählt ("London Calling", nach dem Plattencover von
@@ -280,7 +299,9 @@ export default function WindApp() {
           </div>
         </header>
       )}
-      <main className="min-h-0 flex-1">
+      {/* Die Karte füllt den ganzen Bildschirm, auch unter den Balken. z-0
+          hält alle Leaflet-Ebenen unter Titel- und Zeitbalken. */}
+      <main className="absolute inset-0 z-0">
         <WindMapLoader
           stationFilter={stationFilter}
           onStationFilterChange={setStationFilter}
@@ -296,21 +317,24 @@ export default function WindApp() {
           flightMode={flightMode}
           lastUpdated={lastUpdated}
           onExitFlightMode={exitFlightMode}
+          topInset={flightMode ? 0 : headerHeight}
         />
       </main>
-      {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Bei
+      {/* Unten halb durchsichtig ÜBER der Karte (siehe headerHeight). Bei
           geöffneter Station ist sie weg (Wunsch des Projektbesitzers): Dann
           zeigt die Karte nur die aktuellen Werte, und der Verlaufsbalken
           reicht bis zum Seitenende. */}
       {selectedStationCode === null && !flightMode && (
-        <TimeSlider
-          slots={slots}
-          selectedTime={clampedTime}
-          onChange={setSelectedTime}
-          status={timelineStatus}
-          stripColors={stripColors}
-          lastUpdated={lastUpdated}
-        />
+        <div className="absolute inset-x-0 bottom-0 z-[1000]">
+          <TimeSlider
+            slots={slots}
+            selectedTime={clampedTime}
+            onChange={setSelectedTime}
+            status={timelineStatus}
+            stripColors={stripColors}
+            lastUpdated={lastUpdated}
+          />
+        </div>
       )}
     </>
   );

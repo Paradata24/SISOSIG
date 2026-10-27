@@ -132,7 +132,6 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
 | `supabase/*.sql` | Tabellen-Schemas, Cron, einmalige Migrations-/Aufräumskripte |
-| `src/data/staatsgrenzen.json` | Staatsgrenzen-Linie (nur noch im Flugmodus) |
 
 ## Feste Entscheidungen (nicht ohne Rücksprache ändern)
 
@@ -212,9 +211,17 @@ also alle 3 h, wirklich neue Werte).
   Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
   Das Aussehen macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
   (eine Ebene, ein Filter für Hauptseite und Flugmodus, siehe unten bei
-  „Eigene, kräftigere Karte"). **Keine eigene Staatsgrenzen-Linie auf der
-  Hauptseite** (Okt. 2026 auf Wunsch entfernt; OpenTopoMap zeigt die Grenzen
-  selbst), im Flugmodus ist sie noch da. **Lizenz:**
+  „Eigene, kräftigere Karte"). **Keine eigene Staatsgrenzen-Linie mehr**,
+  weder auf der Hauptseite noch im Flugmodus (Okt. 2026 auf Wunsch entfernt,
+  samt `src/data/staatsgrenzen.json`; OpenTopoMap zeigt die Grenzen selbst).
+- **Titel- und Zeitbalken der Hauptseite halb durchsichtig** (Hintergrund
+  50 %, Okt. 2026, Wunsch des Projektbesitzers; **nicht** der
+  Verlaufsbalken, der bleibt voll deckend). Dafür füllt die Karte den
+  ganzen Bildschirm, und beide Balken liegen darüber (`WindApp`: `<main>`
+  `absolute inset-0`, Balken `absolute` oben/unten). Die gemessene Höhe des
+  Titel-Balkens geht als `topInset` an `WindMap`, damit die Fehlermeldung
+  oben mittig darunter rückt. Die weichen Ränder des Zeitrads haben dazu
+  passend nur 0,5 Deckkraft (sonst weiße Flecken). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
   Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
   (`MAP_SOURCES`) — nicht entfernen.
@@ -246,8 +253,9 @@ also alle 3 h, wirklich neue Werte).
     Projektbesitzers): Die Karte zeigt dann nur die aktuellen Werte, der
     Verlaufsbalken reicht bis zum Seitenende. Beim Schließen steht der
     Zeitbalken wieder auf „Aktuell". Der Zustand „geöffnete Station" liegt
-    dafür in `WindApp` (nicht in `WindMap`); `WindMap` meldet Größenänderungen
-    des Kartenbereichs an Leaflet (`ContainerResizeWatcher`).
+    dafür in `WindApp` (nicht in `WindMap`). Die Karte selbst ändert dabei
+    ihre Größe nicht mehr (der Zeitbalken liegt über ihr);
+    `ContainerResizeWatcher` in `WindMap` bleibt als Absicherung.
   - **Kein Abspielknopf** (Wunsch des Projektbesitzers: unnötig) — nicht
     wieder einführen. Die ◀ ▶-Knöpfe sind ebenfalls weg; per Tastatur gehen die
     Pfeiltasten.

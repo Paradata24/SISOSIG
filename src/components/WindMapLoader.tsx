@@ -24,6 +24,7 @@ export default function WindMapLoader({
   flightMode,
   lastUpdated,
   onExitFlightMode,
+  topInset,
 }: {
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
@@ -43,6 +44,8 @@ export default function WindMapLoader({
   flightMode: boolean;
   lastUpdated: Date | null;
   onExitFlightMode: () => void;
+  /** Höhe des Titel-Balkens über der Karte (px), siehe WindMap. */
+  topInset: number;
 }) {
   return (
     <WindMap
@@ -57,6 +60,7 @@ export default function WindMapLoader({
       flightMode={flightMode}
       lastUpdated={lastUpdated}
       onExitFlightMode={onExitFlightMode}
+      topInset={topInset}
     />
   );
 }
