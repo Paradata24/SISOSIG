@@ -226,7 +226,9 @@ export default function WindApp() {
         // Halb durchsichtig (bg-white/50) über der Karte, siehe headerHeight.
         <header
           ref={setHeaderEl}
-          className="absolute inset-x-0 top-0 z-[1100] flex items-center gap-2 border-b border-zinc-200 bg-white/50 px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900/50"
+          // pt mit safe-area: Am iPhone (App) reicht der Balken samt halb
+          // durchsichtigem Hintergrund bis unter Uhrzeit und Akku (layout.tsx).
+          className="absolute inset-x-0 top-0 z-[1100] flex items-center gap-2 border-b border-zinc-200 bg-white/50 px-3 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 dark:border-zinc-800 dark:bg-zinc-900/50"
         >
           {/* Der GANZE Titel ist der Knopf für den Flugmodus (Wunsch des
               Projektbesitzers, Okt. 2026). Aussehen vom Projektbesitzer aus

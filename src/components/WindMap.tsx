@@ -908,7 +908,8 @@ export default function WindMap({
           und Antippen der Karte hindurch; das Schild selbst fängt Tipps ab. */}
       <div
         className="pointer-events-none absolute left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2"
-        style={{ top: topInset + 12 }}
+        // Im Flugmodus (kein Titel-Balken) unter der iPhone-Statusleiste.
+        style={{ top: topInset > 0 ? topInset + 12 : "calc(0.75rem + env(safe-area-inset-top))" }}
       >
         {flightMode && (
           <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />

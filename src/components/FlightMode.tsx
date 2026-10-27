@@ -1068,9 +1068,11 @@ function useKk7Layer(
   return { enabled, toggle };
 }
 
-// Eine Zeile im Menü: groß (56 px hoch) für Handschuhe, eingeschaltet gelb.
+// Eine Zeile im Menü, eingeschaltet gelb. 40 px hoch (zuerst 56 px; auf
+// Wunsch des Projektbesitzers flacher, damit später weitere Einträge Platz
+// haben) — mit Handschuhen noch gut zu treffen.
 function menuOption(active: boolean): string {
-  return `flex h-14 w-full items-center border-2 border-black px-4 text-left text-base font-bold select-none ${
+  return `flex h-10 w-full items-center border-2 border-black px-3 text-left text-sm font-bold select-none ${
     active ? "bg-amber-300 active:bg-amber-400" : "bg-white active:bg-zinc-200"
   }`;
 }
@@ -1362,7 +1364,7 @@ export default function FlightMode({
           ✕ und START/STOP haben wie die Zoomtasten einen halb durchsichtigen
           Hintergrund (Wunsch des Projektbesitzers, Okt. 2026); die gelben
           Nachfragen und ihr ✕ bleiben voll deckend, sie sollen auffallen. */}
-      <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
+      <div className="pointer-events-none absolute top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[1000] flex flex-col items-start gap-3">
         <div className="flex items-start gap-3">
           <div className="flex flex-col gap-3">
             {exitConfirm.armed ? (
@@ -1491,7 +1493,7 @@ export default function FlightMode({
 
       {/* Oben rechts: Plus über Minus, mit Abstand, damit man mit
           Handschuhen nicht beide zugleich trifft. */}
-      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col gap-3">
+      <div className="pointer-events-none absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 z-[1000] flex flex-col gap-3">
         <button
           type="button"
           onClick={handleZoomIn}
@@ -1616,7 +1618,7 @@ export default function FlightMode({
       </div>
       {/* Menü (Wunsch des Projektbesitzers, Okt. 2026): öffnet sich über die
           Taste mit den drei Strichen unten links. Groß und mit hohen Zeilen,
-          damit man es mit Handschuhen trifft. Eingeschaltete Ebenen und der
+          damit man es mit Handschuhen trifft (Zeilen 40 px, siehe menuOption). Eingeschaltete Ebenen und der
           aktive Stationsfilter haben einen GELBEN Hintergrund (wie die
           Nachfragen START/STOP), alles andere ist weiß. Ein Tipp schaltet um,
           das Menü bleibt offen; geschlossen wird es mit ✕ oben rechts. Es
@@ -1635,16 +1637,16 @@ export default function FlightMode({
               onClick={() => setMenuOpen(false)}
               aria-label="Menü schließen"
               title="Menü schließen"
-              className="flex h-14 w-14 items-center justify-center border-l-2 border-black active:bg-zinc-200"
+              className="flex h-11 w-11 items-center justify-center border-l-2 border-black active:bg-zinc-200"
             >
               <svg width="24" height="24" viewBox="0 0 20 20" aria-hidden="true">
                 <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
               </svg>
             </button>
           </div>
-          <div className="flex flex-col gap-4 p-3">
+          <div className="flex flex-col gap-3 p-3">
             <section>
-              <h2 className="mb-2 text-xs font-bold tracking-wide text-zinc-500">EBENEN</h2>
+              <h2 className="mb-1.5 text-xs font-bold tracking-wide text-zinc-500">EBENEN</h2>
               <button
                 type="button"
                 onClick={kk7.toggle}
@@ -1652,12 +1654,12 @@ export default function FlightMode({
                 className={`${menuOption(kk7.enabled)} justify-between`}
               >
                 <span>KK7-Thermikkarte</span>
-                <span className="text-sm">{kk7.enabled ? "AN" : "AUS"}</span>
+                <span className="text-xs">{kk7.enabled ? "AN" : "AUS"}</span>
               </button>
             </section>
             <section>
-              <h2 className="mb-2 text-xs font-bold tracking-wide text-zinc-500">WINDSTATIONEN</h2>
-              <ul aria-label="Stationsfilter" className="flex flex-col gap-2">
+              <h2 className="mb-1.5 text-xs font-bold tracking-wide text-zinc-500">WINDSTATIONEN</h2>
+              <ul aria-label="Stationsfilter" className="flex flex-col gap-1.5">
                 {STATION_FILTER_ORDER.map((filter) => (
                   <li key={filter}>
                     <button

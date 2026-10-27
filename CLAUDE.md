@@ -214,14 +214,21 @@ also alle 3 h, wirklich neue Werte).
   „Eigene, kräftigere Karte"). **Keine eigene Staatsgrenzen-Linie mehr**,
   weder auf der Hauptseite noch im Flugmodus (Okt. 2026 auf Wunsch entfernt,
   samt `src/data/staatsgrenzen.json`; OpenTopoMap zeigt die Grenzen selbst).
-- **Titel- und Zeitbalken der Hauptseite halb durchsichtig** (Hintergrund
-  50 %, Okt. 2026, Wunsch des Projektbesitzers; **nicht** der
-  Verlaufsbalken, der bleibt voll deckend). Dafür füllt die Karte den
+- **Titel- und Zeitbalken der Hauptseite durchscheinend** (Okt. 2026,
+  Wunsch des Projektbesitzers): Titel-Balken 50 %, Zeitbalken 70 %
+  Hintergrund-Deckkraft; **nicht** der Verlaufsbalken, der bleibt voll
+  deckend. **iPhone-Statusleiste** (Uhrzeit/Akku): Die Seite reicht in der
+  App bis darunter (`viewportFit: "cover"`, `statusBarStyle:
+  "black-translucent"` in `src/app/layout.tsx`), der Titel-Balken samt
+  50-%-Hintergrund wächst um `env(safe-area-inset-top)` hinein. Folge: iOS
+  schreibt Uhrzeit/Akku weiß; wirkt erst nach erneutem Hinzufügen der App
+  zum Home-Bildschirm. Im Flugmodus rücken die Tasten oben um denselben
+  Abstand nach unten. Dafür füllt die Karte den
   ganzen Bildschirm, und beide Balken liegen darüber (`WindApp`: `<main>`
   `absolute inset-0`, Balken `absolute` oben/unten). Die gemessene Höhe des
   Titel-Balkens geht als `topInset` an `WindMap`, damit die Fehlermeldung
   oben mittig darunter rückt. Die weichen Ränder des Zeitrads haben dazu
-  passend nur 0,5 Deckkraft (sonst weiße Flecken). **Lizenz:**
+  passend dieselbe Deckkraft wie der Zeitbalken (0,7; sonst weiße Flecken). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
   Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
   (`MAP_SOURCES`) — nicht entfernen.
@@ -416,9 +423,9 @@ also alle 3 h, wirklich neue Werte).
   Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
   Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
 - **Menü im Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers): Taste mit
-  drei Strichen unten links öffnet ein großes Menü (56-px-Zeilen für
-  Handschuhe) mit „Ebenen" (KK7 an/aus) und „Windstationen" (alle
-  Stationsfilter). **Eingeschaltetes hat gelben Hintergrund.** Ein Tipp
+  drei Strichen unten links öffnet ein großes Menü mit „Ebenen" (KK7 an/aus) und „Windstationen" (alle
+  Stationsfilter). Zeilen 40 px (`menuOption`; zuerst 56 px, flacher gewünscht,
+  damit weitere Einträge Platz haben). **Eingeschaltetes hat gelben Hintergrund.** Ein Tipp
   schaltet um, das Menü bleibt offen; zu über ✕. Das Filter-Schild oben
   mittig bleibt vorerst zusätzlich stehen (Rückfrage beim Projektbesitzer
   offen). In `FlightMode.tsx` (`menuOpen`, `menuOption`).

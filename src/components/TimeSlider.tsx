@@ -436,9 +436,12 @@ export default function TimeSlider({
     // liegt bewusst mit etwas Abstand zum Seitenrand unten: Am unteren
     // iPhone-Rand löst die Wischgeste (Home-Leiste) sonst das Verschieben der
     // Seite aus, wenn man am Rad zieht.
-    // Hintergrund halb durchsichtig (Wunsch des Projektbesitzers, Okt. 2026):
-    // Der Balken liegt über der Karte (WindApp), die durchscheint.
-    <div className="shrink-0 border-t border-zinc-200 bg-white/50 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900/50">
+    // Hintergrund zu 70 % deckend (Wunsch des Projektbesitzers, Okt. 2026:
+    // erst 50 %, dann 20 % mehr): Der Balken liegt über der Karte (WindApp),
+    // die durchscheint. Unten mindestens 0,75rem Abstand, am iPhone so viel
+    // wie die Home-Leiste braucht (env(...), seit viewport-fit=cover nicht
+    // mehr 0) — max() statt Summe, sonst würde der Balken dort unnötig hoch.
+    <div className="shrink-0 border-t border-zinc-200 bg-white/70 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] dark:border-zinc-800 dark:bg-zinc-900/70">
       <div className="flex items-center gap-2 px-2">
         <div className="w-[68px] shrink-0 leading-tight tabular-nums" aria-live="off">
           {status === "error" ? (
@@ -470,15 +473,15 @@ export default function TimeSlider({
           {width > 0 && (
             <svg width={width} height={WHEEL_H} aria-hidden="true" className="block">
               <defs>
-                {/* Weiche Ränder: Dort "kippt" das Rad weg. Deckkraft 0,5 wie
-                    der halb durchsichtige Balken-Hintergrund — mit mehr
+                {/* Weiche Ränder: Dort "kippt" das Rad weg. Deckkraft 0,7 wie
+                    der durchscheinende Balken-Hintergrund — mit mehr
                     stünden an den Rändern weiße Flecken über der Karte. */}
                 <linearGradient id="zeitrad-rand-links" x1="0" x2="1" y1="0" y2="0">
-                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.5" className="dark:[stop-color:#18181b]" />
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.7" className="dark:[stop-color:#18181b]" />
                   <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
                 </linearGradient>
                 <linearGradient id="zeitrad-rand-rechts" x1="1" x2="0" y1="0" y2="0">
-                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.5" className="dark:[stop-color:#18181b]" />
+                  <stop offset="0" stopColor="#ffffff" stopOpacity="0.7" className="dark:[stop-color:#18181b]" />
                   <stop offset="1" stopColor="#ffffff" stopOpacity="0" className="dark:[stop-color:#18181b]" />
                 </linearGradient>
               </defs>
