@@ -869,36 +869,30 @@ export default function WindMap({
             Kacheln parallel — drei Unterdomains bedeuten dann nur drei
             getrennte Verbindungsaufbauten (langsamer, vor allem im
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
-        {flightMode ? (
-          // Flugmodus: immer OpenTopoMap, aber KRÄFTIGER als die normale
-          // Karte und mit einem Hauch Farbe (.topo-ebene-flug in
-          // globals.css) — im Flug muss man Grate,
-          // Täler und Hänge auch bei Sonne auf dem Display erkennen
-          // (Wunsch des Projektbesitzers, Okt. 2026). OpenTopoMap hat Höhenlinien und Schummerung in einem Bild. Eigener
-          // key, weil Leaflet die Klasse einer bestehenden Ebene nicht tauscht.
-          <TileLayer
-            key="opentopomap-flug"
-            url={TOPO_URL}
-            className="topo-ebene-flug"
-            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
-          />
-        ) : (
-          // OpenTopoMap (einzige Karte der Hauptseite): bringt Höhenlinien,
-          // Schummerung und Ortsnamen schon selbst mit, deshalb keine weiteren
-          // Ebenen darüber. Die Klasse .topo-ebene (globals.css) macht daraus
-          // eine sehr helle Graustufenkarte, damit die Windfarben leuchten.
-          <TileLayer
-            key="opentopomap"
-            url={TOPO_URL}
-            className="topo-ebene"
-            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
+        {/* OpenTopoMap, auf der Hauptseite und im Flugmodus GLEICH dargestellt
+            (Wunsch des Projektbesitzers, Okt. 2026; vorher war die Hauptseite
+            eine sehr helle Graustufenkarte): kräftig und mit einem Hauch
+            Farbe (.topo-ebene in globals.css), damit Grate, Täler und Hänge
+            auch bei Sonne auf dem Display erkennbar sind. Bringt Höhenlinien,
+            Schummerung und Ortsnamen schon selbst mit, deshalb keine weiteren
+            Ebenen darüber. Eine einzige Ebene für beide Ansichten: Beim
+            Wechsel in den Flugmodus muss nichts neu geladen werden. */}
+        <TileLayer
+          key="opentopomap"
+          url={TOPO_URL}
+          className="topo-ebene"
+          maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
+        />
+        {/* Eigene Staatsgrenzen-Linie nur noch im Flugmodus. Auf der
+            Hauptseite auf Wunsch des Projektbesitzers entfernt (Okt. 2026) —
+            OpenTopoMap zeichnet die Grenzen ohnehin selbst ein. */}
+        {flightMode && (
+          <GeoJSON
+            data={staatsgrenzen as GeoJSON.GeoJsonObject}
+            style={STAATSGRENZE_STYLE}
+            interactive={false}
           />
         )}
-        <GeoJSON
-          data={staatsgrenzen as GeoJSON.GeoJsonObject}
-          style={STAATSGRENZE_STYLE}
-          interactive={false}
-        />
         <WindMarkers
           stations={displayStations}
           onSelect={handleSelect}

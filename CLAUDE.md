@@ -132,7 +132,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
 | `supabase/*.sql` | Tabellen-Schemas, Cron, einmalige Migrations-/Aufräumskripte |
-| `src/data/staatsgrenzen.json` | Staatsgrenzen-Overlay der Karte |
+| `src/data/staatsgrenzen.json` | Staatsgrenzen-Linie (nur noch im Flugmodus) |
 
 ## Feste Entscheidungen (nicht ohne Rücksprache ändern)
 
@@ -202,16 +202,19 @@ also alle 3 h, wirklich neue Werte).
     immer oben mittig auf der Karte.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
-- **Einzige Karte der Hauptseite ist OpenTopoMap in sehr hellen Graustufen**
-  (Sept. 2026, Wunsch des Projektbesitzers; die frühere Karte „Standard" =
+- **Einzige Karte der Hauptseite ist OpenTopoMap, gleich dargestellt wie im
+  Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers; bis dahin sehr helle
+  Graustufen. Seit Sept. 2026 OpenTopoMap; die frühere Karte „Standard" =
   OpenStreetMap wurde dafür entfernt, im Okt. 2026 auch „Relief (Grau)",
   siehe „Nicht wieder einführen"). Es gibt deshalb keine Kartenauswahl
   mehr. Kachel-Adresse
   `TOPO_URL` in `src/components/WindMap.tsx`; sie bringt Höhenlinien,
   Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
-  Die Aufhellung macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
-  (`grayscale` 100 %, `contrast` 30 %, `brightness` 165 % — am Bild
-  ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
+  Das Aussehen macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
+  (eine Ebene, ein Filter für Hauptseite und Flugmodus, siehe unten bei
+  „Eigene, kräftigere Karte"). **Keine eigene Staatsgrenzen-Linie auf der
+  Hauptseite** (Okt. 2026 auf Wunsch entfernt; OpenTopoMap zeigt die Grenzen
+  selbst), im Flugmodus ist sie noch da. **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
   Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
   (`MAP_SOURCES`) — nicht entfernen.
@@ -342,8 +345,9 @@ also alle 3 h, wirklich neue Werte).
   `zoomButtonDark`), Zeichen und Rand bleiben voll deckend. Ebenso ✕ und
   START/STOP oben links (STOP halb durchsichtig rot); die gelben Nachfragen
   bleiben voll deckend.
-- **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
-  aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
+- **Kräftigere Karte, zuerst für den Flugmodus** (Okt. 2026; seit Ende Okt.
+  2026 auch auf der Hauptseite): OpenTopoMap mit `.topo-ebene`
+  (`src/app/globals.css`: Farbstärke 30 % statt
   reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
   weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Nur
   OpenTopoMap selbst, keine zweite Quelle darunter mischen (Wunsch des

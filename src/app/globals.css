@@ -30,31 +30,21 @@ body {
   font-family: var(--font-barlow-semi-condensed), Arial, Helvetica, sans-serif;
 }
 
-/* OpenTopoMap-Ebene der Karte (WindMap.tsx, Standardkarte).
-   Die Originalkarte ist bunt (grüne Wälder, braune Höhenlinien, gelbe
-   Straßen) und würde mit den farbigen Windpfeilen konkurrieren. Deshalb:
-   - grayscale: nimmt alle Farbe heraus
-   - contrast: drückt die Helligkeitsunterschiede zusammen (Schrift und
-     Linien werden blasser, Flächen gleichmäßiger)
-   - brightness: hellt das Ganze danach auf — "sehr helles Grau"
-   Die drei Werte sind die Stellschrauben, falls es heller/dunkler sein soll. */
-.topo-ebene {
-  filter: grayscale(100%) contrast(30%) brightness(165%);
-}
-
-/* Dieselbe OpenTopoMap-Karte im Flugmodus (WindMap.tsx), deutlich kräftiger:
-   Im Flug muss das Gelände (Grate, Täler, Hänge, Höhenlinien) auch bei Sonne
-   auf dem Display erkennbar sein (Wunsch des Projektbesitzers, Okt. 2026).
+/* OpenTopoMap-Ebene der Karte (WindMap.tsx), auf der Hauptseite und im
+   Flugmodus gleich (Wunsch des Projektbesitzers, Okt. 2026 — vorher war die
+   Hauptseite eine sehr helle Graustufenkarte mit grayscale(100%)
+   contrast(30%) brightness(165%)). Ursprünglich für den Flugmodus
+   abgestimmt: Im Flug muss das Gelände (Grate, Täler, Hänge, Höhenlinien)
+   auch bei Sonne auf dem Display erkennbar sein.
    - saturate: Farbstärke 30 % — Wald, Wiesen, Fels und Wasser sind gut
      zu unterscheiden, die Windpfeile stechen trotzdem heraus. Vom
      Projektbesitzer gewählt (am Kartenbild verglichen mit 0 %, 15 %, 25 %
-     und 40 %, dann auf 30 % festgelegt; 0 % = reines Grau wie .topo-ebene).
+     und 40 %, dann auf 30 % festgelegt; 0 % = reines Grau).
      Mehr Farbe macht grüne Pfeile im Wald schwerer lesbar.
-   - contrast/brightness: doppelt so viel Kontrast wie .topo-ebene, weniger
-     aufgehellt. Stärkere Werte (80 %/110 %, 100 %/100 %) wurden verglichen,
-     dort gingen die Windpfeile im Gelände unter.
+   - contrast/brightness: Stärkere Werte (80 %/110 %, 100 %/100 %) wurden
+     verglichen, dort gingen die Windpfeile im Gelände unter.
    Bewusst hell, nicht dunkel: Dunkle Flächen spiegeln in der Sonne stark. */
-.topo-ebene-flug {
+.topo-ebene {
   filter: saturate(30%) contrast(60%) brightness(125%);
 }
 
