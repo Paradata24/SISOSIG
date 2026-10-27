@@ -123,7 +123,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -325,11 +325,16 @@ also alle 3 h, wirklich neue Werte).
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
 - Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
   Spitze, **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
-  Standort bis man sie verschiebt, große Tasten (+/− unten rechts,
-  Rücksetztaste unten links = eigener Standort auf Zoom 15 `FLIGHT_ZOOM`,
-  ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
-  Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
-  normale Karte bleibt ohne Zoom-Knöpfe.
+  Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
+  (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
+  Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
+- **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
+  Layout-Vorschau festgelegt): oben links ✕ (Beenden) und darunter die
+  Statuszeile, oben rechts +/−, unten links START/STOP (daneben IGC und
+  Papierkorb), unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
+  (eigener Standort auf Zoom 10 `OVERVIEW_ZOOM`). Abstände 12 px, unten
+  28 px (Wischleiste des iPhones).
 - **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
   aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
   reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
@@ -363,19 +368,19 @@ also alle 3 h, wirklich neue Werte).
   der Projektbesitzer trotzdem bewusst weggelassen. Klassen in
   `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
   `src/app/globals.css`. Masten
-  (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
+  (`VerticalObstacles`) bewusst nicht. Statuszeile:
   „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
   **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
   Projektbesitzers): Das Handy merkt sich die letzte Fassung
   (`CABLE_STORAGE_KEY`, localStorage), das CDN gibt bei Fehlern die alte
-  weiter (`stale-if-error`). Das Feld oben rechts wird dann **gelb** und
+  weiter (`stale-if-error`). Das Kabel-Feld der Statuszeile wird dann **gelb** und
   zeigt weiter das Datum dieser Fassung — auch wenn die Kabel älter als 30 h
   sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
   Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
   Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
-- **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
+- **Track-Aufzeichnung** (Taste START/STOP unten links): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Der erste macht die Taste gelb („WIRKLICH STARTEN?" /
   „WIRKLICH STOPPEN?") mit ✕ daneben, erst der zweite löst aus; nach 5 s

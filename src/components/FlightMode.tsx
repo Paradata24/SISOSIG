@@ -24,6 +24,10 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // Höhen-Schilder (ab 15) im Detail. Für den Überblick über die Windstationen
 // herauszoomen.
 const FLIGHT_ZOOM = 15;
+// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026):
+// eigener Standort mit rund 60 km Kartenbreite am Handy, die Zahlen der
+// Windpfeile sind ab hier sichtbar (LABEL_MIN_ZOOM in WindMap).
+const OVERVIEW_ZOOM = 10;
 
 // Unterhalb dieser Geschwindigkeit ist die GPS-Flugrichtung nur Rauschen
 // (rund 4 km/h). Dann bleibt die zuletzt gültige Richtung stehen.
@@ -580,7 +584,7 @@ function useTrackConfirm(recording: boolean) {
 // Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
 // Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
 // Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
-// am Tag beim Land; die Statuszeile oben rechts sagt, von wann sie sind. Das
+// am Tag beim Land; die Statuszeile oben links sagt, von wann sie sind. Das
 // Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
 // Kabel also trotzdem da.
 
@@ -630,7 +634,7 @@ const CABLE_LABEL_TEXT = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, c.labe
 // der Karte (Wunsch des Projektbesitzers). Dafür merkt sich das Handy die
 // letzte erfolgreich geladene Fassung im Browser-Speicher (localStorage, wie
 // der Track) — das gilt für die Web-App UND die Website im Browser. Das Feld
-// "Kabel …" oben rechts wird dann gelb und zeigt weiter das Datum dieser
+// "Kabel …" in der Statuszeile wird dann gelb und zeigt weiter das Datum dieser
 // Fassung.
 // v2: seit den Höhen-Schildern steht vorne in jeder Zeile die Höhenklasse
 // (vorher nur 0/1) — eine gespeicherte v1-Fassung würde falsch beschriftet.
@@ -1013,11 +1017,13 @@ export default function FlightMode({
     }
   }, [map, position]);
 
-  const handleReset = () => {
+  // Rücksetz- und Übersichtstaste: eigener Standort auf der jeweiligen
+  // Zoomstufe, Karte folgt wieder.
+  const handleReset = (zoom: number) => {
     if (!map) return;
     if (position) {
       setFollowing(true);
-      map.setView([position.lat, position.lng], FLIGHT_ZOOM, { animate: false });
+      map.setView([position.lat, position.lng], zoom, { animate: false });
     } else {
       // Noch kein Standort: zurück auf die Startansicht der Karte. Mitführen
       // bleibt an, damit der erste GPS-Wert die Karte dorthin holt.
@@ -1077,11 +1083,19 @@ export default function FlightMode({
 
   return (
     <>
-      {/* Oben links: Flugmodus beenden. Etwas kleiner als die Bedientasten,
-          damit man ihn im Flug nicht aus Versehen trifft, und wie die
-          Track-Taste mit zweitem Tipper (CONFIRM_MS): Der erste macht daraus
-          das gelbe "WIRKLICH BEENDEN?", darunter ✕ zum Abbrechen (nicht
-          daneben: dort steht oben mittig das Filter-Schild). */}
+      {/* Anordnung der Tasten vom Projektbesitzer in einer Layout-Vorschau
+          festgelegt (Okt. 2026): oben links Beenden und darunter die
+          Statuszeile, oben rechts Plus/Minus, unten links die Track-Taste,
+          unten rechts Rücksetz- über Übersichtstaste. Abstände 12 px, unten
+          28 px (Abstand zur Wischleiste des iPhones). */}
+
+      {/* Oben links: Flugmodus beenden, darunter die Statuszeile. Die
+          Beenden-Taste ist etwas kleiner als die Bedientasten, damit man sie
+          im Flug nicht aus Versehen trifft, und hat wie die Track-Taste einen
+          zweiten Tipper (CONFIRM_MS): Der erste macht daraus das gelbe
+          "WIRKLICH BEENDEN?", darunter ✕ zum Abbrechen (nicht daneben: dort
+          steht oben mittig das Filter-Schild). Alles in EINER Spalte, damit
+          die Statuszeile für das ✕ nach unten rückt statt überdeckt zu werden. */}
       <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
         {exitConfirm.armed ? (
           <>
@@ -1119,40 +1133,62 @@ export default function FlightMode({
             </svg>
           </button>
         )}
-      </div>
-
-      {/* Oben rechts: Statuszeile (GPS-Genauigkeit, Stand der Windwerte und ob
-          der Bildschirm wach gehalten wird). */}
-      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col items-end gap-1 text-right text-xs font-bold text-zinc-900">
-        <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
-        {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
-        {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
-            gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
-        <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
-          {updatedText}
-        </span>
-        {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
-        <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
-          {cableText}
-        </span>
-        {trackText && (
-          <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
-            {trackText}
+        {/* Statuszeile (GPS-Genauigkeit, Stand der Windwerte und Kabel,
+            Track-Länge, ob der Bildschirm wach gehalten wird). */}
+        <div className="flex flex-col items-start gap-1 text-left text-xs font-bold text-zinc-900">
+          <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
+          {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
+          {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
+              gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
+          <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
+            {updatedText}
           </span>
-        )}
-        {wakeLockActive === false && (
-          <span className="bg-amber-300 px-1.5 py-0.5 shadow">Bildschirm kann sich sperren</span>
-        )}
+          {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
+          <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
+            {cableText}
+          </span>
+          {trackText && (
+            <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
+              {trackText}
+            </span>
+          )}
+          {wakeLockActive === false && (
+            <span className="bg-amber-300 px-1.5 py-0.5 shadow">Bildschirm kann sich sperren</span>
+          )}
+        </div>
       </div>
 
-      {/* Unten links: oben die Track-Taste (Start/Stop mit Bestätigung,
-          daneben bei gestopptem Track die kleineren Tasten IGC-Export und
-          Löschen bzw. während der Bestätigung die Abbrechen-Taste), darunter die
-          Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe; ohne
-          Standort auf die Startansicht). Die Rücksetztaste ist gefüllt,
-          solange die Karte dem Standort folgt — so sieht man, ob sie gerade
-          mitläuft. Gleicher Abstand wie bei +/−. */}
-      <div className="pointer-events-none absolute bottom-6 left-3 z-[1000] flex flex-col gap-4">
+      {/* Oben rechts: Plus über Minus, mit Abstand, damit man mit
+          Handschuhen nicht beide zugleich trifft. */}
+      <div className="pointer-events-none absolute top-9 right-3 z-[1000] flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={handleZoomIn}
+          aria-label="Hineinzoomen"
+          title="Hineinzoomen"
+          className={bigButtonLight}
+        >
+          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+            <path d="M18 4 V32 M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          aria-label="Herauszoomen"
+          title="Herauszoomen"
+          className={bigButtonLight}
+        >
+          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+            <path d="M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Unten links: die Track-Taste (Start/Stop mit Bestätigung, daneben
+          bei gestopptem Track die kleineren Tasten IGC-Export und Löschen
+          bzw. während der Bestätigung die Abbrechen-Taste). */}
+      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000]">
         <div className="flex items-end gap-3">
           {trackConfirm.pending ? (
             <>
@@ -1246,9 +1282,17 @@ export default function FlightMode({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Unten rechts: oben die Rücksetztaste (eigener Standort, Flug-
+          Zoomstufe 15; ohne Standort die Startansicht), darunter die
+          Übersichtstaste (eigener Standort, Zoom 10). Die Rücksetztaste ist
+          gefüllt, solange die Karte dem Standort folgt — so sieht man, ob sie
+          gerade mitläuft. */}
+      <div className="pointer-events-none absolute right-3 bottom-7 z-[1000] flex flex-col gap-3">
         <button
           type="button"
-          onClick={handleReset}
+          onClick={() => handleReset(FLIGHT_ZOOM)}
           aria-label="Ansicht zurücksetzen"
           title="Ansicht zurücksetzen"
           className={followingShown && position ? bigButtonDark : bigButtonLight}
@@ -1264,31 +1308,26 @@ export default function FlightMode({
             />
           </svg>
         </button>
-      </div>
-
-      {/* Unten rechts: Plus über Minus, mit Abstand, damit man mit
-          Handschuhen nicht beide zugleich trifft. */}
-      <div className="pointer-events-none absolute right-3 bottom-6 z-[1000] flex flex-col gap-4">
         <button
           type="button"
-          onClick={handleZoomIn}
-          aria-label="Hineinzoomen"
-          title="Hineinzoomen"
+          onClick={() => handleReset(OVERVIEW_ZOOM)}
+          aria-label="Übersicht"
+          title="Übersicht"
           className={bigButtonLight}
         >
-          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-            <path d="M18 4 V32 M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={handleZoomOut}
-          aria-label="Herauszoomen"
-          title="Herauszoomen"
-          className={bigButtonLight}
-        >
-          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-            <path d="M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
+          {/* Vier Ecken mit Pfeilen nach innen: "großes Gebiet" */}
+          <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+            <path
+              d="M4 13 V4 H13 M27 4 H36 V13 M36 27 V36 H27 M13 36 H4 V27"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+            />
+            <path
+              d="M11 11 L17 17 M29 11 L23 17 M29 29 L23 23 M11 29 L17 23"
+              stroke="currentColor"
+              strokeWidth="3"
+            />
           </svg>
         </button>
       </div>
