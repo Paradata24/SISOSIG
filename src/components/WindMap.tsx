@@ -76,6 +76,11 @@ const SOUTH_TYROL_ZOOM = 9;
 // Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht Stufe 15
 // bequem (rund 3,5 m je Bildpunkt).
 const MAP_MAX_ZOOM = 15;
+// Ausnahme Flugmodus: eine Stufe mehr (Wunsch des Projektbesitzers, Okt.
+// 2026). Dort gibt es nur OpenTopoMap (echte Kacheln bis 17, Zoom 16 im Okt.
+// 2026 geprüft), die Esri-Schummerung mit ihren Platzhaltern ist nie zu sehen.
+// Beim Verlassen des Flugmodus zoomt Leaflet selbst auf MAP_MAX_ZOOM zurück.
+const FLIGHT_MAX_ZOOM = 16;
 
 // --- OpenTopoMap (Standardkarte) ---
 // Frei nutzbare Topografie-Karte auf Basis von OpenStreetMap und SRTM-
@@ -900,6 +905,12 @@ export default function WindMap({
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [onDataLoaded]);
+
+  // Zoom-Obergrenze je Modus. MapContainer übernimmt maxZoom nur beim ersten
+  // Aufbau, deshalb hier nachziehen.
+  useEffect(() => {
+    leafletMap?.setMaxZoom(flightMode ? FLIGHT_MAX_ZOOM : MAP_MAX_ZOOM);
+  }, [leafletMap, flightMode]);
 
   // Refresh-Button: sofort frische Werte holen. Beim ersten Aufbau (Zähler 0)
   // nichts tun — da lädt der Effekt oben ohnehin schon. Wie beim Takt bleiben

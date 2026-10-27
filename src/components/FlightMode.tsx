@@ -7,7 +7,7 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
 // Bildschirm, Titel- und Zeitbalken sind weg, und diese Datei legt darüber:
-//   - den eigenen Standort mit Flugrichtung (blauer Punkt mit Spitze)
+//   - den eigenen Standort mit Flugrichtung (blauer Navigationspfeil)
 //   - große Plus-/Minus-Tasten und eine Rücksetztaste (handschuhtauglich)
 //   - eine Sperre gegen das automatische Abschalten des Bildschirms
 // Die Windpfeile kommen unverändert von WindMap und werden dort weiter alle
@@ -18,10 +18,16 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // muss offen und im Vordergrund bleiben — im Hintergrund hält der Browser GPS
 // und Abrufe an.
 
-// Zoomstufe der Rücksetztaste (und beim ersten GPS-Fix). 11 = Zahlen-Plakette
-// sichtbar (ab 10), aber noch ohne Stationsnamen (ab 12); am Handy sind das
-// rund 20 km Kartenbreite — genug Überblick für die nächsten Stationen.
-const FLIGHT_ZOOM = 11;
+// Zoomstufe der Rücksetztaste (und beim ersten GPS-Fix). 15, Wunsch des
+// Projektbesitzers (Okt. 2026, vorher 11); hineinzoomen geht im Flugmodus
+// noch eine Stufe weiter (FLIGHT_MAX_ZOOM in WindMap): am Handy rund 1–2 km Kartenbreite, Gelände, Kabel und deren
+// Höhen-Schilder (ab 15) im Detail. Für den Überblick über die Windstationen
+// herauszoomen.
+const FLIGHT_ZOOM = 15;
+// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026;
+// zuerst 10, dann 11): eigener Standort mit rund 20 km Kartenbreite am
+// Handy, Zahlen der Windpfeile (ab 10) und Kabel (ab 11) sind sichtbar.
+const OVERVIEW_ZOOM = 11;
 
 // Unterhalb dieser Geschwindigkeit ist die GPS-Flugrichtung nur Rauschen
 // (rund 4 km/h). Dann bleibt die zuletzt gültige Richtung stehen.
@@ -46,6 +52,11 @@ const GEO_OPTIONS: PositionOptions = {
 };
 
 const OWN_POSITION_COLOR = "#2563eb";
+// GPS-Ungenauigkeit als leicht durchsichtiger blauer Kreis um den Standort
+// (wie beim Standort-Senden in WhatsApp; Wunsch des Projektbesitzers,
+// Okt. 2026, statt "GPS ±… m" in der Statuszeile). Erst ab dieser
+// Ungenauigkeit — darunter ist der Kreis ohnehin kaum größer als der Pfeil.
+const ACCURACY_CIRCLE_MIN_M = 10;
 
 type OwnPosition = {
   lat: number;
@@ -55,6 +66,8 @@ type OwnPosition = {
   heading: number | null;
   /** Zeitpunkt der Messung (ms seit 1970), für die Track-Aufzeichnung. */
   time: number;
+  /** GPS-Höhe in m (für den IGC-Track), null = vom Gerät nicht geliefert. */
+  altitudeM: number | null;
 };
 
 type GpsStatus = "searching" | "ok" | "denied" | "unavailable";
@@ -88,7 +101,7 @@ function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
     if (!("geolocation" in navigator)) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+        const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
         const here = L.latLng(latitude, longitude);
         // Ältere iPhones melden eine ungültige Richtung als -1 statt null.
         const headingValid = heading !== null && !Number.isNaN(heading) && heading >= 0;
@@ -115,6 +128,7 @@ function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
           accuracyM: accuracy,
           heading: lastHeading.current,
           time: pos.timestamp,
+          altitudeM: altitude,
         });
         setStatus("ok");
       },
@@ -227,6 +241,15 @@ function useNow(intervalMs: number): number {
 // offen und im Vordergrund ist. Lücken (Bildschirm aus, andere App) bleiben
 // sichtbar als Lücke in der Linie (TRACK_GAP_MS).
 
+// Start, Stop und das Beenden des Flugmodus brauchen zwei Tipper (Wunsch des
+// Projektbesitzers, Okt. 2026): Nach dem ersten steht an derselben Stelle ✕
+// zum Abbrechen, darunter die gelbe Bestätigung ("STARTEN?", "STOPPEN?" bzw.
+// "BEENDEN?", ohne "WIRKLICH" — Wunsch des Projektbesitzers); erst die löst aus.
+// Bewusst kein window.confirm: dessen kleine OK-/Abbrechen-Knöpfe trifft man
+// mit Handschuhen im Flug schlecht. Ohne zweiten Tipper springt die Taste nach
+// dieser Zeit von selbst zurück, damit sie nicht "scharf" stehen bleibt.
+const CONFIRM_MS = 5000;
+
 const TRACK_STORAGE_KEY = "sisosig-flugtrack-v1";
 // Violett: kommt in der Windskala (Blau/Grün/Gelb/Orange/Rot) nicht vor und
 // unterscheidet sich vom blauen eigenen Standort.
@@ -247,10 +270,15 @@ const TRACK_GAP_MS = 60_000;
 // beim Verlassen und wenn die Seite in den Hintergrund geht gespeichert.
 const TRACK_SAVE_INTERVAL_MS = 15_000;
 
+// Ein Punkt: [Breite, Länge, Zeit in s seit 1970, GPS-Höhe in m oder null].
+// Zeit und Höhe gibt es erst seit dem IGC-Export (Okt. 2026); ältere
+// gespeicherte Tracks haben nur [Breite, Länge] und bleiben lesbar.
+type TrackPoint = [number, number] | [number, number, number, number | null];
+
 type StoredTrack = {
   recording: boolean;
-  /** Teilstücke ohne Lücke, jeder Punkt [Breite, Länge]. */
-  segments: [number, number][][];
+  /** Teilstücke ohne Lücke. */
+  segments: TrackPoint[][];
   /** Zeitpunkt des letzten Punkts (für die Lücken-Erkennung). */
   lastTime: number | null;
 };
@@ -277,14 +305,136 @@ function saveTrack(track: StoredTrack) {
   }
 }
 
-function trackLengthM(segments: [number, number][][]): number {
+// Leaflet versteht nur [Breite, Länge(, Höhe)] — ein Punkt mit vier Werten
+// würde verworfen. Deshalb vor dem Zeichnen auf zwei Werte kürzen.
+function pointLatLng(p: TrackPoint): L.LatLng {
+  return L.latLng(p[0], p[1]);
+}
+
+function segmentsLatLngs(segments: TrackPoint[][]): L.LatLng[][] {
+  return segments.map((segment) => segment.map(pointLatLng));
+}
+
+function trackLengthM(segments: TrackPoint[][]): number {
   let total = 0;
   for (const segment of segments) {
     for (let i = 1; i < segment.length; i++) {
-      total += L.latLng(segment[i - 1]).distanceTo(segment[i]);
+      total += pointLatLng(segment[i - 1]).distanceTo(pointLatLng(segment[i]));
     }
   }
   return total;
+}
+
+// --- IGC-Export ---
+// IGC ist das übliche Dateiformat für Flüge (XContest, DHV-XC, Flugbuch-
+// Programme). Aufbau: Kopfzeilen (A, H) und je GPS-Punkt eine B-Zeile mit
+// Uhrzeit (UTC), Position, Druckhöhe und GPS-Höhe.
+// Einschränkungen, bewusst so:
+//   - Keine Druckhöhe: Browser kommen nicht an den Luftdruck-Sensor des
+//     Handys. Das Feld steht deshalb auf 00000, die Höhe kommt nur aus dem GPS.
+//   - Keine Signatur (G-Zeile): Nur zugelassene Flugrechner dürfen signieren.
+//     Für Wettbewerbe, die eine gültige Signatur verlangen, reicht die Datei
+//     nicht.
+//   - Punkte ohne Zeit (Tracks von vor dem IGC-Export) fehlen in der Datei.
+//   - Bezug der GPS-Höhe: Laut Browser-Norm über dem WGS84-Ellipsoid (in den
+//     Alpen rund 50 m mehr als über dem Meer), das iPhone liefert aber
+//     Meereshöhe. Die Kopfzeile HFALGALTGPS sagt deshalb, welche es ist.
+
+function pad(n: number, width: number): string {
+  return String(n).padStart(width, "0");
+}
+
+// Grad → IGC-Schreibweise GGMMmmm (Grad, Minuten mit drei Nachkommastellen).
+function igcCoord(value: number, degWidth: number, pos: string, neg: string): string {
+  const abs = Math.abs(value);
+  let deg = Math.floor(abs);
+  let milliMin = Math.round((abs - deg) * 60_000);
+  if (milliMin === 60_000) {
+    deg += 1;
+    milliMin = 0;
+  }
+  return pad(deg, degWidth) + pad(milliMin, 5) + (value >= 0 ? pos : neg);
+}
+
+function igcAltitude(m: number): string {
+  const r = Math.round(m);
+  return r < 0 ? "-" + pad(-r, 4) : pad(Math.min(r, 99_999), 5);
+}
+
+// Fertige IGC-Datei, oder null, wenn kein Punkt eine Zeit hat.
+function buildIgc(segments: TrackPoint[][]): { text: string; firstTime: Date } | null {
+  const fixes = segments.flat().filter((p) => p.length === 4) as [
+    number,
+    number,
+    number,
+    number | null,
+  ][];
+  if (fixes.length === 0) return null;
+  const first = new Date(fixes[0][2] * 1000);
+  const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  const lines = [
+    "AXSGSISOSIG",
+    `HFDTEDATE:${pad(first.getUTCDate(), 2)}${pad(first.getUTCMonth() + 1, 2)}${pad(first.getUTCFullYear() % 100, 2)},01`,
+    "HFPLTPILOTINCHARGE:",
+    "HFGTYGLIDERTYPE:",
+    "HFGIDGLIDERID:",
+    "HFDTMGPSDATUM:WGS84",
+    "HFFTYFRTYPE:SISOSIG,Web-App",
+    "HFGPSRECEIVER:Smartphone",
+    "HFPRSPRESSALTSENSOR:NIL",
+    `HFALGALTGPS:${isApple ? "GEO" : "ELL"}`,
+    "HFALPALTPRESSURE:ISA",
+  ];
+  for (const [lat, lng, t, alt] of fixes) {
+    const d = new Date(t * 1000);
+    lines.push(
+      "B" +
+        pad(d.getUTCHours(), 2) +
+        pad(d.getUTCMinutes(), 2) +
+        pad(d.getUTCSeconds(), 2) +
+        igcCoord(lat, 2, "N", "S") +
+        igcCoord(lng, 3, "E", "W") +
+        (alt === null ? "V" : "A") +
+        "00000" +
+        igcAltitude(alt ?? 0),
+    );
+  }
+  return { text: lines.join("\r\n") + "\r\n", firstTime: first };
+}
+
+// IGC-Datei weitergeben: Am Handy über das Teilen-Menü (dort lässt sie sich
+// in "Dateien" sichern, per Mail/Messenger schicken oder direkt an eine
+// Flugbuch-App geben), sonst als normaler Download. Android-Chrome teilt nur
+// bekannte Dateitypen, .igc gehört nicht dazu — dort greift der Download.
+async function exportIgc(segments: TrackPoint[][]) {
+  const igc = buildIgc(segments);
+  if (!igc) {
+    window.alert(
+      "Dieser Track wurde vor dem IGC-Export aufgezeichnet und hat keine Zeiten. " +
+        "IGC geht erst für neue Aufzeichnungen.",
+    );
+    return;
+  }
+  const f = igc.firstTime;
+  const name = `SISOSIG-${f.getFullYear()}-${pad(f.getMonth() + 1, 2)}-${pad(f.getDate(), 2)}-${pad(f.getHours(), 2)}${pad(f.getMinutes(), 2)}.igc`;
+  const file = new File([igc.text], name, { type: "application/octet-stream" });
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+  } catch (err) {
+    // Teilen-Menü abgebrochen: nichts weiter tun. Andere Fehler: Download.
+    if (err instanceof DOMException && err.name === "AbortError") return;
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 // Aufzeichnung, Speicher und die Linie auf der Karte. Der Track selbst liegt
@@ -305,7 +455,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     if (!map) return;
     const loaded = loadTrack();
     track.current = loaded;
-    lineRef.current = L.polyline(loaded.segments, {
+    lineRef.current = L.polyline(segmentsLatLngs(loaded.segments), {
       color: TRACK_COLOR,
       weight: 3,
       opacity: 0.9,
@@ -343,9 +493,11 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     const t = track.current;
     if (!t || !t.recording || !position) return;
     if (position.accuracyM > TRACK_MAX_ACCURACY_M) return;
-    const point: [number, number] = [
+    const point: TrackPoint = [
       Math.round(position.lat * 1e5) / 1e5,
       Math.round(position.lng * 1e5) / 1e5,
+      Math.round(position.time / 1000),
+      position.altitudeM === null ? null : Math.round(position.altitudeM),
     ];
     let segment = t.segments[t.segments.length - 1];
     const isGap = t.lastTime !== null && position.time - t.lastTime > TRACK_GAP_MS;
@@ -356,7 +508,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     const last = segment[segment.length - 1];
     let step = 0;
     if (last) {
-      step = L.latLng(last).distanceTo(point);
+      step = pointLatLng(last).distanceTo(pointLatLng(point));
       if (step < TRACK_MIN_STEP_M) {
         // Zu nah am letzten Punkt: nicht speichern, aber als "noch da"
         // werten, damit langsames Fliegen keine Lücke erzeugt.
@@ -367,7 +519,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     segment.push(point);
     t.lastTime = position.time;
     dirty.current = true;
-    lineRef.current?.setLatLngs(t.segments);
+    lineRef.current?.setLatLngs(segmentsLatLngs(t.segments));
     if (step > 0) setLengthM((m) => m + step);
   }, [position]);
 
@@ -405,14 +557,39 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     setLengthM(0);
   }, []);
 
-  return { recording, lengthM, start, stop, clear };
+  const exportFile = useCallback(() => {
+    if (track.current) void exportIgc(track.current.segments);
+  }, []);
+
+  return { recording, lengthM, start, stop, clear, exportFile };
+}
+
+// Zwischenschritt "wirklich …?" (siehe CONFIRM_MS). Gemerkt wird, welche
+// Aktion gerade bestätigt werden soll; nach CONFIRM_MS ist sie vergessen.
+function useConfirmStep<T extends string>() {
+  const [armed, setArmed] = useState<T | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const id = setTimeout(() => setArmed(null), CONFIRM_MS);
+    return () => clearTimeout(id);
+  }, [armed]);
+  return { armed, arm: setArmed, cancel: () => setArmed(null) };
+}
+
+// Bestätigung der Track-Taste (starten/stoppen).
+function useTrackConfirm(recording: boolean) {
+  const { armed, arm, cancel } = useConfirmStep<"start" | "stop">();
+  // Passt die gemerkte Aktion nicht mehr zum Zustand (z. B. Track beim Laden
+  // schon aufzeichnend), gilt sie nicht.
+  const pending = armed === (recording ? "stop" : "start") ? armed : null;
+  return { pending, arm, cancel };
 }
 
 // --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
 // Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
 // Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
 // Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
-// am Tag beim Land; die Statuszeile oben rechts sagt, von wann sie sind. Das
+// am Tag beim Land; die Statuszeile oben links sagt, von wann sie sind. Das
 // Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
 // Kabel also trotzdem da.
 
@@ -462,7 +639,7 @@ const CABLE_LABEL_TEXT = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, c.labe
 // der Karte (Wunsch des Projektbesitzers). Dafür merkt sich das Handy die
 // letzte erfolgreich geladene Fassung im Browser-Speicher (localStorage, wie
 // der Track) — das gilt für die Web-App UND die Website im Browser. Das Feld
-// "Kabel …" oben rechts wird dann gelb und zeigt weiter das Datum dieser
+// "Kabel …" in der Statuszeile wird dann gelb und zeigt weiter das Datum dieser
 // Fassung.
 // v2: seit den Höhen-Schildern steht vorne in jeder Zeile die Höhenklasse
 // (vorher nur 0/1) — eine gespeicherte v1-Fassung würde falsch beschriftet.
@@ -703,17 +880,23 @@ function useCables(map: L.Map | null): CableState {
   return state;
 }
 
-// Icon des eigenen Standorts: blauer Punkt, davor eine Spitze in Flugrichtung.
-// Bewusst ein Kreis und kein Pfeil, damit er nicht mit den Windpfeilen
-// verwechselt wird. Ohne bekannte Richtung nur der Punkt.
+// Icon des eigenen Standorts: blauer Navigationspfeil in Flugrichtung, ohne
+// bekannte Richtung ein blauer Punkt. Früher bewusst ein Punkt mit Spitze, um
+// Verwechslung mit den Windpfeilen zu vermeiden; der Projektbesitzer hat sich
+// trotzdem für den Pfeil entschieden — er ist größer (bis 36 px), kräftig
+// blau und hat eine Kerbe, die Windpfeile nicht haben.
 // Aufbau wie bei den Windpfeilen von außen nach innen: dunkler Umriss → weißer
 // Rand → blaue Fläche, als dieselbe Form dreimal übereinander. Ein weißer Rand
 // allein verschwand auf der sehr hellen Karte.
 function createOwnPositionIcon(heading: number | null): L.DivIcon {
   const size = 48;
+  // Mit Flugrichtung ein Navigationspfeil mit Kerbe hinten (vom
+  // Projektbesitzer im Okt. 2026 aus mehreren Entwürfen gewählt, vorher Punkt
+  // mit abgesetzter Spitze), ohne Richtung ein Punkt.
   const shape = (attrs: string) =>
-    `<circle cx="24" cy="24" r="10" ${attrs} />` +
-    (heading === null ? "" : `<path d="M24 2 L33 15 L15 15 Z" ${attrs} />`);
+    heading === null
+      ? `<circle cx="24" cy="24" r="10" ${attrs} />`
+      : `<path d="M24 4 L38 40 L24 31 L10 40 Z" ${attrs} />`;
   const html = `
     <svg width="${size}" height="${size}" viewBox="0 0 48 48" style="transform: rotate(${heading ?? 0}deg); overflow: visible;" xmlns="http://www.w3.org/2000/svg">
       ${shape('fill="none" stroke="#1f2937" stroke-width="7" stroke-linejoin="round"')}
@@ -748,6 +931,8 @@ export default function FlightMode({
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
+  const trackConfirm = useTrackConfirm(track.recording);
+  const exitConfirm = useConfirmStep<"exit">();
   const cables = useCables(map);
   const online = useOnline();
   const now = useNow(30_000);
@@ -772,6 +957,19 @@ export default function FlightMode({
       map.off("dragstart", stopFollowing);
     };
   }, [map, setFollowing]);
+
+  // Zoomen im Flugmodus NUR über die +/−-Tasten (Wunsch des Projektbesitzers,
+  // Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und Rahmen-Zoom sind
+  // aus — im Flug zoomt sonst jede unruhige Berührung mit. Verschieben geht
+  // weiter. Beim Verlassen ist auf der normalen Karte alles wieder an.
+  useEffect(() => {
+    if (!map) return;
+    const handlers = [map.doubleClickZoom, map.touchZoom, map.scrollWheelZoom, map.boxZoom];
+    for (const handler of handlers) handler.disable();
+    return () => {
+      for (const handler of handlers) handler.enable();
+    };
+  }, [map]);
 
   // Marker des eigenen Standorts (direkt über Leaflet, nicht über
   // react-leaflet: FlightMode liegt außerhalb von <MapContainer>, damit die
@@ -799,18 +997,25 @@ export default function FlightMode({
     const latLng = L.latLng(position.lat, position.lng);
     const heading = position.heading === null ? null : Math.round(position.heading / 5) * 5;
 
-    if (!accuracyRef.current) {
-      // Ungenauigkeits-Kreis: nur ein Hauch, damit er nichts verdeckt.
-      accuracyRef.current = L.circle(latLng, {
-        radius: position.accuracyM,
-        color: OWN_POSITION_COLOR,
-        weight: 1,
-        opacity: 0.4,
-        fillOpacity: 0.08,
-        interactive: false,
-      }).addTo(map);
+    // Ungenauigkeits-Kreis (ACCURACY_CIRCLE_MIN_M): sichtbar, aber durchsichtig
+    // genug, dass Windpfeile und Gelände darunter lesbar bleiben.
+    if (position.accuracyM > ACCURACY_CIRCLE_MIN_M) {
+      if (!accuracyRef.current) {
+        accuracyRef.current = L.circle(latLng, {
+          radius: position.accuracyM,
+          color: OWN_POSITION_COLOR,
+          weight: 1.5,
+          opacity: 0.6,
+          fillColor: OWN_POSITION_COLOR,
+          fillOpacity: 0.18,
+          interactive: false,
+        }).addTo(map);
+      } else {
+        accuracyRef.current.setLatLng(latLng).setRadius(position.accuracyM);
+      }
     } else {
-      accuracyRef.current.setLatLng(latLng).setRadius(position.accuracyM);
+      accuracyRef.current?.remove();
+      accuracyRef.current = null;
     }
 
     if (!markerRef.current) {
@@ -843,11 +1048,13 @@ export default function FlightMode({
     }
   }, [map, position]);
 
-  const handleReset = () => {
+  // Rücksetz- und Übersichtstaste: eigener Standort auf der jeweiligen
+  // Zoomstufe, Karte folgt wieder.
+  const handleReset = (zoom: number) => {
     if (!map) return;
     if (position) {
       setFollowing(true);
-      map.setView([position.lat, position.lng], FLIGHT_ZOOM, { animate: false });
+      map.setView([position.lat, position.lng], zoom, { animate: false });
     } else {
       // Noch kein Standort: zurück auf die Startansicht der Karte. Mitführen
       // bleibt an, damit der erste GPS-Wert die Karte dorthin holt.
@@ -860,9 +1067,11 @@ export default function FlightMode({
   const handleZoomIn = () => map?.zoomIn(1, { animate: false });
   const handleZoomOut = () => map?.zoomOut(1, { animate: false });
 
+  // Mit GPS-Standort steht hier nichts — die Genauigkeit zeigt der Kreis um
+  // den Standort (ACCURACY_CIRCLE_MIN_M). Nur Probleme werden gemeldet.
   const gpsText =
     status === "ok" && position
-      ? `GPS ±${Math.round(position.accuracyM)} m`
+      ? null
       : status === "denied"
         ? "Standort nicht erlaubt"
         : status === "unavailable"
@@ -877,12 +1086,14 @@ export default function FlightMode({
           : `${lastUpdated.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} `
       }${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
-  // Stand der Kabel: Datum und Uhrzeit, wann der Server sie zuletzt beim Land
+  // Stand der Kabel: Datum, wann der Server sie zuletzt beim Land
   // abgeholt hat (einmal am Tag, siehe /api/kabel). Gelb, wenn die
   // Aktualisierung nicht geklappt hat — die Karte zeigt dann weiter die Kabel
   // dieses Datums — oder wenn es gar keine Kabel gibt.
+  // Nur das Datum, ohne Uhrzeit (Wunsch des Projektbesitzers, Okt. 2026): Die
+  // Kabel ändern sich höchstens einmal am Tag.
   const cableText = cables.stand
-    ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${cables.stand.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+    ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}`
     : cables.checking
       ? "Kabel lädt…"
       : "Keine Kabel";
@@ -902,87 +1113,209 @@ export default function FlightMode({
   // Menü-Knopf im Titel, 72 px groß (mit Handschuhen gut zu treffen).
   const bigButton =
     "pointer-events-auto flex h-[72px] w-[72px] items-center justify-center border-2 border-black shadow-lg select-none";
-  const bigButtonLight = `${bigButton} bg-white text-zinc-900 active:bg-zinc-200`;
-  const bigButtonDark = `${bigButton} bg-zinc-900 text-white active:bg-zinc-700`;
+  // Zoomtasten (+/−, Rücksetzen, Übersicht) mit halb durchsichtigem
+  // Hintergrund, damit man die Karte darunter sieht (Wunsch des
+  // Projektbesitzers, Okt. 2026). Nur der Hintergrund: Zeichen und Rand
+  // bleiben voll deckend und gut lesbar.
+  const zoomButtonLight = `${bigButton} bg-white/50 text-zinc-900 active:bg-zinc-200/50`;
+  const zoomButtonDark = `${bigButton} bg-zinc-900/50 text-white active:bg-zinc-700/50`;
+  // Kleinere Tasten oben links (Beenden, START/STOP und deren Nachfragen):
+  // 48 px, Farbe kommt je Taste dazu.
+  const smallButton =
+    "pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black shadow-lg select-none";
 
   return (
     <>
-      {/* Oben links: Flugmodus beenden. Etwas kleiner als die Bedientasten,
-          damit man ihn im Flug nicht aus Versehen trifft. */}
-      <div className="pointer-events-none absolute top-3 left-3 z-[1000]">
+      {/* Anordnung der Tasten vom Projektbesitzer in einer Layout-Vorschau
+          festgelegt (Okt. 2026) und danach nachgeschärft: oben links Beenden
+          und rechts daneben START/STOP (beide 48 px), darunter die
+          Statuszeile; oben rechts Plus/Minus; unten links IGC und
+          Papierkorb; unten rechts Rücksetz- über Übersichtstaste. Abstände
+          12 px, unten 28 px (Abstand zur Wischleiste des iPhones). */}
+
+      {/* Oben links: Beenden und START/STOP nebeneinander, darunter die
+          Statuszeile. Beide Tasten sind kleiner als die Zoomtasten, damit man
+          sie im Flug nicht aus Versehen trifft, und brauchen einen zweiten
+          Tipper (CONFIRM_MS): Nach dem ersten steht an derselben Stelle ✕ zum
+          Abbrechen und darunter die gelbe Bestätigung ("BEENDEN?"
+          usw.; Reihenfolge Wunsch des Projektbesitzers — zweimal Tippen an
+          derselben Stelle bricht also ab, statt auszulösen). Nicht daneben:
+          dort steht oben mittig das Filter-Schild. Die gelben Tasten sind so
+          breit wie die normalen, damit nichts seitlich verrutscht; die
+          Statuszeile rückt für das ✕ nach unten statt überdeckt zu werden.
+          ✕ und START/STOP haben wie die Zoomtasten einen halb durchsichtigen
+          Hintergrund (Wunsch des Projektbesitzers, Okt. 2026); die gelben
+          Nachfragen und ihr ✕ bleiben voll deckend, sie sollen auffallen. */}
+      <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex flex-col gap-3">
+            {exitConfirm.armed ? (
+              <>
+                <button
+                  type="button"
+                  onClick={exitConfirm.cancel}
+                  aria-label="Abbrechen"
+                  title="Abbrechen"
+                  className={`${smallButton} bg-white active:bg-zinc-200`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={onExit}
+                  aria-label="Flugmodus wirklich beenden"
+                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+                >
+                  <span className="text-[10px] leading-tight font-bold tracking-tight">BEENDEN?</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => exitConfirm.arm("exit")}
+                aria-label="Flugmodus beenden"
+                title="Flugmodus beenden"
+                className={`${smallButton} bg-white/50 active:bg-zinc-200/50`}
+              >
+                <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <div className="flex flex-col gap-3">
+            {trackConfirm.pending ? (
+              <>
+                {/* An der alten Stelle ✕ zum Abbrechen, darunter die gelbe Bestätigung (CONFIRM_MS). */}
+                <button
+                  type="button"
+                  onClick={trackConfirm.cancel}
+                  aria-label="Abbrechen"
+                  title="Abbrechen"
+                  className={`${smallButton} bg-white active:bg-zinc-200`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (trackConfirm.pending === "stop") track.stop();
+                    else track.start();
+                    trackConfirm.cancel();
+                  }}
+                  aria-label={
+                    trackConfirm.pending === "stop"
+                      ? "Track-Aufzeichnung wirklich stoppen"
+                      : "Track-Aufzeichnung wirklich starten"
+                  }
+                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+                >
+                  <span className="text-[10px] leading-tight font-bold tracking-tight">
+                    {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
+                  </span>
+                </button>
+              </>
+            ) : track.recording ? (
+              <button
+                type="button"
+                onClick={() => trackConfirm.arm("stop")}
+                aria-label="Track-Aufzeichnung stoppen"
+                title="Track-Aufzeichnung stoppen"
+                className={`${smallButton} flex-col gap-0.5 bg-red-600/50 text-white active:bg-red-800/50`}
+              >
+                <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
+                  <rect x="2" y="2" width="18" height="18" fill="currentColor" />
+                </svg>
+                <span className="text-[10px] leading-none font-bold">STOP</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => trackConfirm.arm("start")}
+                aria-label="Track-Aufzeichnung starten"
+                title="Track-Aufzeichnung starten"
+                className={`${smallButton} flex-col gap-0.5 bg-white/50 text-zinc-900 active:bg-zinc-200/50`}
+              >
+                <svg width="14" height="14" viewBox="0 0 22 22" aria-hidden="true">
+                  <circle cx="11" cy="11" r="10" fill="#dc2626" />
+                </svg>
+                <span className="text-[10px] leading-none font-bold">START</span>
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Statuszeile (GPS-Genauigkeit, Stand der Windwerte und Kabel,
+            Track-Länge, ob der Bildschirm wach gehalten wird). */}
+        <div className="flex flex-col items-start gap-1 text-left text-xs font-bold text-zinc-900">
+          {gpsText && <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>}
+          {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
+          {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
+              gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
+          <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
+            {updatedText}
+          </span>
+          {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
+          <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
+            {cableText}
+          </span>
+          {trackText && (
+            <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
+              {trackText}
+            </span>
+          )}
+          {wakeLockActive === false && (
+            <span className="bg-amber-300 px-1.5 py-0.5 shadow">Bildschirm kann sich sperren</span>
+          )}
+        </div>
+      </div>
+
+      {/* Oben rechts: Plus über Minus, mit Abstand, damit man mit
+          Handschuhen nicht beide zugleich trifft. */}
+      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col gap-3">
         <button
           type="button"
-          onClick={onExit}
-          aria-label="Flugmodus beenden"
-          title="Flugmodus beenden"
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
+          onClick={handleZoomIn}
+          aria-label="Hineinzoomen"
+          title="Hineinzoomen"
+          className={zoomButtonLight}
         >
-          <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+            <path d="M18 4 V32 M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={handleZoomOut}
+          aria-label="Herauszoomen"
+          title="Herauszoomen"
+          className={zoomButtonLight}
+        >
+          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
+            <path d="M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
           </svg>
         </button>
       </div>
 
-      {/* Oben rechts: Statuszeile (GPS-Genauigkeit, Stand der Windwerte und ob
-          der Bildschirm wach gehalten wird). */}
-      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col items-end gap-1 text-right text-xs font-bold text-zinc-900">
-        <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
-        {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
-        {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
-            gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
-        <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
-          {updatedText}
-        </span>
-        {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
-        <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
-          {cableText}
-        </span>
-        {trackText && (
-          <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
-            {trackText}
-          </span>
-        )}
-        {wakeLockActive === false && (
-          <span className="bg-amber-300 px-1.5 py-0.5 shadow">Bildschirm kann sich sperren</span>
-        )}
-      </div>
-
-      {/* Unten links: oben die Track-Taste (Start/Stop, daneben bei
-          gestopptem Track die kleinere Löschtaste), darunter die
-          Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe; ohne
-          Standort auf die Startansicht). Die Rücksetztaste ist gefüllt,
-          solange die Karte dem Standort folgt — so sieht man, ob sie gerade
-          mitläuft. Gleicher Abstand wie bei +/−. */}
-      <div className="pointer-events-none absolute bottom-6 left-3 z-[1000] flex flex-col gap-4">
+      {/* Unten links: bei gestopptem Track die Tasten IGC-Export und
+          Löschen (die START/STOP-Taste steht oben neben Beenden). */}
+      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000]">
         <div className="flex items-end gap-3">
-          {track.recording ? (
+          {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button
               type="button"
-              onClick={track.stop}
-              aria-label="Track-Aufzeichnung stoppen"
-              title="Track-Aufzeichnung stoppen"
-              className={`${bigButton} flex-col gap-1 bg-red-600 text-white active:bg-red-800`}
+              onClick={track.exportFile}
+              aria-label="Track als IGC-Datei speichern"
+              title="Track als IGC-Datei speichern"
+              className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white text-xs font-bold shadow-lg active:bg-zinc-200"
             >
-              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <rect x="2" y="2" width="18" height="18" fill="currentColor" />
-              </svg>
-              <span className="text-xs font-bold">STOP</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={track.start}
-              aria-label="Track-Aufzeichnung starten"
-              title="Track-Aufzeichnung starten"
-              className={`${bigButtonLight} flex-col gap-1`}
-            >
-              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
-                <circle cx="11" cy="11" r="10" fill="#dc2626" />
-              </svg>
-              <span className="text-xs font-bold">START</span>
+              IGC
             </button>
           )}
-          {!track.recording && track.lengthM > 0 && (
+          {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button
               type="button"
               onClick={track.clear}
@@ -1002,12 +1335,20 @@ export default function FlightMode({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Unten rechts: oben die Rücksetztaste (eigener Standort, Flug-
+          Zoomstufe 15; ohne Standort die Startansicht), darunter die
+          Übersichtstaste (eigener Standort, Zoom 11). Die Rücksetztaste ist
+          gefüllt, solange die Karte dem Standort folgt — so sieht man, ob sie
+          gerade mitläuft. */}
+      <div className="pointer-events-none absolute right-3 bottom-7 z-[1000] flex flex-col gap-3">
         <button
           type="button"
-          onClick={handleReset}
+          onClick={() => handleReset(FLIGHT_ZOOM)}
           aria-label="Ansicht zurücksetzen"
           title="Ansicht zurücksetzen"
-          className={followingShown && position ? bigButtonDark : bigButtonLight}
+          className={followingShown && position ? zoomButtonDark : zoomButtonLight}
         >
           {/* Fadenkreuz */}
           <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
@@ -1020,31 +1361,26 @@ export default function FlightMode({
             />
           </svg>
         </button>
-      </div>
-
-      {/* Unten rechts: Plus über Minus, mit Abstand, damit man mit
-          Handschuhen nicht beide zugleich trifft. */}
-      <div className="pointer-events-none absolute right-3 bottom-6 z-[1000] flex flex-col gap-4">
         <button
           type="button"
-          onClick={handleZoomIn}
-          aria-label="Hineinzoomen"
-          title="Hineinzoomen"
-          className={bigButtonLight}
+          onClick={() => handleReset(OVERVIEW_ZOOM)}
+          aria-label="Übersicht"
+          title="Übersicht"
+          className={zoomButtonLight}
         >
-          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-            <path d="M18 4 V32 M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={handleZoomOut}
-          aria-label="Herauszoomen"
-          title="Herauszoomen"
-          className={bigButtonLight}
-        >
-          <svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true">
-            <path d="M4 18 H32" stroke="currentColor" strokeWidth="4.5" />
+          {/* Vier Ecken mit Pfeilen nach innen: "großes Gebiet" */}
+          <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+            <path
+              d="M4 13 V4 H13 M27 4 H36 V13 M36 27 V36 H27 M13 36 H4 V27"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+            />
+            <path
+              d="M11 11 L17 17 M29 11 L23 17 M29 29 L23 23 M11 29 L17 23"
+              stroke="currentColor"
+              strokeWidth="3"
+            />
           </svg>
         </button>
       </div>

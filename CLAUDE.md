@@ -123,7 +123,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -159,7 +159,9 @@ also alle 3 h, wirklich neue Werte).
   CARTO-Beschriftungen (20) mehr könnten — die Karte soll sich beim
   Umschalten nicht unterschiedlich verhalten. Nicht „großzügiger" machen,
   ohne vorher am realen Kartenbild zu prüfen, ob die Schummerung dort noch
-  echte Kacheln hat.
+  echte Kacheln hat. **Ausnahme Flugmodus: bis Zoom 16** (`FLIGHT_MAX_ZOOM`,
+  Wunsch des Projektbesitzers, Okt. 2026) — dort gibt es nur OpenTopoMap,
+  die echte Kacheln bis 17 hat. Standard-Zoom im Flugmodus bleibt 15.
 - **Drei Zoomstufen für die Windpfeile** (Umbau „Karte lesbarer", Sept. 2026,
   alles in `src/components/WindMap.tsx`): Übersicht bis Zoom 8 (20-px-Pfeile, wie Region,
   keine Zahlen), Region Zoom 9–11 (20 px, Zahlen-Plakette ab Zoom 10), Detail ab Zoom 12
@@ -317,16 +319,35 @@ also alle 3 h, wirklich neue Werte).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über das blaue **„GO"** im Titel („Should I stay or should I GO",
-  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte. Titel-
+  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte (mit
+  zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
-- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
-  Spitze, **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
-  Standort bis man sie verschiebt, große Tasten (+/− unten rechts,
-  Rücksetztaste unten links = eigener Standort auf Zoom 11 `FLIGHT_ZOOM`,
-  ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
-  Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
-  normale Karte bleibt ohne Zoom-Knöpfe.
+- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer
+  **Navigationspfeil** mit Kerbe hinten, ohne Richtung ein blauer Punkt; vom
+  Projektbesitzer aus Entwürfen gewählt, `createOwnPositionIcon`;
+  **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
+  durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
+  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
+  Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
+  (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
+  Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
+- **Zoomen im Flugmodus nur über die +/−-Tasten** (Wunsch des
+  Projektbesitzers, Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und
+  Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter. Die normale
+  Karte zoomt wie bisher.
+- **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
+  Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
+  (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
+  Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
+  +/−; unten links IGC und Papierkorb; unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
+  (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
+  28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
+  haben einen **halb durchsichtigen Hintergrund** (50 %, `zoomButtonLight`/
+  `zoomButtonDark`), Zeichen und Rand bleiben voll deckend. Ebenso ✕ und
+  START/STOP oben links (STOP halb durchsichtig rot); die gelben Nachfragen
+  bleiben voll deckend.
 - **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
   aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
   reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
@@ -360,26 +381,39 @@ also alle 3 h, wirklich neue Werte).
   der Projektbesitzer trotzdem bewusst weggelassen. Klassen in
   `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
   `src/app/globals.css`. Masten
-  (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
-  „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
+  (`VerticalObstacles`) bewusst nicht. Statuszeile:
+  „Kabel TT.MM." (nur Datum) = wann der Server sie zuletzt beim Land abgeholt hat.
   **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
   Projektbesitzers): Das Handy merkt sich die letzte Fassung
   (`CABLE_STORAGE_KEY`, localStorage), das CDN gibt bei Fehlern die alte
-  weiter (`stale-if-error`). Das Feld oben rechts wird dann **gelb** und
+  weiter (`stale-if-error`). Das Kabel-Feld der Statuszeile wird dann **gelb** und
   zeigt weiter das Datum dieser Fassung — auch wenn die Kabel älter als 30 h
   sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
   Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
   Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
-- **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
-  Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
+- **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
+  Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
+  **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum
+  Abbrechen und darunter die gelbe Bestätigung („STARTEN?" /
+  „STOPPEN?", ohne „WIRKLICH"; gilt genauso für Beenden), erst die löst aus; nach 5 s
+  (`CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
+  Projektbesitzers; bewusst kein Handy-Nachfragefenster, dessen Knöpfe sind
+  mit Handschuhen zu klein). STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
   beginnen nur über die Papierkorb-Taste (mit Rückfrage). Gespeichert im
   Browser des Handys (localStorage, `TRACK_STORAGE_KEY`), nicht in Supabase —
   übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
   nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
   Seite; Pausen > 60 s bleiben als Lücke sichtbar.
+- **IGC-Export** (Taste „IGC" unten links neben dem Papierkorb, bei gestopptem Track):
+  Datei mit Zeit, Position und **GPS-Höhe** je Punkt, am Handy über das
+  Teilen-Menü, sonst als Download (`buildIgc`/`exportIgc` in
+  `FlightMode.tsx`). Keine Druckhöhe (Browser haben keinen Zugriff auf den
+  Luftdruck-Sensor) und keine Signatur (G-Zeile) — für Wettbewerbe mit
+  Signaturpflicht reicht die Datei nicht. Zeit und Höhe werden erst seit Okt.
+  2026 mitgespeichert; ältere Tracks lassen sich nicht exportieren.
 - Geplante weitere Schritte: Landeplätze vorübergehend setzen, Akku-Feinschliff.
 
 **Web-App „SISOSIG" (Okt. 2026, Wunsch des Projektbesitzers)**
