@@ -1134,9 +1134,11 @@ export default function FlightMode({
       {/* Oben links: Beenden und START/STOP nebeneinander, darunter die
           Statuszeile. Beide Tasten sind kleiner als die Zoomtasten, damit man
           sie im Flug nicht aus Versehen trifft, und brauchen einen zweiten
-          Tipper (CONFIRM_MS): Der erste macht die Taste gelb ("WIRKLICH
-          BEENDEN?" usw.), darunter erscheint ✕ zum Abbrechen (nicht daneben:
-          dort steht oben mittig das Filter-Schild). Die gelben Tasten sind so
+          Tipper (CONFIRM_MS): Nach dem ersten steht an derselben Stelle ✕ zum
+          Abbrechen und darunter die gelbe Bestätigung ("WIRKLICH BEENDEN?"
+          usw.; Reihenfolge Wunsch des Projektbesitzers — zweimal Tippen an
+          derselben Stelle bricht also ab, statt auszulösen). Nicht daneben:
+          dort steht oben mittig das Filter-Schild. Die gelben Tasten sind so
           breit wie die normalen, damit nichts seitlich verrutscht; die
           Statuszeile rückt für das ✕ nach unten statt überdeckt zu werden.
           ✕ und START/STOP haben wie die Zoomtasten einen halb durchsichtigen
@@ -1149,15 +1151,6 @@ export default function FlightMode({
               <>
                 <button
                   type="button"
-                  onClick={onExit}
-                  aria-label="Flugmodus wirklich beenden"
-                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
-                >
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
-                  <span className="text-[9px] leading-tight font-bold tracking-tight">BEENDEN?</span>
-                </button>
-                <button
-                  type="button"
                   onClick={exitConfirm.cancel}
                   aria-label="Abbrechen"
                   title="Abbrechen"
@@ -1166,6 +1159,15 @@ export default function FlightMode({
                   <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
                     <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
                   </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={onExit}
+                  aria-label="Flugmodus wirklich beenden"
+                  className={`${smallButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+                >
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">WIRKLICH</span>
+                  <span className="text-[9px] leading-tight font-bold tracking-tight">BEENDEN?</span>
                 </button>
               </>
             ) : (
@@ -1185,7 +1187,18 @@ export default function FlightMode({
           <div className="flex flex-col gap-3">
             {trackConfirm.pending ? (
               <>
-                {/* Zweiter Tipper an derselben Stelle bestätigt (CONFIRM_MS). */}
+                {/* An der alten Stelle ✕ zum Abbrechen, darunter die gelbe Bestätigung (CONFIRM_MS). */}
+                <button
+                  type="button"
+                  onClick={trackConfirm.cancel}
+                  aria-label="Abbrechen"
+                  title="Abbrechen"
+                  className={`${smallButton} bg-white active:bg-zinc-200`}
+                >
+                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1204,17 +1217,6 @@ export default function FlightMode({
                   <span className="text-[9px] leading-tight font-bold tracking-tight">
                     {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
                   </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={trackConfirm.cancel}
-                  aria-label="Abbrechen"
-                  title="Abbrechen"
-                  className={`${smallButton} bg-white active:bg-zinc-200`}
-                >
-                  <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
-                  </svg>
                 </button>
               </>
             ) : track.recording ? (

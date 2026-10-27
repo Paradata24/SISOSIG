@@ -395,8 +395,9 @@ also alle 3 h, wirklich neue Werte).
   Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
-  **zwei Tipper**: Der erste macht die Taste gelb („WIRKLICH STARTEN?" /
-  „WIRKLICH STOPPEN?") mit ✕ darunter, erst der zweite löst aus; nach 5 s
+  **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum
+  Abbrechen und darunter die gelbe Bestätigung („WIRKLICH STARTEN?" /
+  „WIRKLICH STOPPEN?"; gilt genauso für Beenden), erst die löst aus; nach 5 s
   (`CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
   Projektbesitzers; bewusst kein Handy-Nachfragefenster, dessen Knöpfe sind
   mit Handschuhen zu klein). STOP unterbricht nur,
