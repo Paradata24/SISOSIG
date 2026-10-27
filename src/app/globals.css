@@ -65,17 +65,17 @@ body {
 /* Dieselbe OpenTopoMap-Karte im Flugmodus (WindMap.tsx), deutlich kräftiger:
    Im Flug muss das Gelände (Grate, Täler, Hänge, Höhenlinien) auch bei Sonne
    auf dem Display erkennbar sein (Wunsch des Projektbesitzers, Okt. 2026).
-   - saturate: Farbstärke 40 % — Wald, Wiesen, Fels und Wasser sind gut
+   - saturate: Farbstärke 30 % — Wald, Wiesen, Fels und Wasser sind gut
      zu unterscheiden, die Windpfeile stechen trotzdem heraus. Vom
-     Projektbesitzer am Kartenbild gewählt (verglichen mit 0 %, 15 %, 25 %
-     und 40 %; 0 % = reines Grau wie .topo-ebene). Noch mehr Farbe macht
-     grüne Pfeile im Wald schwerer lesbar.
+     Projektbesitzer gewählt (am Kartenbild verglichen mit 0 %, 15 %, 25 %
+     und 40 %, dann auf 30 % festgelegt; 0 % = reines Grau wie .topo-ebene).
+     Mehr Farbe macht grüne Pfeile im Wald schwerer lesbar.
    - contrast/brightness: doppelt so viel Kontrast wie .topo-ebene, weniger
      aufgehellt. Stärkere Werte (80 %/110 %, 100 %/100 %) wurden verglichen,
      dort gingen die Windpfeile im Gelände unter.
    Bewusst hell, nicht dunkel: Dunkle Flächen spiegeln in der Sonne stark. */
 .topo-ebene-flug {
-  filter: saturate(40%) contrast(60%) brightness(125%);
+  filter: saturate(30%) contrast(60%) brightness(125%);
 }
 
 /* Windpfeile der Karte (WindMap.tsx, className der Marker-Icons).
