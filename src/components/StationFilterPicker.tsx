@@ -12,11 +12,11 @@ import {
 // Projektbesitzers, Okt. 2026): Antippen klappt darunter die Liste aller
 // Filter auf, ein Tipp auf einen Eintrag schaltet um und klappt wieder zu.
 //
-// Auf der Hauptseite steht das Schild oben rechts im Titel-Balken, an der
+// Das Schild steht oben rechts im Titel-Balken der Hauptseite, an der
 // Stelle des früheren Menü-Knopfs (3 Linien); unter der Filterliste stehen
-// dort die Quellen (footer, kommt aus WindApp). Im Flugmodus gibt es keinen
-// Titel-Balken, dort steht das Schild wie bisher oben mittig auf der Karte
-// (WindMap).
+// dort die Quellen (footer, kommt aus WindApp). Im Flugmodus zeigt WindMap
+// oben mittig nur ein Info-Schild ohne Liste; umgeschaltet wird dort im Menü
+// (FlightMode).
 //
 // Das Schild selbst zeigt den aktiven Filter immer in Großbuchstaben (auch
 // "ALLE"), die aufgeklappte Liste die normale Schreibweise — beides aus

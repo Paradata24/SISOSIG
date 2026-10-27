@@ -123,7 +123,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild oben rechts im Titelbalken der Hauptseite, klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild in `WindMap`, Umschalten im Menü) |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
@@ -196,9 +196,10 @@ also alle 3 h, wirklich neue Werte).
     Projektbesitzers; `getStationFilterMapLabel` in `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
     Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
     (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
-    Im Flugmodus (kein Titel-Balken) steht das Schild wie vorher oben
-    mittig auf der Karte (`WindMap`), ohne Quellen; Fehlermeldungen stehen
-    immer oben mittig auf der Karte.
+    Im Flugmodus (kein Titel-Balken) steht oben mittig auf der Karte nur
+    ein **Info-Schild** mit dem aktiven Filter (`WindMap`, nicht antippbar;
+    Wunsch des Projektbesitzers) — umgestellt wird dort im Menü; Fehlermeldungen
+    stehen immer oben mittig auf der Karte.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Einzige Karte der Hauptseite ist OpenTopoMap, gleich dargestellt wie im
@@ -426,9 +427,8 @@ also alle 3 h, wirklich neue Werte).
   drei Strichen unten links öffnet ein großes Menü mit „Ebenen" (KK7 an/aus) und „Windstationen" (alle
   Stationsfilter). Zeilen 40 px (`menuOption`; zuerst 56 px, flacher gewünscht,
   damit weitere Einträge Platz haben). **Eingeschaltetes hat gelben Hintergrund.** Ein Tipp
-  schaltet um, das Menü bleibt offen; zu über ✕. Das Filter-Schild oben
-  mittig bleibt vorerst zusätzlich stehen (Rückfrage beim Projektbesitzer
-  offen). In `FlightMode.tsx` (`menuOpen`, `menuOption`).
+  schaltet um, das Menü bleibt offen; zu über ✕. Oben mittig bleibt der
+  aktive Filter als reines Info-Schild stehen (Wunsch des Projektbesitzers). In `FlightMode.tsx` (`menuOpen`, `menuOption`).
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum

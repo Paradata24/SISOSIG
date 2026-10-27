@@ -13,6 +13,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
+  getStationFilterMapLabel,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
@@ -23,7 +24,6 @@ import {
   type WindStation,
 } from "@/lib/wind";
 import { assessLive } from "@/lib/plausibility";
-import StationFilterPicker from "@/components/StationFilterPicker";
 import FlightMode from "@/components/FlightMode";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
@@ -611,9 +611,9 @@ function ContainerResizeWatcher() {
   return null;
 }
 
-// Der Stationsfilter wird über das Filter-Schild oben mittig auf der Karte
-// umgeschaltet (StationFilterPicker). Der Zustand liegt in WindApp und kommt
-// als Prop herein.
+// Der Stationsfilter wird auf der Hauptseite über das Filter-Schild im
+// Titel-Balken (WindApp), im Flugmodus über das Menü (FlightMode)
+// umgeschaltet. Der Zustand liegt in WindApp und kommt als Prop herein.
 export default function WindMap({
   stationFilter,
   onStationFilterChange,
@@ -629,7 +629,7 @@ export default function WindMap({
   topInset,
 }: {
   stationFilter: StationFilter;
-  /** Stationsfilter umschalten (Filter-Schild oben mittig auf der Karte). */
+  /** Stationsfilter umschalten (im Flugmodus über dessen Menü). */
   onStationFilterChange: (filter: StationFilter) => void;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
@@ -899,20 +899,23 @@ export default function WindMap({
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
           Projektbesitzers). */}
-      {/* Oben mittig: im Flugmodus das Filter-Schild (auf der Hauptseite
-          steht es seit Okt. 2026 oben rechts im Titel-Balken, WindApp),
-          darunter ggf. die Fehlermeldung. Beide in EINER Spalte, damit sie
-          sich nicht überdecken. Das Schild ist zugleich der Schalter:
-          Antippen klappt die Filterliste auf (StationFilterPicker).
-          pointer-events-none an der Spalte: Neben dem Schild gehen Ziehen
-          und Antippen der Karte hindurch; das Schild selbst fängt Tipps ab. */}
+      {/* Oben mittig: im Flugmodus der aktive Stationsfilter als reines
+          INFO-Schild (Wunsch des Projektbesitzers, Okt. 2026) — umgestellt
+          wird dort nur noch im Menü unten links (FlightMode). Auf der
+          Hauptseite steht stattdessen das Filter-Schild zum Antippen oben
+          rechts im Titel-Balken (WindApp). Darunter ggf. die Fehlermeldung,
+          beide in EINER Spalte, damit sie sich nicht überdecken.
+          pointer-events-none: Ziehen und Antippen gehen zur Karte durch. */}
       <div
         className="pointer-events-none absolute left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2"
         // Im Flugmodus (kein Titel-Balken) unter der iPhone-Statusleiste.
         style={{ top: topInset > 0 ? topInset + 12 : "calc(0.75rem + env(safe-area-inset-top))" }}
       >
         {flightMode && (
-          <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
+          // Gleiches Aussehen wie das Filter-Schild, nur ohne Dreieck (nicht antippbar).
+          <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm">
+            {getStationFilterMapLabel(stationFilter)}
+          </div>
         )}
         {error && (
           <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
