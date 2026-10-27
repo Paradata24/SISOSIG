@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   CircleMarker,
-  GeoJSON,
   MapContainer,
   Marker,
   TileLayer,
@@ -14,6 +13,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
+  getStationFilterMapLabel,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
@@ -24,8 +24,6 @@ import {
   type WindStation,
 } from "@/lib/wind";
 import { assessLive } from "@/lib/plausibility";
-import staatsgrenzen from "@/data/staatsgrenzen.json";
-import StationFilterPicker from "@/components/StationFilterPicker";
 import FlightMode from "@/components/FlightMode";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
@@ -48,8 +46,6 @@ const WindHistoryPanel = dynamic(loadHistoryPanel, {
     </div>
   ),
 });
-
-const STAATSGRENZE_STYLE = { color: "#555555", weight: 2, opacity: 0.8, fill: false };
 
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
@@ -598,11 +594,12 @@ function ViewportReporter({
   return null;
 }
 
-// Leaflet merkt nur Änderungen der FENSTER-Größe. Blendet WindApp den Zeitbalken
-// aus oder ein (Station geöffnet/geschlossen), wird der Kartenbereich höher
-// bzw. niedriger — ohne diese Meldung bliebe die Karte im alten Format stehen
-// (Kacheln fehlen am unteren Rand, Kartenmitte verrutscht). Muss innerhalb von
-// <MapContainer> stehen.
+// Leaflet merkt nur Änderungen der FENSTER-Größe. Ändert sich der
+// Kartenbereich auf anderem Weg, bliebe die Karte ohne diese Meldung im alten
+// Format stehen (Kacheln fehlen am Rand, Kartenmitte verrutscht). Früher
+// passierte das beim Ein-/Ausblenden des Zeitbalkens; seit Okt. 2026 liegt er
+// halb durchsichtig ÜBER der Karte (WindApp), die Karte füllt immer den ganzen
+// Bildschirm. Bleibt als Absicherung. Muss innerhalb von <MapContainer> stehen.
 function ContainerResizeWatcher() {
   const map = useMap();
   useEffect(() => {
@@ -614,9 +611,9 @@ function ContainerResizeWatcher() {
   return null;
 }
 
-// Der Stationsfilter wird über das Filter-Schild oben mittig auf der Karte
-// umgeschaltet (StationFilterPicker). Der Zustand liegt in WindApp und kommt
-// als Prop herein.
+// Der Stationsfilter wird auf der Hauptseite über das Filter-Schild im
+// Titel-Balken (WindApp), im Flugmodus über das Menü (FlightMode)
+// umgeschaltet. Der Zustand liegt in WindApp und kommt als Prop herein.
 export default function WindMap({
   stationFilter,
   onStationFilterChange,
@@ -629,9 +626,10 @@ export default function WindMap({
   flightMode,
   lastUpdated,
   onExitFlightMode,
+  topInset,
 }: {
   stationFilter: StationFilter;
-  /** Stationsfilter umschalten (Filter-Schild oben mittig auf der Karte). */
+  /** Stationsfilter umschalten (im Flugmodus über dessen Menü). */
   onStationFilterChange: (filter: StationFilter) => void;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
@@ -663,6 +661,12 @@ export default function WindMap({
   /** Letzter Abruf der Live-Werte, für die Statuszeile im Flugmodus. */
   lastUpdated: Date | null;
   onExitFlightMode: () => void;
+  /**
+   * Höhe des halb durchsichtigen Titel-Balkens (px), der auf der Hauptseite
+   * ÜBER der Karte liegt (WindApp); im Flugmodus 0. Die Fehlermeldung oben
+   * mittig rückt um so viel nach unten, sonst läge sie unter dem Balken.
+   */
+  topInset: number;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
   // Die Leaflet-Karte selbst, für den Flugmodus: Er liegt außerhalb von
@@ -869,35 +873,19 @@ export default function WindMap({
             Kacheln parallel — drei Unterdomains bedeuten dann nur drei
             getrennte Verbindungsaufbauten (langsamer, vor allem im
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
-        {flightMode ? (
-          // Flugmodus: immer OpenTopoMap, aber KRÄFTIGER als die normale
-          // Karte und mit einem Hauch Farbe (.topo-ebene-flug in
-          // globals.css) — im Flug muss man Grate,
-          // Täler und Hänge auch bei Sonne auf dem Display erkennen
-          // (Wunsch des Projektbesitzers, Okt. 2026). OpenTopoMap hat Höhenlinien und Schummerung in einem Bild. Eigener
-          // key, weil Leaflet die Klasse einer bestehenden Ebene nicht tauscht.
-          <TileLayer
-            key="opentopomap-flug"
-            url={TOPO_URL}
-            className="topo-ebene-flug"
-            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
-          />
-        ) : (
-          // OpenTopoMap (einzige Karte der Hauptseite): bringt Höhenlinien,
-          // Schummerung und Ortsnamen schon selbst mit, deshalb keine weiteren
-          // Ebenen darüber. Die Klasse .topo-ebene (globals.css) macht daraus
-          // eine sehr helle Graustufenkarte, damit die Windfarben leuchten.
-          <TileLayer
-            key="opentopomap"
-            url={TOPO_URL}
-            className="topo-ebene"
-            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
-          />
-        )}
-        <GeoJSON
-          data={staatsgrenzen as GeoJSON.GeoJsonObject}
-          style={STAATSGRENZE_STYLE}
-          interactive={false}
+        {/* OpenTopoMap, auf der Hauptseite und im Flugmodus GLEICH dargestellt
+            (Wunsch des Projektbesitzers, Okt. 2026; vorher war die Hauptseite
+            eine sehr helle Graustufenkarte): kräftig und mit einem Hauch
+            Farbe (.topo-ebene in globals.css), damit Grate, Täler und Hänge
+            auch bei Sonne auf dem Display erkennbar sind. Bringt Höhenlinien,
+            Schummerung und Ortsnamen schon selbst mit, deshalb keine weiteren
+            Ebenen darüber. Eine einzige Ebene für beide Ansichten: Beim
+            Wechsel in den Flugmodus muss nichts neu geladen werden. */}
+        <TileLayer
+          key="opentopomap"
+          url={TOPO_URL}
+          className="topo-ebene"
+          maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
         />
         <WindMarkers
           stations={displayStations}
@@ -911,16 +899,23 @@ export default function WindMap({
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
           Projektbesitzers). */}
-      {/* Oben mittig: im Flugmodus das Filter-Schild (auf der Hauptseite
-          steht es seit Okt. 2026 oben rechts im Titel-Balken, WindApp),
-          darunter ggf. die Fehlermeldung. Beide in EINER Spalte, damit sie
-          sich nicht überdecken. Das Schild ist zugleich der Schalter:
-          Antippen klappt die Filterliste auf (StationFilterPicker).
-          pointer-events-none an der Spalte: Neben dem Schild gehen Ziehen
-          und Antippen der Karte hindurch; das Schild selbst fängt Tipps ab. */}
-      <div className="pointer-events-none absolute top-3 left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2">
+      {/* Oben mittig: im Flugmodus der aktive Stationsfilter als reines
+          INFO-Schild (Wunsch des Projektbesitzers, Okt. 2026) — umgestellt
+          wird dort nur noch im Menü unten links (FlightMode). Auf der
+          Hauptseite steht stattdessen das Filter-Schild zum Antippen oben
+          rechts im Titel-Balken (WindApp). Darunter ggf. die Fehlermeldung,
+          beide in EINER Spalte, damit sie sich nicht überdecken.
+          pointer-events-none: Ziehen und Antippen gehen zur Karte durch. */}
+      <div
+        className="pointer-events-none absolute left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2"
+        // Im Flugmodus (kein Titel-Balken) unter der iPhone-Statusleiste.
+        style={{ top: topInset > 0 ? topInset + 12 : "calc(0.75rem + env(safe-area-inset-top))" }}
+      >
         {flightMode && (
-          <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
+          // Gleiches Aussehen wie das Filter-Schild, nur ohne Dreieck (nicht antippbar).
+          <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm">
+            {getStationFilterMapLabel(stationFilter)}
+          </div>
         )}
         {error && (
           <div className="rounded-md bg-red-600 px-4 py-2 text-sm text-white shadow-lg">
@@ -935,6 +930,8 @@ export default function WindMap({
           defaultZoom={SOUTH_TYROL_ZOOM}
           lastUpdated={lastUpdated}
           onExit={onExitFlightMode}
+          stationFilter={stationFilter}
+          onStationFilterChange={onStationFilterChange}
         />
       )}
       {selectedStation && (

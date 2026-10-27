@@ -458,6 +458,17 @@ export const CABLE_SOURCE: SourceLink = {
   url: "https://forstdienst.provinz.bz.it/de/wald-holz/erfassung-luftfahrthindernissen",
 };
 
+/**
+ * Quelle der Thermikkarte im Flugmodus (KK7, FlightMode.tsx). Die Lizenz
+ * (CC BY-NC-SA 4.0, nur nicht-kommerziell) verlangt die Nennung — nicht
+ * entfernen, solange die Ebene angezeigt wird.
+ */
+export const KK7_SOURCE: SourceLink = {
+  label: "Thermikkarte im Flugmodus © thermal.kk7.ch (M. von Känel)",
+  url: "https://thermal.kk7.ch",
+  note: "CC BY-NC-SA 4.0",
+};
+
 // "below1000"/"below2000"/"high"/"veryHigh": Höhenfilter (nur Stationen bis
 // bzw. ab einer Höhenschwelle), "all": keine Einschränkung. "windanzeiger":
 // der benannte, kuratierte Filter, der nur die vom Projektbesitzer

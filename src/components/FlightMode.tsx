@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
+import { getStationFilterLabel, STATION_FILTER_ORDER, type StationFilter } from "@/lib/wind";
 
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
@@ -41,6 +42,12 @@ const MIN_HEADING_DISTANCE_M = 25;
 // (Bildschirmpixel) von der Mitte abgewandert ist. Spart Akku: Sonst würde die
 // Karte bei jedem GPS-Wert (ca. 1× pro Sekunde) neu gezeichnet.
 const FOLLOW_TOLERANCE_PX = 12;
+
+// Hat man die Karte verschoben, springt sie nach dieser Zeit von selbst
+// wieder auf den eigenen Standort (Wunsch des Projektbesitzers, Okt. 2026,
+// nach dem Vorbild von burnair Go). Die Zoomstufe bleibt dabei, wie sie ist.
+// Erneutes Verschieben startet die Zeit neu.
+const RECENTER_AFTER_MS = 10_000;
 
 // GPS-Einstellungen. enableHighAccuracy ist nötig: Ohne echtes GPS gibt es
 // keine Flugrichtung. maximumAge: ein höchstens 2 s alter Wert darf
@@ -912,12 +919,172 @@ function createOwnPositionIcon(heading: number | null): L.DivIcon {
   });
 }
 
+// --- KK7-Thermikkarte (Wunsch des Projektbesitzers, Okt. 2026) ---
+// Wahrscheinlichkeit, eine Thermik zu finden, berechnet aus Millionen
+// hochgeladener Streckenflüge (thermal.kk7.ch): je wärmer die Farbe, desto
+// eher steigt es dort. Nur im Flugmodus, als halb durchsichtige Ebene über
+// OpenTopoMap und unter Kabeln, Track und Windpfeilen. Ein-/Ausschalten über
+// die Taste "KK7" unten links; die Wahl merkt sich das Handy.
+//
+// Bedingungen von KK7 (Okt. 2026 auf der Seite nachgelesen): Lizenz
+// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung unter "Quellen" in der Filterliste,
+// KK7_SOURCE in src/lib/wind.ts), jede Anfrage trägt "src=<Adresse der
+// Seite>", die Kacheln liegen in TMS-Zählung (y von unten, daher tms: true)
+// und gibt es bis Zoom 12 — darüber vergrößert Leaflet sie.
+//
+// Automatisch nach Jahreszeit und Tageszeit gefiltert (Wunsch des
+// Projektbesitzers, Okt. 2026, wie in burnair Go): KK7 hat je eine Karte für
+// jede Kombination aus Jahreszeit (jan/apr/jul/oct = je drei Monate drumherum)
+// und Tageszeit (04/07/10 = Morgen/Mittag/Abend, gemessen ab
+// Sonnenaufgang). Die Wahl folgt Datum, Uhrzeit und Standort; wechselt sie
+// (z. B. mittags), tauscht die Karte die Ebene von selbst.
+// Datenmenge über Südtirol im Vergleich zur Ganzjahres-Karte (Okt. 2026
+// gezählt): Sommer 70–80 %, Frühling 40–70 %, Herbst 25–45 %, Winter
+// 10–20 %, morgens jeweils am wenigsten. Im Winter ist die Karte also
+// entsprechend lückenhaft — das ist kein Fehler.
+const KK7_URL = "https://thermal.kk7.ch/tiles/thermals_{category}/{z}/{x}/{y}.png";
+const KK7_MAX_NATIVE_ZOOM = 12;
+// 30 % weniger deckend als zuerst (0,85; Wunsch des Projektbesitzers, Okt.
+// 2026). Die Kacheln von KK7 sind schon selbst halb durchsichtig.
+const KK7_OPACITY = 0.6;
+// Grenzen der Tageszeit in Stunden nach Sonnenaufgang, laut Hilfe von KK7:
+// Morgen 0–6 h, Mittag 6–10 h, Abend danach. (Die Schaltfläche auf der
+// KK7-Seite nennt für Mittag "ca. 6–9 h"; die Hilfe ist ausführlicher.)
+const KK7_MIDDAY_FROM_H = 6;
+const KK7_EVENING_FROM_H = 10;
+// So oft wird geprüft, ob eine andere Karte dran ist.
+const KK7_RECHECK_MS = 5 * 60 * 1000;
+// Über OpenTopoMap (zIndex 1) in derselben Kachel-Ebene.
+const KK7_Z_INDEX = 2;
+// Ohne Flüge in der Gegend liefert KK7 keine Kachel; dann bleibt die Stelle
+// einfach leer (durchsichtiger 1×1-Punkt, wie bei den Höhenlinien in WindMap).
+const KK7_EMPTY_TILE =
+  "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+const KK7_STORAGE_KEY = "sisosig-kk7-v1";
+
+// Sonnenaufgang (Zeitpunkt in ms) am Tag von `date` für einen Ort.
+// Vereinfachte Sonnenstandsformel (NOAA), auf wenige Minuten genau — für die
+// Einteilung Morgen/Mittag/Abend reicht das weit.
+function sunriseMs(date: Date, lat: number, lng: number): number {
+  const rad = Math.PI / 180;
+  const startOfYear = Date.UTC(date.getUTCFullYear(), 0, 1);
+  const dayOfYear = Math.floor((date.getTime() - startOfYear) / 86_400_000) + 1;
+  const g = ((2 * Math.PI) / 365) * (dayOfYear - 1);
+  // Zeitgleichung (Minuten) und Deklination der Sonne (Bogenmaß).
+  const eqTime =
+    229.18 *
+    (0.000075 +
+      0.001868 * Math.cos(g) -
+      0.032077 * Math.sin(g) -
+      0.014615 * Math.cos(2 * g) -
+      0.040849 * Math.sin(2 * g));
+  const decl =
+    0.006918 -
+    0.399912 * Math.cos(g) +
+    0.070257 * Math.sin(g) -
+    0.006758 * Math.cos(2 * g) +
+    0.000907 * Math.sin(2 * g) -
+    0.002697 * Math.cos(3 * g) +
+    0.00148 * Math.sin(3 * g);
+  // Stundenwinkel bei Sonnenaufgang (-0,833° = Horizont mit Lichtbrechung).
+  const cosH =
+    (Math.cos(90.833 * rad) - Math.sin(lat * rad) * Math.sin(decl)) /
+    (Math.cos(lat * rad) * Math.cos(decl));
+  const hourAngle = Math.acos(Math.min(1, Math.max(-1, cosH))) / rad;
+  const minutesUtc = 720 - 4 * (lng + hourAngle) - eqTime;
+  const midnightUtc = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return midnightUtc + minutesUtc * 60_000;
+}
+
+// KK7-Karte für Zeitpunkt und Ort, z. B. "oct_07" (Oktober, Mittag).
+function kk7Category(nowMs: number, lat: number, lng: number): string {
+  const date = new Date(nowMs);
+  // Jan/Apr/Jul/Okt stehen für Dez–Feb, Mär–Mai, Jun–Aug, Sep–Nov.
+  const season = ["jan", "apr", "jul", "oct"][Math.round(date.getMonth() / 3) % 4];
+  // Vor Sonnenaufgang zählt als Morgen.
+  const hoursAfterSunrise = (nowMs - sunriseMs(date, lat, lng)) / 3_600_000;
+  const timeOfDay =
+    hoursAfterSunrise >= KK7_EVENING_FROM_H
+      ? "10"
+      : hoursAfterSunrise >= KK7_MIDDAY_FROM_H
+        ? "07"
+        : "04";
+  return `${season}_${timeOfDay}`;
+}
+
+function loadKk7Enabled(): boolean {
+  try {
+    return window.localStorage.getItem(KK7_STORAGE_KEY) !== "aus";
+  } catch {
+    return true;
+  }
+}
+
+function useKk7Layer(
+  map: L.Map | null,
+  position: OwnPosition | null,
+  fallbackCenter: [number, number],
+) {
+  // Standard: eingeschaltet. Direkt aus dem Speicher gelesen — der Flugmodus
+  // läuft nur im Browser (WindMap wird ohne Server-Rendering geladen).
+  const [enabled, setEnabled] = useState(loadKk7Enabled);
+
+  // Sonnenaufgang am eigenen Standort, ohne GPS an der Startansicht. Die
+  // Ebene wird nur neu angelegt, wenn sich die Karte (category) ändert, nicht
+  // bei jedem GPS-Wert.
+  const now = useNow(KK7_RECHECK_MS);
+  const category = kk7Category(
+    now,
+    position?.lat ?? fallbackCenter[0],
+    position?.lng ?? fallbackCenter[1],
+  );
+
+  useEffect(() => {
+    if (!map || !enabled) return;
+    const url = KK7_URL.replace("{category}", category);
+    const layer = L.tileLayer(`${url}?src=${encodeURIComponent(window.location.hostname)}`, {
+      tms: true,
+      maxNativeZoom: KK7_MAX_NATIVE_ZOOM,
+      opacity: KK7_OPACITY,
+      zIndex: KK7_Z_INDEX,
+      errorTileUrl: KK7_EMPTY_TILE,
+    }).addTo(map);
+    return () => {
+      layer.remove();
+    };
+  }, [map, enabled, category]);
+
+  const toggle = useCallback(() => {
+    setEnabled((was) => {
+      try {
+        window.localStorage.setItem(KK7_STORAGE_KEY, was ? "aus" : "an");
+      } catch {
+        // Ohne Speicher gilt die Wahl eben nur bis zum Neuladen.
+      }
+      return !was;
+    });
+  }, []);
+
+  return { enabled, toggle };
+}
+
+// Eine Zeile im Menü, eingeschaltet gelb. 40 px hoch (zuerst 56 px; auf
+// Wunsch des Projektbesitzers flacher, damit später weitere Einträge Platz
+// haben) — mit Handschuhen noch gut zu treffen.
+function menuOption(active: boolean): string {
+  return `flex h-10 w-full items-center border-2 border-black px-3 text-left text-sm font-bold select-none ${
+    active ? "bg-amber-300 active:bg-amber-400" : "bg-white active:bg-zinc-200"
+  }`;
+}
+
 export default function FlightMode({
   map,
   defaultCenter,
   defaultZoom,
   lastUpdated,
   onExit,
+  stationFilter,
+  onStationFilterChange,
 }: {
   /** Die Leaflet-Karte (aus WindMap); null, solange sie noch aufgebaut wird. */
   map: L.Map | null;
@@ -927,6 +1094,9 @@ export default function FlightMode({
   /** Letzter erfolgreicher Abruf der Windwerte (für die Statuszeile). */
   lastUpdated: Date | null;
   onExit: () => void;
+  /** Stationsfilter (Zustand in WindApp), umschaltbar im Menü unten links. */
+  stationFilter: StationFilter;
+  onStationFilterChange: (filter: StationFilter) => void;
 }) {
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
@@ -934,12 +1104,24 @@ export default function FlightMode({
   const trackConfirm = useTrackConfirm(track.recording);
   const exitConfirm = useConfirmStep<"exit">();
   const cables = useCables(map);
+  const kk7 = useKk7Layer(map, position, defaultCenter);
+  // Menü unten links (Taste mit drei Strichen): KK7 und Stationsfilter.
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
   const online = useOnline();
   const now = useNow(30_000);
 
   // Mitführen: Die Karte folgt dem eigenen Standort, bis man sie selbst
-  // verschiebt. Die Rücksetztaste schaltet es wieder ein. Als ref, weil der
-  // dragstart-Zuhörer und der GPS-Effekt denselben aktuellen Wert brauchen.
+  // verschiebt. RECENTER_AFTER_MS nach dem Loslassen (oder sofort über die
+  // Rücksetztaste) folgt sie wieder. Als ref, weil die Zuhörer der Karte und
+  // der GPS-Effekt denselben aktuellen Wert brauchen.
   const following = useRef(true);
   const [followingShown, setFollowingShown] = useState(true);
   const setFollowing = useCallback((value: boolean) => {
@@ -949,25 +1131,61 @@ export default function FlightMode({
   // Beim ersten GPS-Wert einmal auf die Flug-Zoomstufe springen.
   const hadFirstFix = useRef(false);
 
+  // Letzter Standort für das Zurückspringen (der Zeitgeber unten läuft
+  // außerhalb des Renderns und braucht den jeweils neuesten Wert).
+  const positionRef = useRef<OwnPosition | null>(null);
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
   useEffect(() => {
     if (!map) return;
-    const stopFollowing = () => setFollowing(false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopFollowing = () => {
+      clearTimeout(timer);
+      setFollowing(false);
+    };
+    // Zeit läuft ab dem Loslassen, nicht ab dem ersten Antippen: Wer länger
+    // schiebt, um etwas anzusehen, hat danach trotzdem die vollen 10 s.
+    const scheduleRecenter = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setFollowing(true);
+        const current = positionRef.current;
+        // panTo statt setView: Die gewählte Zoomstufe bleibt. Ohne Standort
+        // holt der nächste GPS-Wert die Karte (Mitführen ist wieder an).
+        if (current) map.panTo([current.lat, current.lng], { animate: false });
+      }, RECENTER_AFTER_MS);
+    };
     map.on("dragstart", stopFollowing);
+    map.on("dragend", scheduleRecenter);
     return () => {
+      clearTimeout(timer);
       map.off("dragstart", stopFollowing);
+      map.off("dragend", scheduleRecenter);
     };
   }, [map, setFollowing]);
 
-  // Zoomen im Flugmodus NUR über die +/−-Tasten (Wunsch des Projektbesitzers,
-  // Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und Rahmen-Zoom sind
-  // aus — im Flug zoomt sonst jede unruhige Berührung mit. Verschieben geht
-  // weiter. Beim Verlassen ist auf der normalen Karte alles wieder an.
+  // Zoomen im Flugmodus über die +/−-Tasten und mit zwei Fingern. Den
+  // Zwei-Finger-Zoom hatte der Projektbesitzer zuerst auch abgeschaltet und im
+  // Okt. 2026 ausdrücklich zurückgewünscht. Doppeltippen, Mausrad und
+  // Rahmen-Zoom bleiben aus — im Flug zoomt sonst jede unruhige Berührung mit.
+  // Verschieben geht weiter. Beim Verlassen ist auf der normalen Karte alles
+  // wieder wie vorher.
+  //
+  // Zwei-Finger-Zoom um die Kartenmitte ("center") statt um die Stelle
+  // zwischen den Fingern: Folgt die Karte dem Standort, bleibt er so beim
+  // Zoomen in der Mitte, statt seitlich wegzurutschen.
   useEffect(() => {
     if (!map) return;
-    const handlers = [map.doubleClickZoom, map.touchZoom, map.scrollWheelZoom, map.boxZoom];
+    const handlers = [map.doubleClickZoom, map.scrollWheelZoom, map.boxZoom];
     for (const handler of handlers) handler.disable();
+    const previousTouchZoom = map.options.touchZoom;
+    L.Util.setOptions(map, { touchZoom: "center" });
+    map.touchZoom.enable();
     return () => {
       for (const handler of handlers) handler.enable();
+      L.Util.setOptions(map, { touchZoom: previousTouchZoom });
     };
   }, [map]);
 
@@ -1130,7 +1348,7 @@ export default function FlightMode({
           festgelegt (Okt. 2026) und danach nachgeschärft: oben links Beenden
           und rechts daneben START/STOP (beide 48 px), darunter die
           Statuszeile; oben rechts Plus/Minus; unten links IGC und
-          Papierkorb; unten rechts Rücksetz- über Übersichtstaste. Abstände
+          Papierkorb, darüber die Taste der KK7-Thermikkarte; unten rechts Rücksetz- über Übersichtstaste. Abstände
           12 px, unten 28 px (Abstand zur Wischleiste des iPhones). */}
 
       {/* Oben links: Beenden und START/STOP nebeneinander, darunter die
@@ -1146,7 +1364,7 @@ export default function FlightMode({
           ✕ und START/STOP haben wie die Zoomtasten einen halb durchsichtigen
           Hintergrund (Wunsch des Projektbesitzers, Okt. 2026); die gelben
           Nachfragen und ihr ✕ bleiben voll deckend, sie sollen auffallen. */}
-      <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
+      <div className="pointer-events-none absolute top-[calc(0.75rem+env(safe-area-inset-top))] left-3 z-[1000] flex flex-col items-start gap-3">
         <div className="flex items-start gap-3">
           <div className="flex flex-col gap-3">
             {exitConfirm.armed ? (
@@ -1275,7 +1493,7 @@ export default function FlightMode({
 
       {/* Oben rechts: Plus über Minus, mit Abstand, damit man mit
           Handschuhen nicht beide zugleich trifft. */}
-      <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col gap-3">
+      <div className="pointer-events-none absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 z-[1000] flex flex-col gap-3">
         <button
           type="button"
           onClick={handleZoomIn}
@@ -1300,9 +1518,23 @@ export default function FlightMode({
         </button>
       </div>
 
-      {/* Unten links: bei gestopptem Track die Tasten IGC-Export und
-          Löschen (die START/STOP-Taste steht oben neben Beenden). */}
-      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000]">
+      {/* Unten links: die Menü-Taste (drei Striche), darunter bei gestopptem
+          Track die Tasten IGC-Export und Löschen (die START/STOP-Taste steht
+          oben neben Beenden). */}
+      <div className="pointer-events-none absolute bottom-7 left-3 z-[1000] flex flex-col items-start gap-3">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label="Menü"
+          aria-expanded={menuOpen}
+          title="Menü"
+          className={`${smallButton} bg-white/50 text-zinc-900 active:bg-zinc-200/50`}
+        >
+          {/* Drei Striche mit geraden Enden wie früher der Menü-Knopf im Titel. */}
+          <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 5 H21 M3 12 H21 M3 19 H21" stroke="currentColor" strokeWidth="2.5" />
+          </svg>
+        </button>
         <div className="flex items-end gap-3">
           {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button
@@ -1384,6 +1616,67 @@ export default function FlightMode({
           </svg>
         </button>
       </div>
+      {/* Menü (Wunsch des Projektbesitzers, Okt. 2026): öffnet sich über die
+          Taste mit den drei Strichen unten links. Groß und mit hohen Zeilen,
+          damit man es mit Handschuhen trifft (Zeilen 40 px, siehe menuOption). Eingeschaltete Ebenen und der
+          aktive Stationsfilter haben einen GELBEN Hintergrund (wie die
+          Nachfragen START/STOP), alles andere ist weiß. Ein Tipp schaltet um,
+          das Menü bleibt offen; geschlossen wird es mit ✕ oben rechts. Es
+          liegt über den Tasten unten (z-[1001]); oben bleiben Beenden,
+          Statuszeile und +/− sichtbar. */}
+      {menuOpen && (
+        <div
+          role="dialog"
+          aria-label="Menü"
+          className="absolute right-3 bottom-7 left-3 z-[1001] max-h-[calc(100%-120px)] overflow-y-auto border-2 border-black bg-white text-zinc-900 shadow-2xl sm:right-auto sm:w-96"
+        >
+          <div className="flex items-center justify-between border-b-2 border-black pl-4">
+            <span className="text-base font-extrabold tracking-wide">MENÜ</span>
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              aria-label="Menü schließen"
+              title="Menü schließen"
+              className="flex h-11 w-11 items-center justify-center border-l-2 border-black active:bg-zinc-200"
+            >
+              <svg width="24" height="24" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex flex-col gap-3 p-3">
+            <section>
+              <h2 className="mb-1.5 text-xs font-bold tracking-wide text-zinc-500">EBENEN</h2>
+              <button
+                type="button"
+                onClick={kk7.toggle}
+                aria-pressed={kk7.enabled}
+                className={`${menuOption(kk7.enabled)} justify-between`}
+              >
+                <span>KK7-Thermikkarte</span>
+                <span className="text-xs">{kk7.enabled ? "AN" : "AUS"}</span>
+              </button>
+            </section>
+            <section>
+              <h2 className="mb-1.5 text-xs font-bold tracking-wide text-zinc-500">WINDSTATIONEN</h2>
+              <ul aria-label="Stationsfilter" className="flex flex-col gap-1.5">
+                {STATION_FILTER_ORDER.map((filter) => (
+                  <li key={filter}>
+                    <button
+                      type="button"
+                      onClick={() => onStationFilterChange(filter)}
+                      aria-pressed={filter === stationFilter}
+                      className={menuOption(filter === stationFilter)}
+                    >
+                      {getStationFilterLabel(filter)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          </div>
+        </div>
+      )}
     </>
   );
 }

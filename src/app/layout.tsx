@@ -19,7 +19,12 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "SISOSIG",
-    statusBarStyle: "default",
+    // Die Seite reicht in der App bis unter die Statusleiste (Uhrzeit, Akku),
+    // dort liegt wie im Titel-Balken der halb durchsichtige Hintergrund
+    // (Wunsch des Projektbesitzers, Okt. 2026; vorher ein weißer Streifen).
+    // Folge von "black-translucent": iOS schreibt Uhrzeit und Akku WEISS.
+    // Wirkt erst, wenn die App neu zum Home-Bildschirm hinzugefügt wird.
+    statusBarStyle: "black-translucent",
   },
   // iPhone-Symbol unter der festen Standard-Adresse /apple-touch-icon.png
   // (Datei in public/, dazu eine gleiche "-precomposed"-Kopie für ältere
@@ -35,6 +40,9 @@ export const metadata: Metadata = {
 // Färbt die Browserleiste am Handy passend zum hellen Modus ein.
 export const viewport: Viewport = {
   themeColor: "#ffffff",
+  // Inhalt bis unter Statusleiste und Home-Leiste des iPhones; Abstände
+  // dafür über env(safe-area-inset-*) (Titel-Balken, Zeitbalken, Flugmodus).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

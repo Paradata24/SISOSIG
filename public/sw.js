@@ -48,11 +48,15 @@ const TILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STORED_HEADER = "x-sisosig-gespeichert";
 
 // Kartendienste, deren Kartenstücke gespeichert werden (gleiche Liste wie in
-// src/components/WindMap.tsx). OpenTopoMap erlaubt den Abruf von fremden
-// Seiten (CORS, im Okt. 2026 geprüft) — nur so lassen sich die Stücke
-// speichern. Esri, CARTO und die Höhenlinien des Landes sind mit der Karte
-// "Relief (Grau)" im Okt. 2026 weggefallen.
-const TILE_HOSTS = ["tile.opentopomap.org"];
+// src/components/WindMap.tsx und FlightMode.tsx). OpenTopoMap und KK7
+// erlauben den Abruf von fremden Seiten (CORS, im Okt. 2026 geprüft) — nur so
+// lassen sich die Stücke speichern. Esri, CARTO und die Höhenlinien des
+// Landes sind mit der Karte "Relief (Grau)" im Okt. 2026 weggefallen.
+const TILE_HOSTS = [
+  "tile.opentopomap.org",
+  // KK7-Thermikkarte (nur Flugmodus, FlightMode.tsx).
+  "thermal.kk7.ch",
+];
 
 self.addEventListener("install", () => {
   // Neue Version sofort übernehmen statt erst nach dem Schließen aller Fenster.

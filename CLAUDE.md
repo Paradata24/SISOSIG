@@ -123,16 +123,15 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/StationFilterPicker.tsx` | Filter-Schild (Hauptseite: oben rechts im Titelbalken, Flugmodus: oben mittig auf der Karte), klappt beim Antippen die Stationsfilter auf |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild oben rechts im Titelbalken der Hauptseite, klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild in `WindMap`, Umschalten im Menü) |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
 | `supabase/*.sql` | Tabellen-Schemas, Cron, einmalige Migrations-/Aufräumskripte |
-| `src/data/staatsgrenzen.json` | Staatsgrenzen-Overlay der Karte |
 
 ## Feste Entscheidungen (nicht ohne Rücksprache ändern)
 
@@ -197,21 +196,40 @@ also alle 3 h, wirklich neue Werte).
     Projektbesitzers; `getStationFilterMapLabel` in `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
     Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
     (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
-    Im Flugmodus (kein Titel-Balken) steht das Schild wie vorher oben
-    mittig auf der Karte (`WindMap`), ohne Quellen; Fehlermeldungen stehen
-    immer oben mittig auf der Karte.
+    Im Flugmodus (kein Titel-Balken) steht oben mittig auf der Karte nur
+    ein **Info-Schild** mit dem aktiven Filter (`WindMap`, nicht antippbar;
+    Wunsch des Projektbesitzers) — umgestellt wird dort im Menü; Fehlermeldungen
+    stehen immer oben mittig auf der Karte.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
-- **Einzige Karte der Hauptseite ist OpenTopoMap in sehr hellen Graustufen**
-  (Sept. 2026, Wunsch des Projektbesitzers; die frühere Karte „Standard" =
+- **Einzige Karte der Hauptseite ist OpenTopoMap, gleich dargestellt wie im
+  Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers; bis dahin sehr helle
+  Graustufen. Seit Sept. 2026 OpenTopoMap; die frühere Karte „Standard" =
   OpenStreetMap wurde dafür entfernt, im Okt. 2026 auch „Relief (Grau)",
   siehe „Nicht wieder einführen"). Es gibt deshalb keine Kartenauswahl
   mehr. Kachel-Adresse
   `TOPO_URL` in `src/components/WindMap.tsx`; sie bringt Höhenlinien,
   Schummerung und Ortsnamen selbst mit, deshalb keine weiteren Ebenen darüber.
-  Die Aufhellung macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
-  (`grayscale` 100 %, `contrast` 30 %, `brightness` 165 % — am Bild
-  ausprobiert; das sind die Stellschrauben für heller/dunkler). **Lizenz:**
+  Das Aussehen macht der CSS-Filter `.topo-ebene` in `src/app/globals.css`
+  (eine Ebene, ein Filter für Hauptseite und Flugmodus, siehe unten bei
+  „Eigene, kräftigere Karte"). **Keine eigene Staatsgrenzen-Linie mehr**,
+  weder auf der Hauptseite noch im Flugmodus (Okt. 2026 auf Wunsch entfernt,
+  samt `src/data/staatsgrenzen.json`; OpenTopoMap zeigt die Grenzen selbst).
+- **Titel- und Zeitbalken der Hauptseite durchscheinend** (Okt. 2026,
+  Wunsch des Projektbesitzers): Titel-Balken 50 %, Zeitbalken 70 %
+  Hintergrund-Deckkraft; **nicht** der Verlaufsbalken, der bleibt voll
+  deckend. **iPhone-Statusleiste** (Uhrzeit/Akku): Die Seite reicht in der
+  App bis darunter (`viewportFit: "cover"`, `statusBarStyle:
+  "black-translucent"` in `src/app/layout.tsx`), der Titel-Balken samt
+  50-%-Hintergrund wächst um `env(safe-area-inset-top)` hinein. Folge: iOS
+  schreibt Uhrzeit/Akku weiß; wirkt erst nach erneutem Hinzufügen der App
+  zum Home-Bildschirm. Im Flugmodus rücken die Tasten oben um denselben
+  Abstand nach unten. Dafür füllt die Karte den
+  ganzen Bildschirm, und beide Balken liegen darüber (`WindApp`: `<main>`
+  `absolute inset-0`, Balken `absolute` oben/unten). Die gemessene Höhe des
+  Titel-Balkens geht als `topInset` an `WindMap`, damit die Fehlermeldung
+  oben mittig darunter rückt. Die weichen Ränder des Zeitrads haben dazu
+  passend dieselbe Deckkraft wie der Zeitbalken (0,7; sonst weiße Flecken). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
   Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
   (`MAP_SOURCES`) — nicht entfernen.
@@ -243,8 +261,9 @@ also alle 3 h, wirklich neue Werte).
     Projektbesitzers): Die Karte zeigt dann nur die aktuellen Werte, der
     Verlaufsbalken reicht bis zum Seitenende. Beim Schließen steht der
     Zeitbalken wieder auf „Aktuell". Der Zustand „geöffnete Station" liegt
-    dafür in `WindApp` (nicht in `WindMap`); `WindMap` meldet Größenänderungen
-    des Kartenbereichs an Leaflet (`ContainerResizeWatcher`).
+    dafür in `WindApp` (nicht in `WindMap`). Die Karte selbst ändert dabei
+    ihre Größe nicht mehr (der Zeitbalken liegt über ihr);
+    `ContainerResizeWatcher` in `WindMap` bleibt als Absicherung.
   - **Kein Abspielknopf** (Wunsch des Projektbesitzers: unnötig) — nicht
     wieder einführen. Die ◀ ▶-Knöpfe sind ebenfalls weg; per Tastatur gehen die
     Pfeiltasten.
@@ -321,18 +340,22 @@ also alle 3 h, wirklich neue Werte).
   **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
   durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
   „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
-  Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
+  Standort bis man sie verschiebt und springt **10 s nach dem Loslassen von
+  selbst zurück** (`RECENTER_AFTER_MS`, Zoomstufe bleibt; Wunsch des
+  Projektbesitzers nach Vorbild burnair Go), große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
-- **Zoomen im Flugmodus nur über die +/−-Tasten** (Wunsch des
-  Projektbesitzers, Okt. 2026): Doppeltippen, Zwei-Finger-Zoom, Mausrad und
-  Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter. Die normale
-  Karte zoomt wie bisher.
+- **Zoomen im Flugmodus über die +/−-Tasten und mit zwei Fingern** (Wunsch
+  des Projektbesitzers, Okt. 2026; der Zwei-Finger-Zoom war zuerst auch aus
+  und wurde ausdrücklich zurückgewünscht). Er zoomt um die Kartenmitte, damit
+  der eigene Standort beim Mitführen in der Mitte bleibt. Doppeltippen,
+  Mausrad und Rahmen-Zoom sind dort abgeschaltet, Verschieben geht weiter.
+  Die normale Karte zoomt wie bisher.
 - **Anordnung der Tasten** (Okt. 2026 vom Projektbesitzer in einer
   Layout-Vorschau festgelegt und danach nachgeschärft): oben links ✕
   (Beenden) und rechts daneben START/STOP, beide 48 px, darunter die
   Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
-  +/−; unten links IGC und Papierkorb; unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
+  +/−; unten links IGC und Papierkorb (darüber die Menü-Taste mit drei Strichen); unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
   (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
@@ -340,8 +363,9 @@ also alle 3 h, wirklich neue Werte).
   `zoomButtonDark`), Zeichen und Rand bleiben voll deckend. Ebenso ✕ und
   START/STOP oben links (STOP halb durchsichtig rot); die gelben Nachfragen
   bleiben voll deckend.
-- **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
-  aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
+- **Kräftigere Karte, zuerst für den Flugmodus** (Okt. 2026; seit Ende Okt.
+  2026 auch auf der Hauptseite): OpenTopoMap mit `.topo-ebene`
+  (`src/app/globals.css`: Farbstärke 30 % statt
   reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
   weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Nur
   OpenTopoMap selbst, keine zweite Quelle darunter mischen (Wunsch des
@@ -385,6 +409,26 @@ also alle 3 h, wirklich neue Werte).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
   Quelle unter „Quellen" in der Filterliste (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
+- **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
+  Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
+  durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `FlightMode.tsx`).
+  Ein/aus im **Menü** (siehe nächster Punkt), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
+  **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
+  (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
+  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). Deckkraft
+  `KK7_OPACITY` 0,6 (30 % weniger als zuerst, Wunsch des Projektbesitzers).
+  Folge: Im Winter und morgens ist die Karte in Südtirol deutlich lückenhafter
+  (Datenmenge im Okt. 2026 gezählt, steht im Code) — kein Fehler. Bedingungen von KK7: Lizenz
+  **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung unter „Quellen"
+  in der Filterliste (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
+  Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
+  Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
+- **Menü im Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers): Taste mit
+  drei Strichen unten links öffnet ein großes Menü mit „Ebenen" (KK7 an/aus) und „Windstationen" (alle
+  Stationsfilter). Zeilen 40 px (`menuOption`; zuerst 56 px, flacher gewünscht,
+  damit weitere Einträge Platz haben). **Eingeschaltetes hat gelben Hintergrund.** Ein Tipp
+  schaltet um, das Menü bleibt offen; zu über ✕. Oben mittig bleibt der
+  aktive Filter als reines Info-Schild stehen (Wunsch des Projektbesitzers). In `FlightMode.tsx` (`menuOpen`, `menuOption`).
 - **Track-Aufzeichnung** (Taste START/STOP oben links neben ✕): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Nach dem ersten steht an derselben Stelle ✕ zum
@@ -429,7 +473,7 @@ also alle 3 h, wirklich neue Werte).
 - **Kartenstücke:** nur gespeichert, was man ansieht (max. 4000, nach 30
   Tagen erneuert). **Kein „Gebiet herunterladen"** — die Nutzungsregeln von
   OpenTopoMap verbietet Massen-Downloads. Gespeichert wird per
-  CORS-Abruf im Helfer (OpenTopoMap erlaubt das, Okt. 2026 geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
+  CORS-Abruf im Helfer (OpenTopoMap und KK7 erlauben das, Okt. 2026 geprüft); kommt ein Kartendienst dazu, muss er in `TILE_HOSTS` in `sw.js`.
 - Bei grundlegenden Änderungen am Helfer `VERSION` in `sw.js` hochzählen
   (alte Speicher werden dann gelöscht). `sw.js` wird nie zwischengespeichert
   (`next.config.ts`).
@@ -617,7 +661,7 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM) stehen unter
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, KK7-Thermikkarte im Flugmodus) stehen unter
   „Quellen" unterhalb der Filterliste (Filter-Schild oben rechts;
   `MAP_SOURCES` in `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,
