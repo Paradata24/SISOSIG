@@ -321,7 +321,9 @@ also alle 3 h, wirklich neue Werte).
   **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
   durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
   „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
-  Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
+  Standort bis man sie verschiebt und springt **10 s nach dem Loslassen von
+  selbst zurück** (`RECENTER_AFTER_MS`, Zoomstufe bleibt; Wunsch des
+  Projektbesitzers nach Vorbild burnair Go), große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
 - **Zoomen im Flugmodus nur über die +/−-Tasten** (Wunsch des

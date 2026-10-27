@@ -42,6 +42,12 @@ const MIN_HEADING_DISTANCE_M = 25;
 // Karte bei jedem GPS-Wert (ca. 1× pro Sekunde) neu gezeichnet.
 const FOLLOW_TOLERANCE_PX = 12;
 
+// Hat man die Karte verschoben, springt sie nach dieser Zeit von selbst
+// wieder auf den eigenen Standort (Wunsch des Projektbesitzers, Okt. 2026,
+// nach dem Vorbild von burnair Go). Die Zoomstufe bleibt dabei, wie sie ist.
+// Erneutes Verschieben startet die Zeit neu.
+const RECENTER_AFTER_MS = 10_000;
+
 // GPS-Einstellungen. enableHighAccuracy ist nötig: Ohne echtes GPS gibt es
 // keine Flugrichtung. maximumAge: ein höchstens 2 s alter Wert darf
 // wiederverwendet werden.
@@ -1011,8 +1017,9 @@ export default function FlightMode({
   const now = useNow(30_000);
 
   // Mitführen: Die Karte folgt dem eigenen Standort, bis man sie selbst
-  // verschiebt. Die Rücksetztaste schaltet es wieder ein. Als ref, weil der
-  // dragstart-Zuhörer und der GPS-Effekt denselben aktuellen Wert brauchen.
+  // verschiebt. RECENTER_AFTER_MS nach dem Loslassen (oder sofort über die
+  // Rücksetztaste) folgt sie wieder. Als ref, weil die Zuhörer der Karte und
+  // der GPS-Effekt denselben aktuellen Wert brauchen.
   const following = useRef(true);
   const [followingShown, setFollowingShown] = useState(true);
   const setFollowing = useCallback((value: boolean) => {
@@ -1022,12 +1029,38 @@ export default function FlightMode({
   // Beim ersten GPS-Wert einmal auf die Flug-Zoomstufe springen.
   const hadFirstFix = useRef(false);
 
+  // Letzter Standort für das Zurückspringen (der Zeitgeber unten läuft
+  // außerhalb des Renderns und braucht den jeweils neuesten Wert).
+  const positionRef = useRef<OwnPosition | null>(null);
+  useEffect(() => {
+    positionRef.current = position;
+  }, [position]);
+
   useEffect(() => {
     if (!map) return;
-    const stopFollowing = () => setFollowing(false);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stopFollowing = () => {
+      clearTimeout(timer);
+      setFollowing(false);
+    };
+    // Zeit läuft ab dem Loslassen, nicht ab dem ersten Antippen: Wer länger
+    // schiebt, um etwas anzusehen, hat danach trotzdem die vollen 10 s.
+    const scheduleRecenter = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        setFollowing(true);
+        const current = positionRef.current;
+        // panTo statt setView: Die gewählte Zoomstufe bleibt. Ohne Standort
+        // holt der nächste GPS-Wert die Karte (Mitführen ist wieder an).
+        if (current) map.panTo([current.lat, current.lng], { animate: false });
+      }, RECENTER_AFTER_MS);
+    };
     map.on("dragstart", stopFollowing);
+    map.on("dragend", scheduleRecenter);
     return () => {
+      clearTimeout(timer);
       map.off("dragstart", stopFollowing);
+      map.off("dragend", scheduleRecenter);
     };
   }, [map, setFollowing]);
 
