@@ -192,8 +192,9 @@ also alle 3 h, wirklich neue Werte).
   - **Aktiver Filter steht als Schild oben rechts im Titel-Balken** (Okt.
     2026, Wunsch des Projektbesitzers; anstelle des früheren Menü-Knopfs mit
     3 Linien, der nur noch die Quellen zeigte — den gibt es nicht mehr).
-    Immer in Großbuchstaben, auch „ALLE" (`getStationFilterMapLabel` in
-    `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
+    „ALLE"/„WINDANZEIGER" in Großbuchstaben, Höhenfilter nur kurz als
+    „≥3000m"/„≤1000m" (ohne „Stationen", ohne Tausenderpunkt; Wunsch des
+    Projektbesitzers; `getStationFilterMapLabel` in `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
     Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
     (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
     Im Flugmodus (kein Titel-Balken) steht das Schild wie vorher oben

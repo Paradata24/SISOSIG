@@ -517,9 +517,12 @@ export function getStationFilterLabel(filter: StationFilter): string {
 
 /**
  * Beschriftung des Filter-Schildes (oben rechts im Titel-Balken, im
- * Flugmodus oben mittig auf der Karte): dieselbe wie in der Filterliste, aber immer in Großbuchstaben (Wunsch des Projektbesitzers), z. B.
- * "ALLE", "WINDANZEIGER", "STATIONEN ≤1.000 m". Nur die Einheit "m" bleibt
- * klein — ein großes "M" läse sich wie "Millionen".
+ * Flugmodus oben mittig auf der Karte). "ALLE" und "WINDANZEIGER" in
+ * Großbuchstaben (Wunsch des Projektbesitzers). Die Höhenfilter seit Okt. 2026
+ * nur kurz als Zeichen + Höhe, z. B. "≥3000m" (Wunsch des Projektbesitzers:
+ * ohne "STATIONEN" und ohne Tausenderpunkt, damit das Schild schmal bleibt
+ * und der Titel daneben nicht umbricht). Die Einheit "m" bleibt klein — ein
+ * großes "M" läse sich wie "Millionen".
  */
 export function getStationFilterMapLabel(filter: StationFilter): string {
   if (filter === "all" || filter === "windanzeiger") {
@@ -527,7 +530,7 @@ export function getStationFilterMapLabel(filter: StationFilter): string {
   }
   const { thresholdM, direction } = ALTITUDE_FILTERS[filter];
   const sign = direction === "above" ? "≥" : "≤";
-  return `STATIONEN ${sign}${thresholdM.toLocaleString("de-DE")} m`;
+  return `${sign}${thresholdM}m`;
 }
 
 /**
