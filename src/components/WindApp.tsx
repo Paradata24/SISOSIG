@@ -67,6 +67,26 @@ export default function WindApp() {
     setSelectedStationCode(code);
     if (code !== null) setSelectedTime(null);
   }, []);
+
+  // --- Flugmodus ("GO" im Titel, siehe FlightMode.tsx) ---
+  // Titel- und Zeitbalken verschwinden, die Karte füllt den Bildschirm, und
+  // darüber liegen Standort und große Zoom-Tasten. Die Karte zeigt dabei immer
+  // die aktuellen Werte, eine geöffnete Station wird geschlossen.
+  const [flightMode, setFlightMode] = useState(false);
+  const enterFlightMode = useCallback(() => {
+    setFlightMode(true);
+    setMenuOpen(false);
+    setSelectedStationCode(null);
+    setSelectedTime(null);
+    // Vollbild blendet am Android-Handy auch die Adressleiste aus. iPhones
+    // kennen das für Webseiten nicht — dort passiert einfach nichts.
+    document.documentElement.requestFullscreen?.({ navigationUI: "hide" }).catch(() => {});
+  }, []);
+  const exitFlightMode = useCallback(() => {
+    setFlightMode(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }, []);
+
   const [timeline, setTimeline] = useState<TimelinePayload | null>(null);
   // Startwert "loading": Die Daten werden gleich beim Seitenaufruf geholt
   // (siehe ensureTimeline). Bei späterem Auffrischen bleibt der Status
@@ -217,109 +237,126 @@ export default function WindApp() {
           steht der Titel optisch genau in der Mitte. Bewusst NICHT mit
           absolut gesetzten Buttons über einem mittigen Titel — auf schmalen
           Handys würden sich Titel und Buttons sonst überlappen. */}
-      <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <button
-          type="button"
-          onClick={handleRefresh}
-          aria-label="Aktualisieren"
-          title="Aktualisieren"
-          className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
-        >
-          {/* Kreispfeil, gleiche Strichstärke und Farbe wie das Menü-Symbol. */}
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 20 20"
-            aria-hidden="true"
-            className={`text-zinc-900 dark:text-zinc-50 ${refreshSpinning ? "animate-spin" : ""}`}
-          >
-            <path
-              d="M16 10a6 6 0 1 1-1.76-4.24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            />
-            <path d="M17 2v5h-5z" fill="currentColor" />
-          </svg>
-        </button>
-        <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
-          Should I stay or should I go
-        </h1>
-        <div ref={menuRef} className="relative z-[1100] shrink-0">
+      {/* Im Flugmodus ist der Titel-Balken weg (ganzer Bildschirm für die
+          Karte); beendet wird er über die ✕-Taste auf der Karte. */}
+      {!flightMode && (
+        <header className="relative flex items-center gap-2 border-b border-zinc-200 bg-white px-3 py-3 dark:border-zinc-800 dark:bg-zinc-900">
           <button
             type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-label="Menü"
-            aria-expanded={menuOpen}
-            className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
+            onClick={handleRefresh}
+            aria-label="Aktualisieren"
+            title="Aktualisieren"
+            className="z-[1100] flex h-9 w-9 shrink-0 items-center justify-center border border-black bg-white hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:hover:bg-zinc-800"
           >
-            {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
-                fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
+            {/* Kreispfeil, gleiche Strichstärke und Farbe wie das Menü-Symbol. */}
             <svg
               width="20"
               height="20"
               viewBox="0 0 20 20"
               aria-hidden="true"
-              className="text-zinc-900 dark:text-zinc-50"
+              className={`text-zinc-900 dark:text-zinc-50 ${refreshSpinning ? "animate-spin" : ""}`}
             >
-              <rect x="2" y="4" width="16" height="2" fill="currentColor" />
-              <rect x="2" y="9" width="16" height="2" fill="currentColor" />
-              <rect x="2" y="14" width="16" height="2" fill="currentColor" />
+              <path
+                d="M16 10a6 6 0 1 1-1.76-4.24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <path d="M17 2v5h-5z" fill="currentColor" />
             </svg>
           </button>
-          {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
-              Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
-              abgerundete Ecken, passend zum eckigen Menü-Button. */}
-          {menuOpen && (
-            <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
-              <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                Karte
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {/* Reihenfolge = Standardkarte (OpenTopoMap) zuerst. */}
-                <button
-                  type="button"
-                  onClick={() => setBaseLayer("topo")}
-                  aria-pressed={baseLayer === "topo"}
-                  className={optionClass(baseLayer === "topo")}
-                >
-                  OpenTopoMap
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBaseLayer("relief")}
-                  aria-pressed={baseLayer === "relief"}
-                  className={optionClass(baseLayer === "relief")}
-                >
-                  Relief (Grau)
-                </button>
-              </div>
-              {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
-                  rechts auf der Karte, jetzt hier ganz unten im Popup
-                  (MAP_SOURCES in wind.ts, richtet sich nach dem gewählten
-                  Hintergrund). Die Quellen der Winddaten stehen bewusst NICHT
-                  hier, sondern stationsweise unten im Verlaufsbalken
-                  ("Quelle: …") — Wunsch des Projektbesitzers, keine
-                  Doppelung. Bewusst klein und grau: Pflichtangabe, aber keine
-                  Bedienung. */}
-              <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                Quellen
-              </p>
-              <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
-                {MAP_SOURCES[baseLayer].map((source) => (
-                  <li key={source.label}>
-                    <SourceLink url={source.url}>{source.label}</SourceLink>
-                    {source.note ? ` (${source.note})` : null}
+          {/* Das "GO" im Titel ist der Knopf für den Flugmodus (Wunsch des
+              Projektbesitzers): groß geschrieben und blau, damit man sieht,
+              dass man es antippen kann. Etwas Innenabstand vergrößert die
+              Tippfläche, ohne die Zeile höher zu machen (-my-1). */}
+          <h1 className="min-w-0 flex-1 text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50">
+            Should I stay or should I{" "}
+            <button
+              type="button"
+              onClick={enterFlightMode}
+              aria-label="Flugmodus starten"
+              title="Flugmodus starten"
+              className="-my-1 px-1 py-1 font-bold text-blue-600 uppercase hover:text-blue-800"
+            >
+              go
+            </button>
+          </h1>
+          <div ref={menuRef} className="relative z-[1100] shrink-0">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-label="Menü"
+              aria-expanded={menuOpen}
+              className="flex h-9 w-9 items-center justify-center border border-black bg-white dark:border-zinc-100 dark:bg-zinc-900"
+            >
+              {/* 3 horizontale Linien, bewusst mit geraden Enden (nicht abgerundet).
+                  fill="currentColor" -> im Hellmodus schwarz, im Dunkelmodus weiß. */}
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
+                aria-hidden="true"
+                className="text-zinc-900 dark:text-zinc-50"
+              >
+                <rect x="2" y="4" width="16" height="2" fill="currentColor" />
+                <rect x="2" y="9" width="16" height="2" fill="currentColor" />
+                <rect x="2" y="14" width="16" height="2" fill="currentColor" />
+              </svg>
+            </button>
+            {/* -right-3 gleicht den right-3-Abstand des Buttons aus, damit das
+                Popup bündig am rechten Bildschirmrand anliegt. Bewusst ohne
+                abgerundete Ecken, passend zum eckigen Menü-Button. */}
+            {menuOpen && (
+              <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
+                <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                  Karte
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {/* Reihenfolge = Standardkarte (OpenTopoMap) zuerst. */}
+                  <button
+                    type="button"
+                    onClick={() => setBaseLayer("topo")}
+                    aria-pressed={baseLayer === "topo"}
+                    className={optionClass(baseLayer === "topo")}
+                  >
+                    OpenTopoMap
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBaseLayer("relief")}
+                    aria-pressed={baseLayer === "relief"}
+                    className={optionClass(baseLayer === "relief")}
+                  >
+                    Relief (Grau)
+                  </button>
+                </div>
+                {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
+                    rechts auf der Karte, jetzt hier ganz unten im Popup
+                    (MAP_SOURCES in wind.ts, richtet sich nach dem gewählten
+                    Hintergrund). Die Quellen der Winddaten stehen bewusst NICHT
+                    hier, sondern stationsweise unten im Verlaufsbalken
+                    ("Quelle: …") — Wunsch des Projektbesitzers, keine
+                    Doppelung. Bewusst klein und grau: Pflichtangabe, aber keine
+                    Bedienung. */}
+                <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                  Quellen
+                </p>
+                <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                  {MAP_SOURCES[baseLayer].map((source) => (
+                    <li key={source.label}>
+                      <SourceLink url={source.url}>{source.label}</SourceLink>
+                      {source.note ? ` (${source.note})` : null}
+                    </li>
+                  ))}
+                  <li>
+                    <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
                   </li>
-                ))}
-                <li>
-                  <SourceLink url="https://leafletjs.com">Leaflet</SourceLink>
-                </li>
-              </ul>
-            </div>
-          )}
-        </div>
-      </header>
+                </ul>
+              </div>
+            )}
+          </div>
+        </header>
+      )}
       <main className="min-h-0 flex-1">
         <WindMapLoader
           baseLayer={baseLayer}
@@ -330,15 +367,21 @@ export default function WindApp() {
           refreshToken={refreshToken}
           onViewportStationsChange={setViewportCodes}
           selectedStationCode={selectedStationCode}
-          onSelectStation={handleSelectStation}
+          // Im Flugmodus öffnet ein Antippen der Pfeile nichts: Mit
+          // Handschuhen trifft man leicht aus Versehen, und der
+          // Verlaufsbalken würde die halbe Karte verdecken.
+          onSelectStation={flightMode ? ignoreStationSelect : handleSelectStation}
           onDataLoaded={setLastUpdated}
+          flightMode={flightMode}
+          lastUpdated={lastUpdated}
+          onExitFlightMode={exitFlightMode}
         />
       </main>
       {/* Eigene Zeile UNTER der Karte (unterstes Element der Seite). Bei
           geöffneter Station ist sie weg (Wunsch des Projektbesitzers): Dann
           zeigt die Karte nur die aktuellen Werte, und der Verlaufsbalken
           reicht bis zum Seitenende. */}
-      {selectedStationCode === null && (
+      {selectedStationCode === null && !flightMode && (
         <TimeSlider
           slots={slots}
           selectedTime={clampedTime}
@@ -351,6 +394,10 @@ export default function WindApp() {
     </>
   );
 }
+
+// Feste Referenz (außerhalb der Komponente), damit die Klick-Handler der
+// Marker im Flugmodus nicht bei jedem Neuzeichnen neu angemeldet werden.
+function ignoreStationSelect() {}
 
 // Ein Link in der Quellenliste des Menü-Popups (öffnet in neuem Tab).
 function SourceLink({ url, children }: { url: string; children: ReactNode }) {

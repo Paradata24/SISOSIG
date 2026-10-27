@@ -117,6 +117,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
+| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
@@ -293,6 +294,21 @@ also alle 3 h, wirklich neue Werte).
   im Sept. 2026 nachgeprüft (auch whiterisk.ch hat nichts Feineres). Der Takt
   steht je Quelle in `SOURCE_INTERVAL_MINUTES` (`src/lib/wind.ts`); im
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
+
+**Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
+- Gestartet über das blaue **„GO"** im Titel („Should I stay or should I GO",
+  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte. Titel-
+  und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
+  Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
+- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
+  Spitze, **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
+  Standort bis man sie verschiebt, große Tasten (+/− unten rechts,
+  Rücksetztaste unten links = eigener Standort auf Zoom 11 `FLIGHT_ZOOM`,
+  ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
+  Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
+  normale Karte bleibt ohne Zoom-Knöpfe.
+- Geplante weitere Schritte: Landeplätze vorübergehend setzen; Karte ohne
+  Netz (Kachel-Zwischenspeicher), „Zum Home-Bildschirm", Akku-Feinschliff.
 
 **Prognosemodelle**
 - Gezeichnet wird nur **ICON-CH1** — seit Sept. 2026 **dunkelgrau** statt
