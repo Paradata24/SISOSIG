@@ -7,7 +7,7 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
 // Bildschirm, Titel- und Zeitbalken sind weg, und diese Datei legt darüber:
-//   - den eigenen Standort mit Flugrichtung (blauer Punkt mit Spitze)
+//   - den eigenen Standort mit Flugrichtung (blauer Navigationspfeil)
 //   - große Plus-/Minus-Tasten und eine Rücksetztaste (handschuhtauglich)
 //   - eine Sperre gegen das automatische Abschalten des Bildschirms
 // Die Windpfeile kommen unverändert von WindMap und werden dort weiter alle
@@ -875,17 +875,23 @@ function useCables(map: L.Map | null): CableState {
   return state;
 }
 
-// Icon des eigenen Standorts: blauer Punkt, davor eine Spitze in Flugrichtung.
-// Bewusst ein Kreis und kein Pfeil, damit er nicht mit den Windpfeilen
-// verwechselt wird. Ohne bekannte Richtung nur der Punkt.
+// Icon des eigenen Standorts: blauer Navigationspfeil in Flugrichtung, ohne
+// bekannte Richtung ein blauer Punkt. Früher bewusst ein Punkt mit Spitze, um
+// Verwechslung mit den Windpfeilen zu vermeiden; der Projektbesitzer hat sich
+// trotzdem für den Pfeil entschieden — er ist größer (bis 36 px), kräftig
+// blau und hat eine Kerbe, die Windpfeile nicht haben.
 // Aufbau wie bei den Windpfeilen von außen nach innen: dunkler Umriss → weißer
 // Rand → blaue Fläche, als dieselbe Form dreimal übereinander. Ein weißer Rand
 // allein verschwand auf der sehr hellen Karte.
 function createOwnPositionIcon(heading: number | null): L.DivIcon {
   const size = 48;
+  // Mit Flugrichtung ein Navigationspfeil mit Kerbe hinten (vom
+  // Projektbesitzer im Okt. 2026 aus mehreren Entwürfen gewählt, vorher Punkt
+  // mit abgesetzter Spitze), ohne Richtung ein Punkt.
   const shape = (attrs: string) =>
-    `<circle cx="24" cy="24" r="10" ${attrs} />` +
-    (heading === null ? "" : `<path d="M24 2 L33 15 L15 15 Z" ${attrs} />`);
+    heading === null
+      ? `<circle cx="24" cy="24" r="10" ${attrs} />`
+      : `<path d="M24 4 L38 40 L24 31 L10 40 Z" ${attrs} />`;
   const html = `
     <svg width="${size}" height="${size}" viewBox="0 0 48 48" style="transform: rotate(${heading ?? 0}deg); overflow: visible;" xmlns="http://www.w3.org/2000/svg">
       ${shape('fill="none" stroke="#1f2937" stroke-width="7" stroke-linejoin="round"')}

@@ -323,8 +323,10 @@ also alle 3 h, wirklich neue Werte).
   zweitem Tipper „WIRKLICH BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
-- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
-  Spitze, **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
+- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer
+  **Navigationspfeil** mit Kerbe hinten, ohne Richtung ein blauer Punkt; vom
+  Projektbesitzer aus Entwürfen gewählt, `createOwnPositionIcon`;
+  **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
   Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.
