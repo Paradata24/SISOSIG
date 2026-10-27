@@ -20,6 +20,9 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 - Wenn ich etwas außerhalb des Codes tun muss (z.B. in GitHub, Vercel,
   Supabase klicken), gib mir genaue Schritt-für-Schritt-Anleitungen
   mit den exakten Menüpunkten/Buttons
+- Ausnahme: Den Ablauf Pull Request → Vercel-Vorschau → „Merge pull request"
+  kenne ich inzwischen. Nicht jedes Mal erklären; es reicht zu sagen, auf
+  welchem Zweig die Änderung liegt und ob ein Pull Request angelegt wurde.
 - Bei mehreren möglichen Lösungswegen: triff eine klare Empfehlung
   statt mich mit Optionen zu überfordern, außer ich frage explizit
   danach
@@ -113,6 +116,8 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
+| `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
+| `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
@@ -322,6 +327,51 @@ also alle 3 h, wirklich neue Werte).
   ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
   Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
   normale Karte bleibt ohne Zoom-Knöpfe.
+- **Eigene, kräftigere Karte im Flugmodus** (Okt. 2026): immer OpenTopoMap,
+  aber mit `.topo-ebene-flug` (`src/app/globals.css`: Farbstärke 30 % statt
+  reinem Grau — vom Projektbesitzer am Bild gewählt —, doppelter Kontrast,
+  weniger aufgehellt), damit das Gelände auch bei Sonne lesbar ist. Nur
+  OpenTopoMap selbst, keine zweite Quelle darunter mischen (Wunsch des
+  Projektbesitzers; Höhen-Graustufen aus Fremd-Höhendaten verworfen). Bewusst
+  hell, **kein Dunkelmodus und keine Umschalttaste** (Wunsch des
+  Projektbesitzers; dunkle Flächen spiegeln in der Sonne).
+- **Stationshöhe im Flugmodus direkt unter der Zahlen-Plakette** („2260 m"),
+  sobald die Zahlen sichtbar sind (ab Zoom 10) — nicht erst in der
+  Detail-Stufe wie auf der normalen Karte (`showAltitude` in
+  `src/components/WindMap.tsx`).
+- **Kabel (Luftfahrthindernisse) nur im Flugmodus** (Okt. 2026, Wunsch des
+  Projektbesitzers): Stromleitungen, Material-/Seilbahnen, Schussdrähte und
+  Lifte aus der Hinderniskarte des Landes (Forstdienst, Meldepflicht nach
+  LG 1/2006; WFS `p_bz-FlightObstacles:LinearObstacles` auf
+  `geoservices6.civis.bz.it`). Abgeholt von `/api/kabel` und **einmal am Tag
+  aktualisiert** über den Vercel-CDN-Cache (`s-maxage` 24 h,
+  `stale-while-revalidate`) — kein Cron nötig. Die lange Nachfrist ist hier
+  Absicht (Kabel sind keine Live-Werte; die Regel „kurze Nachfrist" unter
+  „Caching nicht entfernen" gilt für sie nicht). Gezeichnet in
+  `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
+  weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
+  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`).
+  **Höhen-Schilder** („60–100 m") an Kabeln über 25 m über Grund, **erst
+  ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
+  Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
+  Bildschirmabstand (`CABLE_LABEL_SPACING_PX`), überlappende ausgedünnt
+  (höhere Klasse gewinnt). Die Klasse des Landes gilt für das ganze Kabel
+  (höchste Stelle), Höhen je Abschnitt gibt es nicht — ein „max" davor hat
+  der Projektbesitzer trotzdem bewusst weggelassen. Klassen in
+  `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
+  `src/app/globals.css`. Masten
+  (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
+  „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
+  **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
+  Projektbesitzers): Das Handy merkt sich die letzte Fassung
+  (`CABLE_STORAGE_KEY`, localStorage), das CDN gibt bei Fehlern die alte
+  weiter (`stale-if-error`). Das Feld oben rechts wird dann **gelb** und
+  zeigt weiter das Datum dieser Fassung — auch wenn die Kabel älter als 30 h
+  sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
+  Zwischenspeicher gerade auffrischt).
+  **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
+  Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
+  Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu

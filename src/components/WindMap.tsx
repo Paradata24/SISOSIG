@@ -233,6 +233,13 @@ const LABEL_HEIGHT_PX: Record<ZoomTier, number> = { overview: 16, region: 16, de
 // trotzdem nicht ab: nur Pfeil und Plakette sind anklickbar (Klasse
 // .wind-marker in globals.css).
 const ICON_BOX_WIDTH: Record<ZoomTier, number> = { overview: 64, region: 64, detail: 180 };
+// Flugmodus: Stationshöhe direkt unter der Zahlen-Plakette, sobald die Zahlen
+// zu sehen sind (ab LABEL_MIN_ZOOM, also auch auf der Flug-Zoomstufe 11) —
+// Wunsch des Projektbesitzers, Okt. 2026: Im Flug will man sofort sehen, ob
+// der Wert von einem Gipfel oder aus dem Tal kommt. Auf der normalen Karte
+// bleibt die Höhe beim Stationsnamen in der Detail-Stufe.
+const ALTITUDE_FONT_PX = 12;
+const ALTITUDE_LINE_HEIGHT_PX = 15;
 
 // --- Ausdünnen in der Übersicht ---
 // Herausgezoomt liegen hunderte Pfeile übereinander. In der Übersicht (bei
@@ -278,6 +285,7 @@ function createWindIcon(
   station: WindStation,
   tier: ZoomTier,
   showLabel: boolean,
+  showAltitude: boolean,
 ) {
   const { direction, speedKmh, gustKmh } = station;
   const fillColor = getWindColor(speedKmh);
@@ -297,7 +305,12 @@ function createWindIcon(
   const boxWidth = Math.max(arrowSize, ICON_BOX_WIDTH[tier]);
   const fontSize = LABEL_FONT_PX[tier];
   const gustFontSize = Math.round(fontSize * 0.88);
-  const labelHeight = showLabel ? LABEL_HEIGHT_PX[tier] : 0;
+  // Im Flugmodus steht die Stationshöhe schon in Übersicht/Region unter der
+  // Plakette (im Detail steht sie ohnehin hinter dem Namen).
+  const altitudeLine =
+    showLabel && showAltitude && tier !== "detail" && station.altitude !== null;
+  const labelHeight =
+    (showLabel ? LABEL_HEIGHT_PX[tier] : 0) + (altitudeLine ? ALTITUDE_LINE_HEIGHT_PX : 0);
 
   let label = "";
   if (showLabel) {
@@ -308,6 +321,8 @@ function createWindIcon(
     if (tier === "detail") {
       const altitude = station.altitude !== null ? ` · ${Math.round(station.altitude)} m` : "";
       label += `<div style="margin-top: 2px; font-size: 12px; font-weight: 700; line-height: 1.2; color: #1f2937; white-space: nowrap; text-shadow: 0 0 2px white, 0 0 2px white, 0 0 3px white;">${escapeHtml(station.stationName)}${altitude}</div>`;
+    } else if (altitudeLine) {
+      label += `<div style="margin-top: 1px; font-size: ${ALTITUDE_FONT_PX}px; font-weight: 700; line-height: 1.2; color: #111827; white-space: nowrap; font-variant-numeric: tabular-nums; text-shadow: 0 0 2px white, 0 0 2px white, 0 0 3px white;">${Math.round(station.altitude!)} m</div>`;
     }
   }
 
@@ -424,6 +439,7 @@ function iconCacheKey(
   station: WindStation,
   tier: ZoomTier,
   showLabel: boolean,
+  showAltitude: boolean,
 ): string {
   if (station.stale) return `stale|${tier}`;
   if (station.suspect) return `suspect|${tier}`;
@@ -431,15 +447,22 @@ function iconCacheKey(
   const speed = station.speedKmh === null ? "x" : Math.round(station.speedKmh);
   const gust = station.gustKmh === null ? "x" : Math.round(station.gustKmh);
   const named = tier === "detail" && showLabel ? station.stationCode : "";
-  return `wind|${dir}|${speed}|${gust}|${tier}|${showLabel ? "z" : "-"}|${named}`;
+  // Höhe (Flugmodus) gehört mit in den Schlüssel, sonst bekäme eine Station
+  // das Icon einer gleich windigen Station mit anderer Höhe.
+  const alt =
+    showAltitude && showLabel && tier !== "detail" && station.altitude !== null
+      ? Math.round(station.altitude)
+      : "";
+  return `wind|${dir}|${speed}|${gust}|${tier}|${showLabel ? "z" : "-"}|${named}|${alt}`;
 }
 
 function getMarkerIcon(
   station: WindStation,
   tier: ZoomTier,
   showLabel: boolean,
+  showAltitude: boolean,
 ): L.DivIcon {
-  const key = iconCacheKey(station, tier, showLabel);
+  const key = iconCacheKey(station, tier, showLabel, showAltitude);
   const cached = iconCache.get(key);
   if (cached) {
     // Neu einsortieren = "zuletzt benutzt", damit der Deckel unten die
@@ -452,7 +475,7 @@ function getMarkerIcon(
     ? createStaleIcon(tier)
     : station.suspect
       ? createSuspectIcon(tier)
-      : createWindIcon(station, tier, showLabel);
+      : createWindIcon(station, tier, showLabel, showAltitude);
   iconCache.set(key, icon);
   while (iconCache.size > ICON_CACHE_LIMIT) {
     const oldest = iconCache.keys().next().value;
@@ -472,6 +495,7 @@ function WindMarkers({
   stations,
   onSelect,
   selectedStationCode,
+  showAltitude,
 }: {
   stations: WindStation[];
   // Bewusst nur der Stationscode (nicht das ganze Stations-Objekt): so bleibt
@@ -479,6 +503,8 @@ function WindMarkers({
   // derselbe — siehe handlersByCode unten.
   onSelect: (stationCode: string) => void;
   selectedStationCode: string | null;
+  /** Stationshöhe unter der Plakette (Flugmodus, siehe ALTITUDE_FONT_PX). */
+  showAltitude: boolean;
 }) {
   const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
   const map = useMapEvents({
@@ -562,7 +588,7 @@ function WindMarkers({
           icon={
             hiddenCodes?.has(station.stationCode)
               ? HIDDEN_ICON
-              : getMarkerIcon(station, tier, showLabels)
+              : getMarkerIcon(station, tier, showLabels, showAltitude)
           }
           eventHandlers={handlersByCode.get(station.stationCode)}
         />
@@ -909,7 +935,22 @@ export default function WindMap({
             Kacheln parallel — drei Unterdomains bedeuten dann nur drei
             getrennte Verbindungsaufbauten (langsamer, vor allem im
             Mobilfunk). OpenStreetMap rät inzwischen selbst davon ab. */}
-        {baseLayer === "topo" ? (
+        {flightMode ? (
+          // Flugmodus: immer OpenTopoMap, aber KRÄFTIGER als die normale
+          // Karte und mit einem Hauch Farbe (.topo-ebene-flug in
+          // globals.css) — im Flug muss man Grate,
+          // Täler und Hänge auch bei Sonne auf dem Display erkennen
+          // (Wunsch des Projektbesitzers, Okt. 2026). Unabhängig von der im
+          // Menü gewählten Karte: Das Menü ist im Flugmodus ohnehin weg, und
+          // OpenTopoMap hat Höhenlinien und Schummerung in einem Bild. Eigener
+          // key, weil Leaflet die Klasse einer bestehenden Ebene nicht tauscht.
+          <TileLayer
+            key="opentopomap-flug"
+            url={TOPO_URL}
+            className="topo-ebene-flug"
+            maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
+          />
+        ) : baseLayer === "topo" ? (
           // OpenTopoMap (Standardkarte): bringt Höhenlinien, Schummerung und
           // Ortsnamen schon selbst mit, deshalb keine weiteren Ebenen darüber.
           // Die Klasse .topo-ebene (globals.css) macht daraus eine sehr
@@ -979,6 +1020,7 @@ export default function WindMap({
           stations={displayStations}
           onSelect={handleSelect}
           selectedStationCode={selectedStationCode}
+          showAltitude={flightMode}
         />
         <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
         <ContainerResizeWatcher />
