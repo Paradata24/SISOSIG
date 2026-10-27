@@ -1090,8 +1090,10 @@ export default function FlightMode({
   // abgeholt hat (einmal am Tag, siehe /api/kabel). Gelb, wenn die
   // Aktualisierung nicht geklappt hat — die Karte zeigt dann weiter die Kabel
   // dieses Datums — oder wenn es gar keine Kabel gibt.
+  // Nur das Datum, ohne Uhrzeit (Wunsch des Projektbesitzers, Okt. 2026): Die
+  // Kabel ändern sich höchstens einmal am Tag.
   const cableText = cables.stand
-    ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })} ${cables.stand.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
+    ? `Kabel ${cables.stand.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}`
     : cables.checking
       ? "Kabel lädt…"
       : "Keine Kabel";

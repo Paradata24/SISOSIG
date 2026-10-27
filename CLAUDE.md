@@ -382,7 +382,7 @@ also alle 3 h, wirklich neue Werte).
   `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
   `src/app/globals.css`. Masten
   (`VerticalObstacles`) bewusst nicht. Statuszeile:
-  „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
+  „Kabel TT.MM." (nur Datum) = wann der Server sie zuletzt beim Land abgeholt hat.
   **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des
   Projektbesitzers): Das Handy merkt sich die letzte Fassung
   (`CABLE_STORAGE_KEY`, localStorage), das CDN gibt bei Fehlern die alte
