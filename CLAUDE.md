@@ -60,14 +60,61 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
   Änderungen".
 
 ## Begriffe des Projektbesitzers
-- **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm einer Station
-  (`src/components/WindHistoryPanel.tsx`)
-- **Zeitbalken** = das Zeitrad unter der Karte, mit dem man die ganze Karte
-  durch die letzten 12 h dreht (`src/components/TimeSlider.tsx`)
+
+Mit diesen Namen spricht der Projektbesitzer über die Teile von SISOSIG.
+In Antworten an ihn dieselben Namen verwenden (nicht die Dateinamen oder
+englischen Code-Namen).
+
+**Die drei Hauptteile**
+- **Live-Karte** (auch „Live Werte") = die normale Ansicht nach dem Öffnen:
+  Karte mit den Windpfeilen aller Stationen, darunter der Zeitbalken
+  (`src/components/WindApp.tsx` + `src/components/WindMap.tsx`)
+- **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm und der Prognose
+  **einer** Station; geht auf, wenn man auf der Live-Karte eine Station
+  antippt (`src/components/WindHistoryPanel.tsx`)
+- **Flugcomputer** = die Ansicht für den Flug, gestartet über „GO" im
+  Titelbalken. Im Code und in der App-Abkürzung heißt sie **„Flugmodus"**
+  (`src/components/FlightMode.tsx`) — beide Wörter meinen dasselbe.
+
+**Weitere Teile der Live-Karte**
+- **Titelbalken** = die Leiste ganz oben mit „SISOSIG", dem blauen „GO" und
+  dem Menü-Knopf (`WindApp.tsx`)
+- **Menü** = das Popup hinter dem Menü-Knopf: Kartenwahl und ganz unten
+  „Quellen" (`WindApp.tsx`)
+- **Filter-Schild** = das Schild oben mittig auf der Karte („ALLE",
+  „WINDANZEIGER" …); Antippen klappt die **Stationsfilter** auf
+  (`src/components/StationFilterPicker.tsx`)
 - **Windanzeiger** = die vom Besitzer ausgewählte Stationsliste im
   Stationsfilter (Südtirol über Namen: `WINDANZEIGER_STATION_NAMES`, alle
   anderen Quellen über Stationscodes: `WINDANZEIGER_STATION_CODES`, beide in
   `src/lib/wind.ts`)
+- **Zeitbalken** = das Zeitrad unter der Karte, mit dem man die ganze Karte
+  durch die letzten 12 h dreht, mit Knopf „Aktuell"
+  (`src/components/TimeSlider.tsx`)
+- **Farbstrich** = der farbige Streifen im Zeitbalken (windigste Stationen im
+  Kartenausschnitt)
+- **Windpfeil** = der Pfeil einer Station (Fläche = Mittelwind, Rand = Böe)
+- **Zahlen-Plakette** = das Kästchen mit Mittelwind | Böe neben dem
+  Windpfeil (ab Zoom 10)
+- **Grauer Punkt** = wahrscheinlicher Messfehler; **hohler Ring** = Station
+  liefert keine Werte (beide in `WindMap.tsx`)
+
+**Teile im Verlaufsbalken**
+- **Diagramm** (Messkurve und gestrichelte Prognose ICON-CH1),
+  **Prognose-Pfeile** (Reihe oben im Diagramm), **Wert-Quadrate** (die
+  farbigen Zahlenkästchen), **Höhenwind** (blaue gestrichelte Linie, nur
+  Rittnerhorn und Leiterspitz)
+
+**Teile im Flugcomputer** (alle in `FlightMode.tsx`)
+- **Standortpunkt** (blauer Punkt mit Spitze = Flugrichtung),
+  **Statuszeile** (oben rechts), **Track** (violette Linie, Taste
+  START/STOP, Papierkorb), **Rücksetztaste** (unten links),
+  **Zoomtasten** (+/− unten rechts)
+
+**Website und App**
+- **Website** = SISOSIG im Browser; **App** = SISOSIG als Symbol auf dem
+  Home-Bildschirm. Es ist derselbe Code unter derselben Adresse (siehe
+  „Web-App SISOSIG")
 
 ## Commands
 
@@ -117,7 +164,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugcomputer = Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
