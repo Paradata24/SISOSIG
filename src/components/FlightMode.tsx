@@ -55,6 +55,8 @@ type OwnPosition = {
   heading: number | null;
   /** Zeitpunkt der Messung (ms seit 1970), für die Track-Aufzeichnung. */
   time: number;
+  /** GPS-Höhe in m (für den IGC-Track), null = vom Gerät nicht geliefert. */
+  altitudeM: number | null;
 };
 
 type GpsStatus = "searching" | "ok" | "denied" | "unavailable";
@@ -88,7 +90,7 @@ function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
     if (!("geolocation" in navigator)) return;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
+        const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
         const here = L.latLng(latitude, longitude);
         // Ältere iPhones melden eine ungültige Richtung als -1 statt null.
         const headingValid = heading !== null && !Number.isNaN(heading) && heading >= 0;
@@ -115,6 +117,7 @@ function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
           accuracyM: accuracy,
           heading: lastHeading.current,
           time: pos.timestamp,
+          altitudeM: altitude,
         });
         setStatus("ok");
       },
@@ -255,10 +258,15 @@ const TRACK_GAP_MS = 60_000;
 // beim Verlassen und wenn die Seite in den Hintergrund geht gespeichert.
 const TRACK_SAVE_INTERVAL_MS = 15_000;
 
+// Ein Punkt: [Breite, Länge, Zeit in s seit 1970, GPS-Höhe in m oder null].
+// Zeit und Höhe gibt es erst seit dem IGC-Export (Okt. 2026); ältere
+// gespeicherte Tracks haben nur [Breite, Länge] und bleiben lesbar.
+type TrackPoint = [number, number] | [number, number, number, number | null];
+
 type StoredTrack = {
   recording: boolean;
-  /** Teilstücke ohne Lücke, jeder Punkt [Breite, Länge]. */
-  segments: [number, number][][];
+  /** Teilstücke ohne Lücke. */
+  segments: TrackPoint[][];
   /** Zeitpunkt des letzten Punkts (für die Lücken-Erkennung). */
   lastTime: number | null;
 };
@@ -285,14 +293,136 @@ function saveTrack(track: StoredTrack) {
   }
 }
 
-function trackLengthM(segments: [number, number][][]): number {
+// Leaflet versteht nur [Breite, Länge(, Höhe)] — ein Punkt mit vier Werten
+// würde verworfen. Deshalb vor dem Zeichnen auf zwei Werte kürzen.
+function pointLatLng(p: TrackPoint): L.LatLng {
+  return L.latLng(p[0], p[1]);
+}
+
+function segmentsLatLngs(segments: TrackPoint[][]): L.LatLng[][] {
+  return segments.map((segment) => segment.map(pointLatLng));
+}
+
+function trackLengthM(segments: TrackPoint[][]): number {
   let total = 0;
   for (const segment of segments) {
     for (let i = 1; i < segment.length; i++) {
-      total += L.latLng(segment[i - 1]).distanceTo(segment[i]);
+      total += pointLatLng(segment[i - 1]).distanceTo(pointLatLng(segment[i]));
     }
   }
   return total;
+}
+
+// --- IGC-Export ---
+// IGC ist das übliche Dateiformat für Flüge (XContest, DHV-XC, Flugbuch-
+// Programme). Aufbau: Kopfzeilen (A, H) und je GPS-Punkt eine B-Zeile mit
+// Uhrzeit (UTC), Position, Druckhöhe und GPS-Höhe.
+// Einschränkungen, bewusst so:
+//   - Keine Druckhöhe: Browser kommen nicht an den Luftdruck-Sensor des
+//     Handys. Das Feld steht deshalb auf 00000, die Höhe kommt nur aus dem GPS.
+//   - Keine Signatur (G-Zeile): Nur zugelassene Flugrechner dürfen signieren.
+//     Für Wettbewerbe, die eine gültige Signatur verlangen, reicht die Datei
+//     nicht.
+//   - Punkte ohne Zeit (Tracks von vor dem IGC-Export) fehlen in der Datei.
+//   - Bezug der GPS-Höhe: Laut Browser-Norm über dem WGS84-Ellipsoid (in den
+//     Alpen rund 50 m mehr als über dem Meer), das iPhone liefert aber
+//     Meereshöhe. Die Kopfzeile HFALGALTGPS sagt deshalb, welche es ist.
+
+function pad(n: number, width: number): string {
+  return String(n).padStart(width, "0");
+}
+
+// Grad → IGC-Schreibweise GGMMmmm (Grad, Minuten mit drei Nachkommastellen).
+function igcCoord(value: number, degWidth: number, pos: string, neg: string): string {
+  const abs = Math.abs(value);
+  let deg = Math.floor(abs);
+  let milliMin = Math.round((abs - deg) * 60_000);
+  if (milliMin === 60_000) {
+    deg += 1;
+    milliMin = 0;
+  }
+  return pad(deg, degWidth) + pad(milliMin, 5) + (value >= 0 ? pos : neg);
+}
+
+function igcAltitude(m: number): string {
+  const r = Math.round(m);
+  return r < 0 ? "-" + pad(-r, 4) : pad(Math.min(r, 99_999), 5);
+}
+
+// Fertige IGC-Datei, oder null, wenn kein Punkt eine Zeit hat.
+function buildIgc(segments: TrackPoint[][]): { text: string; firstTime: Date } | null {
+  const fixes = segments.flat().filter((p) => p.length === 4) as [
+    number,
+    number,
+    number,
+    number | null,
+  ][];
+  if (fixes.length === 0) return null;
+  const first = new Date(fixes[0][2] * 1000);
+  const isApple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  const lines = [
+    "AXSGSISOSIG",
+    `HFDTEDATE:${pad(first.getUTCDate(), 2)}${pad(first.getUTCMonth() + 1, 2)}${pad(first.getUTCFullYear() % 100, 2)},01`,
+    "HFPLTPILOTINCHARGE:",
+    "HFGTYGLIDERTYPE:",
+    "HFGIDGLIDERID:",
+    "HFDTMGPSDATUM:WGS84",
+    "HFFTYFRTYPE:SISOSIG,Web-App",
+    "HFGPSRECEIVER:Smartphone",
+    "HFPRSPRESSALTSENSOR:NIL",
+    `HFALGALTGPS:${isApple ? "GEO" : "ELL"}`,
+    "HFALPALTPRESSURE:ISA",
+  ];
+  for (const [lat, lng, t, alt] of fixes) {
+    const d = new Date(t * 1000);
+    lines.push(
+      "B" +
+        pad(d.getUTCHours(), 2) +
+        pad(d.getUTCMinutes(), 2) +
+        pad(d.getUTCSeconds(), 2) +
+        igcCoord(lat, 2, "N", "S") +
+        igcCoord(lng, 3, "E", "W") +
+        (alt === null ? "V" : "A") +
+        "00000" +
+        igcAltitude(alt ?? 0),
+    );
+  }
+  return { text: lines.join("\r\n") + "\r\n", firstTime: first };
+}
+
+// IGC-Datei weitergeben: Am Handy über das Teilen-Menü (dort lässt sie sich
+// in "Dateien" sichern, per Mail/Messenger schicken oder direkt an eine
+// Flugbuch-App geben), sonst als normaler Download. Android-Chrome teilt nur
+// bekannte Dateitypen, .igc gehört nicht dazu — dort greift der Download.
+async function exportIgc(segments: TrackPoint[][]) {
+  const igc = buildIgc(segments);
+  if (!igc) {
+    window.alert(
+      "Dieser Track wurde vor dem IGC-Export aufgezeichnet und hat keine Zeiten. " +
+        "IGC geht erst für neue Aufzeichnungen.",
+    );
+    return;
+  }
+  const f = igc.firstTime;
+  const name = `SISOSIG-${f.getFullYear()}-${pad(f.getMonth() + 1, 2)}-${pad(f.getDate(), 2)}-${pad(f.getHours(), 2)}${pad(f.getMinutes(), 2)}.igc`;
+  const file = new File([igc.text], name, { type: "application/octet-stream" });
+  try {
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+  } catch (err) {
+    // Teilen-Menü abgebrochen: nichts weiter tun. Andere Fehler: Download.
+    if (err instanceof DOMException && err.name === "AbortError") return;
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 // Aufzeichnung, Speicher und die Linie auf der Karte. Der Track selbst liegt
@@ -313,7 +443,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     if (!map) return;
     const loaded = loadTrack();
     track.current = loaded;
-    lineRef.current = L.polyline(loaded.segments, {
+    lineRef.current = L.polyline(segmentsLatLngs(loaded.segments), {
       color: TRACK_COLOR,
       weight: 3,
       opacity: 0.9,
@@ -351,9 +481,11 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     const t = track.current;
     if (!t || !t.recording || !position) return;
     if (position.accuracyM > TRACK_MAX_ACCURACY_M) return;
-    const point: [number, number] = [
+    const point: TrackPoint = [
       Math.round(position.lat * 1e5) / 1e5,
       Math.round(position.lng * 1e5) / 1e5,
+      Math.round(position.time / 1000),
+      position.altitudeM === null ? null : Math.round(position.altitudeM),
     ];
     let segment = t.segments[t.segments.length - 1];
     const isGap = t.lastTime !== null && position.time - t.lastTime > TRACK_GAP_MS;
@@ -364,7 +496,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     const last = segment[segment.length - 1];
     let step = 0;
     if (last) {
-      step = L.latLng(last).distanceTo(point);
+      step = pointLatLng(last).distanceTo(pointLatLng(point));
       if (step < TRACK_MIN_STEP_M) {
         // Zu nah am letzten Punkt: nicht speichern, aber als "noch da"
         // werten, damit langsames Fliegen keine Lücke erzeugt.
@@ -375,7 +507,7 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     segment.push(point);
     t.lastTime = position.time;
     dirty.current = true;
-    lineRef.current?.setLatLngs(t.segments);
+    lineRef.current?.setLatLngs(segmentsLatLngs(t.segments));
     if (step > 0) setLengthM((m) => m + step);
   }, [position]);
 
@@ -413,7 +545,11 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
     setLengthM(0);
   }, []);
 
-  return { recording, lengthM, start, stop, clear };
+  const exportFile = useCallback(() => {
+    if (track.current) void exportIgc(track.current.segments);
+  }, []);
+
+  return { recording, lengthM, start, stop, clear, exportFile };
 }
 
 // Zwischenschritt "wirklich starten/stoppen?" der Track-Taste (siehe
@@ -972,8 +1108,8 @@ export default function FlightMode({
       </div>
 
       {/* Unten links: oben die Track-Taste (Start/Stop mit Bestätigung,
-          daneben bei gestopptem Track die kleinere Löschtaste bzw. während
-          der Bestätigung die Abbrechen-Taste), darunter die
+          daneben bei gestopptem Track die kleineren Tasten IGC-Export und
+          Löschen bzw. während der Bestätigung die Abbrechen-Taste), darunter die
           Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe; ohne
           Standort auf die Startansicht). Die Rücksetztaste ist gefüllt,
           solange die Karte dem Standort folgt — so sieht man, ob sie gerade
@@ -1039,6 +1175,17 @@ export default function FlightMode({
                 <circle cx="11" cy="11" r="10" fill="#dc2626" />
               </svg>
               <span className="text-xs font-bold">START</span>
+            </button>
+          )}
+          {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
+            <button
+              type="button"
+              onClick={track.exportFile}
+              aria-label="Track als IGC-Datei speichern"
+              title="Track als IGC-Datei speichern"
+              className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white text-xs font-bold shadow-lg active:bg-zinc-200"
+            >
+              IGC
             </button>
           )}
           {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (

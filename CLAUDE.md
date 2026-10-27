@@ -385,6 +385,13 @@ also alle 3 h, wirklich neue Werte).
   übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
   nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
   Seite; Pausen > 60 s bleiben als Lücke sichtbar.
+- **IGC-Export** (Taste „IGC" neben dem Papierkorb, bei gestopptem Track):
+  Datei mit Zeit, Position und **GPS-Höhe** je Punkt, am Handy über das
+  Teilen-Menü, sonst als Download (`buildIgc`/`exportIgc` in
+  `FlightMode.tsx`). Keine Druckhöhe (Browser haben keinen Zugriff auf den
+  Luftdruck-Sensor) und keine Signatur (G-Zeile) — für Wettbewerbe mit
+  Signaturpflicht reicht die Datei nicht. Zeit und Höhe werden erst seit Okt.
+  2026 mitgespeichert; ältere Tracks lassen sich nicht exportieren.
 - Geplante weitere Schritte: Landeplätze vorübergehend setzen, Akku-Feinschliff.
 
 **Web-App „SISOSIG" (Okt. 2026, Wunsch des Projektbesitzers)**
