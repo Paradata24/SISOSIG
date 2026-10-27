@@ -116,6 +116,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
+| `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
 | `src/components/WindApp.tsx` | Titelbalken, Menü (Karte/Quellen), Zustand von Stationsfilter und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
@@ -334,7 +335,15 @@ also alle 3 h, wirklich neue Werte).
   `stale-while-revalidate`) — kein Cron nötig. Gezeichnet in
   `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
-  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`). Masten
+  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`).
+  **Höhen-Schilder** („max 60–100 m") an Kabeln über 25 m über Grund, **erst
+  ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
+  Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
+  Bildschirmabstand (`CABLE_LABEL_SPACING_PX`), überlappende ausgedünnt
+  (höhere Klasse gewinnt). „max", weil die Klasse des Landes für das ganze
+  Kabel gilt (höchste Stelle) — Höhen je Abschnitt gibt es nicht. Klassen in
+  `CABLE_HEIGHT_CLASSES` (`src/lib/kabel.ts`), Aussehen `.kabel-schild` in
+  `src/app/globals.css`. Masten
   (`VerticalObstacles`) bewusst nicht. Statuszeile oben rechts:
   „Kabel TT.MM. HH:MM" = wann der Server sie zuletzt beim Land abgeholt hat.
   **Scheitert die Aktualisierung, bleiben die letzten Kabel** (Wunsch des

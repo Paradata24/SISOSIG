@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 
 // Kabel (Luftfahrthindernisse) für den Flugmodus (Okt. 2026, Wunsch des
 // Projektbesitzers): Stromleitungen, Materialseilbahnen, Schussdrähte,
@@ -45,25 +46,10 @@ const WFS_URL =
 const RESPONSE_CACHE_CONTROL =
   "public, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=2592000";
 
-// Kabel, die so hoch über Grund hängen, sind meist quer über Täler gespannt
-// — die gefährlichsten für Gleitschirme. Die Werte sind die Höhenklassen des
-// Landes (Feld BAS_BEZ_DE). FlightMode zeichnet derzeit alle Kabel gleich
-// (Wunsch des Projektbesitzers); das Kennzeichen bleibt für später.
-const HIGH_CLASSES = new Set([
-  "> 60 bis < 100 m",
-  ">= 100 bis 150 m",
-  "> 150 m",
-]);
-
-export interface CablePayload {
-  /** Wann die Kabel zuletzt beim Land abgeholt wurden (ISO-Zeit). */
-  stand: string;
-  /**
-   * Je Kabel: [hoch (1 = über 60 m über Grund, sonst 0), Breite, Länge,
-   * Breite, Länge, …]. Flache Zahlenreihen statt GeoJSON — halb so groß.
-   */
-  kabel: number[][];
-}
+// Höhenklasse des Landes (Feld BAS_BEZ_DE) → Zahl für die kompakte Antwort
+// (siehe CABLE_HEIGHT_CLASSES in src/lib/kabel.ts). Unbekannte und niedrige
+// Klassen (bis 25 m) werden 0 = kein Schild.
+const HEIGHT_CLASS_CODES = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.land, c.code]));
 
 // Web-Mercator-Meter → Grad (gleiche Formel, die Leaflet intern benutzt).
 const EARTH_RADIUS_M = 6378137;
@@ -124,10 +110,10 @@ export async function GET() {
         : geometry.type === "MultiLineString"
           ? (geometry.coordinates as number[][][])
           : [];
-    const high = HIGH_CLASSES.has(feature.properties?.BAS_BEZ_DE ?? "") ? 1 : 0;
+    const heightClass = HEIGHT_CLASS_CODES.get(feature.properties?.BAS_BEZ_DE ?? "") ?? 0;
     for (const part of parts) {
       if (part.length < 2) continue;
-      const row = [high];
+      const row = [heightClass];
       for (const [x, y] of part) {
         const [lat, lng] = toLatLng(x, y);
         row.push(round5(lat), round5(lng));
