@@ -326,7 +326,9 @@ also alle 3 h, wirklich neue Werte).
 - Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer
   **Navigationspfeil** mit Kerbe hinten, ohne Richtung ein blauer Punkt; vom
   Projektbesitzer aus Entwürfen gewählt, `createOwnPositionIcon`;
-  **Flugrichtung aus dem GPS**, nicht Kompass), Karte folgt dem
+  **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
+  durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
+  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
   Standort bis man sie verschiebt, große Tasten, Bildschirm-Wachhalten
   (Screen Wake Lock), Statuszeile. Diese großen Tasten gelten nur im
   Flugmodus — die normale Karte bleibt ohne Zoom-Knöpfe.

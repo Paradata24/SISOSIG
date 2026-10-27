@@ -52,6 +52,11 @@ const GEO_OPTIONS: PositionOptions = {
 };
 
 const OWN_POSITION_COLOR = "#2563eb";
+// GPS-Ungenauigkeit als leicht durchsichtiger blauer Kreis um den Standort
+// (wie beim Standort-Senden in WhatsApp; Wunsch des Projektbesitzers,
+// Okt. 2026, statt "GPS ±… m" in der Statuszeile). Erst ab dieser
+// Ungenauigkeit — darunter ist der Kreis ohnehin kaum größer als der Pfeil.
+const ACCURACY_CIRCLE_MIN_M = 10;
 
 type OwnPosition = {
   lat: number;
@@ -992,18 +997,25 @@ export default function FlightMode({
     const latLng = L.latLng(position.lat, position.lng);
     const heading = position.heading === null ? null : Math.round(position.heading / 5) * 5;
 
-    if (!accuracyRef.current) {
-      // Ungenauigkeits-Kreis: nur ein Hauch, damit er nichts verdeckt.
-      accuracyRef.current = L.circle(latLng, {
-        radius: position.accuracyM,
-        color: OWN_POSITION_COLOR,
-        weight: 1,
-        opacity: 0.4,
-        fillOpacity: 0.08,
-        interactive: false,
-      }).addTo(map);
+    // Ungenauigkeits-Kreis (ACCURACY_CIRCLE_MIN_M): sichtbar, aber durchsichtig
+    // genug, dass Windpfeile und Gelände darunter lesbar bleiben.
+    if (position.accuracyM > ACCURACY_CIRCLE_MIN_M) {
+      if (!accuracyRef.current) {
+        accuracyRef.current = L.circle(latLng, {
+          radius: position.accuracyM,
+          color: OWN_POSITION_COLOR,
+          weight: 1.5,
+          opacity: 0.6,
+          fillColor: OWN_POSITION_COLOR,
+          fillOpacity: 0.18,
+          interactive: false,
+        }).addTo(map);
+      } else {
+        accuracyRef.current.setLatLng(latLng).setRadius(position.accuracyM);
+      }
     } else {
-      accuracyRef.current.setLatLng(latLng).setRadius(position.accuracyM);
+      accuracyRef.current?.remove();
+      accuracyRef.current = null;
     }
 
     if (!markerRef.current) {
@@ -1055,9 +1067,11 @@ export default function FlightMode({
   const handleZoomIn = () => map?.zoomIn(1, { animate: false });
   const handleZoomOut = () => map?.zoomOut(1, { animate: false });
 
+  // Mit GPS-Standort steht hier nichts — die Genauigkeit zeigt der Kreis um
+  // den Standort (ACCURACY_CIRCLE_MIN_M). Nur Probleme werden gemeldet.
   const gpsText =
     status === "ok" && position
-      ? `GPS ±${Math.round(position.accuracyM)} m`
+      ? null
       : status === "denied"
         ? "Standort nicht erlaubt"
         : status === "unavailable"
@@ -1232,7 +1246,7 @@ export default function FlightMode({
         {/* Statuszeile (GPS-Genauigkeit, Stand der Windwerte und Kabel,
             Track-Länge, ob der Bildschirm wach gehalten wird). */}
         <div className="flex flex-col items-start gap-1 text-left text-xs font-bold text-zinc-900">
-          <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
+          {gpsText && <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>}
           {!online && <span className="bg-amber-300 px-1.5 py-0.5 shadow">Offline</span>}
           {/* Gelb, wenn die Windwerte alt sind (z. B. ohne Netz die zuletzt
               gespeicherten): Die Uhrzeit sagt dann, von wann sie stammen. */}
