@@ -1,5 +1,6 @@
 import { isInAlps } from "./alps";
 import type { WindStation } from "./wind";
+import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
 // GeoSphere Austria (früher ZAMG), Messnetz TAWES (teilautomatische
@@ -56,11 +57,14 @@ const CODE_PREFIX = "geosphere-";
 
 // --- Caching / Anfrage-Grenze ---
 // GeoSphere erlaubt pro Absender höchstens 5 Anfragen je Sekunde und 240 je
-// Stunde. Deshalb werden die Messwerte 120 s (statt 60 s wie bei Bozen und
-// Pioupiou) im Next.js-Daten-Cache gehalten: /api/wind fragt so höchstens
+// Stunde. Deshalb werden die Messwerte 120 s (statt 60 s wie bei
+// Pioupiou) zwischengespeichert: /api/wind fragt so höchstens
 // 30-mal pro Stunde, /api/collect 12-mal, die Edge Function 1-mal — mit viel
 // Luft nach oben. Neue Werte gibt es ohnehin nur alle 10 Minuten.
-const MEASUREMENTS_REVALIDATE_S = 120;
+// Seit Okt. 2026 über cachedFresh (src/lib/freshCache.ts) statt den
+// Next.js-Daten-Cache: gleiche 120 s, aber nach Ablauf wird sofort frisch
+// geholt statt zuerst der alte Stand ausgeliefert.
+const MEASUREMENTS_TTL_MS = 120 * 1000;
 const METADATA_REVALIDATE_S = 6 * 60 * 60;
 
 interface GeoSphereStationMeta {
@@ -157,13 +161,14 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
     parameters: "DD,FF,FFX",
     station_ids: ids.join(","),
   });
-  const res = await fetch(`${API_BASE}?${params}`, {
-    next: { revalidate: MEASUREMENTS_REVALIDATE_S },
+  const url = `${API_BASE}?${params}`;
+  const body = await cachedFresh(url, MEASUREMENTS_TTL_MS, async () => {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      throw new Error(`GeoSphere antwortete mit Status ${res.status}`);
+    }
+    return (await res.json()) as GeoSphereResponse;
   });
-  if (!res.ok) {
-    throw new Error(`GeoSphere antwortete mit Status ${res.status}`);
-  }
-  const body = (await res.json()) as GeoSphereResponse;
 
   // Zeitpunkte einmal umwandeln, z. B. "2026-09-29T03:10+00:00" → Epoch-ms.
   const times = (body.timestamps ?? []).map((t) => Date.parse(t));

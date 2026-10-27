@@ -1,4 +1,5 @@
 import type { WindStation } from "./wind";
+import { cachedFresh } from "./freshCache";
 
 // Ausgewählte Messstationen des Lawinenwarndienstes Tirol (LWD Tirol).
 // Genutzt von /api/wind (Live-Anzeige) und /api/collect (Sammel-Route für die
@@ -41,8 +42,9 @@ export const LWD_TIROL_STATIONS: Record<string, string> = {
 // Messwerte älter als 2 h gelten als ausgefallen (wie bei den anderen Quellen).
 const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
-// Neue Werte alle 10 Minuten; 120 s Cache genügen.
-const REVALIDATE_S = 120;
+// Neue Werte alle 10 Minuten; 120 s Cache genügen. Über cachedFresh
+// (src/lib/freshCache.ts), damit nach Ablauf sofort frisch geholt wird.
+const CACHE_TTL_MS = 120 * 1000;
 
 interface LwdFeature {
   geometry?: { coordinates?: number[] };
@@ -69,9 +71,11 @@ function numberOrNull(value: unknown): number | null {
 }
 
 export async function fetchLwdTirolStations(): Promise<WindStation[]> {
-  const res = await fetch(API_URL, { next: { revalidate: REVALIDATE_S } });
-  if (!res.ok) throw new Error(`LWD Tirol antwortete mit Status ${res.status}`);
-  const body = (await res.json()) as { features?: LwdFeature[] };
+  const body = await cachedFresh(API_URL, CACHE_TTL_MS, async () => {
+    const res = await fetch(API_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`LWD Tirol antwortete mit Status ${res.status}`);
+    return (await res.json()) as { features?: LwdFeature[] };
+  });
 
   const now = Date.now();
   const result: WindStation[] = [];

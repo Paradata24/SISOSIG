@@ -101,6 +101,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
+| `src/lib/freshCache.ts` | Kurzer Zwischenspeicher für Live-Messwerte (Pioupiou, GeoSphere, MeteoSchweiz, LWD Tirol, DWD), der nach Ablauf sofort frisch holt |
 | `src/lib/plausibility.ts` | Erkennung wahrscheinlicher Messfehler (eingefroren, Windfahne klemmt, unmögliche Werte) |
 | `src/lib/alps.ts` | Alpen-Regel für ALLE Quellen: `isInAlps(lat, lon)` (Umriss `ALPS_POLYGON`) |
 | `src/lib/geosphere.ts` | Österreichische Stationen mit Wind von GeoSphere Austria (früher ZAMG) |
@@ -282,7 +283,19 @@ also alle 3 h, wirklich neue Werte).
 - **Caching nicht entfernen** (`/api/wind` und die Verlaufs-Routen): Stationen
   messen nur alle 5–10 min. Ebenso bleibt der Abruf-Takt der Karte bei 3 min —
   „frischer" wird die Anzeige über den `visibilitychange`-Abruf, nicht über
-  einen kürzeren Takt.
+  einen kürzeren Takt. **Aber keine lange „Nachfrist" (stale-while-revalidate)
+  in `/api/wind`:** Bis Okt. 2026 hingen die Live-Werte dadurch bis zu ~10 min
+  hinter der Datenbank (Kopfzeile „Stand 15:40", Verlaufsbalken schon mit
+  15:50). Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der
+  60-s-CDN-Speicher der Antwort bleibt (Begründung oben in der Route). Aus
+  demselben Grund holen die übrigen Quellen ihre Messwerte nicht mehr über
+  den Next.js-Daten-Cache (`next: { revalidate }`), sondern über
+  `cachedFresh` (`src/lib/freshCache.ts`, gleiche Haltedauer, nach Ablauf
+  sofort frisch) — das betraf auch `/api/collect`: Neue Werte landeten dort
+  5 min später in der Datenbank. Für Live-Messwerte keinen
+  `next: { revalidate }` mehr verwenden (Metadaten dürfen es).
+  `/api/history` hat ebenfalls nur noch 30 s Nachfrist; `/api/timeline`
+  behält 300 s, weil seine Abfrage mehrere Sekunden dauert.
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
   `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".

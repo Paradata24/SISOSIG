@@ -1,5 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import type { WindStation } from "./wind";
+import { cachedFresh } from "./freshCache";
 
 // Ausgewählte Messstationen des Deutschen Wetterdienstes (DWD) — derzeit nur
 // die Zugspitze (Föhnindikator für Tirol, Wunsch des Projektbesitzers).
@@ -56,8 +57,9 @@ export const DWD_STATIONS: Record<string, DwdStationInfo> = {
 // Messwerte älter als 2 h gelten als ausgefallen (wie bei den anderen Quellen).
 const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
-// Neue Werte alle 10 Minuten; 120 s Cache genügen.
-const REVALIDATE_S = 120;
+// Neue Werte alle 10 Minuten; 120 s Cache genügen. Über cachedFresh
+// (src/lib/freshCache.ts), damit nach Ablauf sofort frisch geholt wird.
+const CACHE_TTL_MS = 120 * 1000;
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
@@ -109,10 +111,12 @@ function readFirstZipEntry(zip: Buffer): string {
   throw new Error(`ZIP-Kompression ${method} wird nicht unterstützt`);
 }
 
-async function fetchZipText(url: string): Promise<string> {
-  const res = await fetch(url, { next: { revalidate: REVALIDATE_S } });
-  if (!res.ok) throw new Error(`DWD antwortete mit Status ${res.status} (${url})`);
-  return readFirstZipEntry(Buffer.from(await res.arrayBuffer()));
+function fetchZipText(url: string): Promise<string> {
+  return cachedFresh(url, CACHE_TTL_MS, async () => {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`DWD antwortete mit Status ${res.status} (${url})`);
+    return readFirstZipEntry(Buffer.from(await res.arrayBuffer()));
+  });
 }
 
 interface DwdRow {
