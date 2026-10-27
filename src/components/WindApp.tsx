@@ -212,10 +212,10 @@ export default function WindApp() {
               Projektbesitzers, Okt. 2026). Aussehen vom Projektbesitzer aus
               Entwürfen gewählt ("London Calling", nach dem Plattencover von
               The Clash): Der Satz steht schlicht da, nur "GO" ist ein
-              schwarzer, leicht schräger Sticker mit pinker Schrift und
-              hartem grünem Versatz nach links unten. Antippbar ist trotzdem
-              die ganze Zeile; beim Antippen rutscht der Sticker auf seinen
-              Schatten (gedrückt-Effekt, group-active). */}
+              gerades schwarzes Feld mit pinker Schrift. Den grünen Schatten
+              und die Schräglage hat der Projektbesitzer danach wieder
+              entfernen lassen. Antippbar ist die ganze Zeile; beim Antippen
+              wird das Feld kurz blasser (group-active). */}
           <h1 className="flex min-w-0 flex-1 justify-center">
             <button
               type="button"
@@ -225,7 +225,7 @@ export default function WindApp() {
               className="group text-center text-base font-semibold text-zinc-900 sm:text-lg dark:text-zinc-50"
             >
               Should I stay or should I{" "}
-              <span className="ml-1 inline-block -rotate-3 bg-black px-2 py-0.5 align-middle text-[22px] leading-none font-extrabold tracking-wide text-[#f06ea9] uppercase shadow-[-4px_4px_0_#3fae49] transition-[translate,box-shadow] duration-75 group-active:-translate-x-1 group-active:translate-y-1 group-active:shadow-none">
+              <span className="ml-1 inline-block bg-black px-2 py-0.5 align-middle text-[22px] leading-none font-extrabold tracking-wide text-[#f06ea9] uppercase group-active:opacity-70">
                 GO
               </span>
             </button>

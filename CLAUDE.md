@@ -304,8 +304,9 @@ also alle 3 h, wirklich neue Werte).
   GO"; Okt. 2026, Wunsch des Projektbesitzers, vorher nur ein blaues „GO").
   Aussehen vom Projektbesitzer aus Entwürfen gewählt, **„London Calling"**
   (Plattencover von The Clash): Der Satz steht schlicht in Schwarz, nur
-  **„GO" ist ein schwarzer, leicht schräger Sticker mit pinker Schrift
-  (`#f06ea9`) und hartem grünem Versatz (`#3fae49`)** nach links unten.
+  **„GO" steht in Pink (`#f06ea9`) auf einem geraden schwarzen Feld** —
+  ohne grünen Schatten und nicht schräg (beides auf Wunsch des
+  Projektbesitzers wieder entfernt).
   Antippbar ist die ganze Zeile. **Der Titel darf sich beim Filterwechsel
   nicht verschieben** (Wunsch des Projektbesitzers): Das Filter-Schild
   daneben hat deshalb eine feste Breite (`w-28`, passend für
