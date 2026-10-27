@@ -373,7 +373,12 @@ also alle 3 h, wirklich neue Werte).
   Quelle im Menü unter „Quellen" (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
 - **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
-  Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
+  Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
+  **zwei Tipper**: Der erste macht die Taste gelb („WIRKLICH STARTEN?" /
+  „WIRKLICH STOPPEN?") mit ✕ daneben, erst der zweite löst aus; nach 5 s
+  (`TRACK_CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
+  Projektbesitzers; bewusst kein Handy-Nachfragefenster, dessen Knöpfe sind
+  mit Handschuhen zu klein). STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
   beginnen nur über die Papierkorb-Taste (mit Rückfrage). Gespeichert im
   Browser des Handys (localStorage, `TRACK_STORAGE_KEY`), nicht in Supabase —

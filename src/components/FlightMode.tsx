@@ -227,6 +227,14 @@ function useNow(intervalMs: number): number {
 // offen und im Vordergrund ist. Lücken (Bildschirm aus, andere App) bleiben
 // sichtbar als Lücke in der Linie (TRACK_GAP_MS).
 
+// Start und Stop brauchen zwei Tipper (Wunsch des Projektbesitzers, Okt. 2026):
+// Der erste macht die Taste gelb ("WIRKLICH STARTEN?" bzw. "STOPPEN?") und
+// zeigt daneben ✕ zum Abbrechen, erst der zweite an derselben Stelle löst aus.
+// Bewusst kein window.confirm: dessen kleine OK-/Abbrechen-Knöpfe trifft man
+// mit Handschuhen im Flug schlecht. Ohne zweiten Tipper springt die Taste nach
+// dieser Zeit von selbst zurück, damit sie nicht "scharf" stehen bleibt.
+const TRACK_CONFIRM_MS = 5000;
+
 const TRACK_STORAGE_KEY = "sisosig-flugtrack-v1";
 // Violett: kommt in der Windskala (Blau/Grün/Gelb/Orange/Rot) nicht vor und
 // unterscheidet sich vom blauen eigenen Standort.
@@ -406,6 +414,21 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
   }, []);
 
   return { recording, lengthM, start, stop, clear };
+}
+
+// Zwischenschritt "wirklich starten/stoppen?" der Track-Taste (siehe
+// TRACK_CONFIRM_MS). Gemerkt wird, welche Aktion gerade bestätigt werden soll.
+function useTrackConfirm(recording: boolean) {
+  const [armed, setArmed] = useState<"start" | "stop" | null>(null);
+  useEffect(() => {
+    if (!armed) return;
+    const id = setTimeout(() => setArmed(null), TRACK_CONFIRM_MS);
+    return () => clearTimeout(id);
+  }, [armed]);
+  // Passt die gemerkte Aktion nicht mehr zum Zustand (z. B. Track beim Laden
+  // schon aufzeichnend), gilt sie nicht.
+  const pending = armed === (recording ? "stop" : "start") ? armed : null;
+  return { pending, arm: setArmed, cancel: () => setArmed(null) };
 }
 
 // --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
@@ -748,6 +771,7 @@ export default function FlightMode({
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
+  const trackConfirm = useTrackConfirm(track.recording);
   const cables = useCables(map);
   const online = useOnline();
   const now = useNow(30_000);
@@ -947,18 +971,53 @@ export default function FlightMode({
         )}
       </div>
 
-      {/* Unten links: oben die Track-Taste (Start/Stop, daneben bei
-          gestopptem Track die kleinere Löschtaste), darunter die
+      {/* Unten links: oben die Track-Taste (Start/Stop mit Bestätigung,
+          daneben bei gestopptem Track die kleinere Löschtaste bzw. während
+          der Bestätigung die Abbrechen-Taste), darunter die
           Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe; ohne
           Standort auf die Startansicht). Die Rücksetztaste ist gefüllt,
           solange die Karte dem Standort folgt — so sieht man, ob sie gerade
           mitläuft. Gleicher Abstand wie bei +/−. */}
       <div className="pointer-events-none absolute bottom-6 left-3 z-[1000] flex flex-col gap-4">
         <div className="flex items-end gap-3">
-          {track.recording ? (
+          {trackConfirm.pending ? (
+            <>
+              {/* Zweiter Tipper an derselben Stelle bestätigt (TRACK_CONFIRM_MS). */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (trackConfirm.pending === "stop") track.stop();
+                  else track.start();
+                  trackConfirm.cancel();
+                }}
+                aria-label={
+                  trackConfirm.pending === "stop"
+                    ? "Track-Aufzeichnung wirklich stoppen"
+                    : "Track-Aufzeichnung wirklich starten"
+                }
+                className={`${bigButton} flex-col bg-amber-300 text-zinc-900 active:bg-amber-500`}
+              >
+                <span className="text-[11px] font-bold leading-tight">WIRKLICH</span>
+                <span className="text-[11px] font-bold leading-tight">
+                  {trackConfirm.pending === "stop" ? "STOPPEN?" : "STARTEN?"}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={trackConfirm.cancel}
+                aria-label="Abbrechen"
+                title="Abbrechen"
+                className={bigButtonLight}
+              >
+                <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+                  <path d="M5 5 L23 23 M23 5 L5 23" stroke="currentColor" strokeWidth="3.5" />
+                </svg>
+              </button>
+            </>
+          ) : track.recording ? (
             <button
               type="button"
-              onClick={track.stop}
+              onClick={() => trackConfirm.arm("stop")}
               aria-label="Track-Aufzeichnung stoppen"
               title="Track-Aufzeichnung stoppen"
               className={`${bigButton} flex-col gap-1 bg-red-600 text-white active:bg-red-800`}
@@ -971,7 +1030,7 @@ export default function FlightMode({
           ) : (
             <button
               type="button"
-              onClick={track.start}
+              onClick={() => trackConfirm.arm("start")}
               aria-label="Track-Aufzeichnung starten"
               title="Track-Aufzeichnung starten"
               className={`${bigButtonLight} flex-col gap-1`}
@@ -982,7 +1041,7 @@ export default function FlightMode({
               <span className="text-xs font-bold">START</span>
             </button>
           )}
-          {!track.recording && track.lengthM > 0 && (
+          {!track.recording && !trackConfirm.pending && track.lengthM > 0 && (
             <button
               type="button"
               onClick={track.clear}
