@@ -15,7 +15,6 @@ import {
   GRID_MS,
   CABLE_SOURCE,
   MAP_SOURCES,
-  type BaseLayer,
   type StationFilter,
   type TimelinePayload,
 } from "@/lib/wind";
@@ -24,14 +23,13 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 
 // Titel-Balken + Karte + Zeitbalken. Oben links im Titel-Balken steht der
 // Refresh-Button, ganz rechts der Menü-Button (3 Linien), der ein Popup mit
-// Kartenhintergrund und Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
+// den Quellen öffnet. Der Stationsfilter wird seit Okt. 2026
 // über das Filter-Schild oben mittig auf der Karte umgeschaltet
-// (StationFilterPicker in WindMap). Beide Zustände leben trotzdem hier (und
+// (StationFilterPicker in WindMap). Sein Zustand lebt trotzdem hier (und
 // nicht in WindMap), weil Balken und Karte getrennte Bereiche der Seite sind.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {
-  const [baseLayer, setBaseLayer] = useState<BaseLayer>("topo");
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -236,14 +234,6 @@ export default function WindApp() {
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [menuOpen]);
 
-  function optionClass(active: boolean) {
-    return `w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
-      active
-        ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
-        : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
-    }`;
-  }
-
   return (
     <>
       {/* Der Balken ist eine Flex-Reihe: links der Refresh-Button, in der
@@ -323,41 +313,21 @@ export default function WindApp() {
                 abgerundete Ecken, passend zum eckigen Menü-Button. */}
             {menuOpen && (
               <div className="absolute top-full -right-3 mt-2 w-52 border border-black/10 bg-white p-3 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800">
-                <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
-                  Karte
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  {/* Reihenfolge = Standardkarte (OpenTopoMap) zuerst. */}
-                  <button
-                    type="button"
-                    onClick={() => setBaseLayer("topo")}
-                    aria-pressed={baseLayer === "topo"}
-                    className={optionClass(baseLayer === "topo")}
-                  >
-                    OpenTopoMap
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBaseLayer("relief")}
-                    aria-pressed={baseLayer === "relief"}
-                    className={optionClass(baseLayer === "relief")}
-                  >
-                    Relief (Grau)
-                  </button>
-                </div>
                 {/* Quellenangaben der Karte — früher als Leaflet-Zeile unten
                     rechts auf der Karte, jetzt hier ganz unten im Popup
-                    (MAP_SOURCES in wind.ts, richtet sich nach dem gewählten
-                    Hintergrund). Die Quellen der Winddaten stehen bewusst NICHT
-                    hier, sondern stationsweise unten im Verlaufsbalken
+                    (MAP_SOURCES in wind.ts). Seit Okt. 2026 gibt es nur noch
+                    die Karte OpenTopoMap, deshalb steht im Popup keine
+                    Kartenauswahl mehr (die frühere Karte "Relief (Grau)" hat
+                    der Projektbesitzer entfernen lassen). Die Quellen der
+                    Winddaten stehen bewusst NICHT hier, sondern stationsweise unten im Verlaufsbalken
                     ("Quelle: …") — Wunsch des Projektbesitzers, keine
                     Doppelung. Bewusst klein und grau: Pflichtangabe, aber keine
                     Bedienung. */}
-                <p className="mt-3 mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
+                <p className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase dark:text-zinc-400">
                   Quellen
                 </p>
                 <ul className="space-y-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
-                  {MAP_SOURCES[baseLayer].map((source) => (
+                  {MAP_SOURCES.map((source) => (
                     <li key={source.label}>
                       <SourceLink url={source.url}>{source.label}</SourceLink>
                       {source.note ? ` (${source.note})` : null}
@@ -377,7 +347,6 @@ export default function WindApp() {
       )}
       <main className="min-h-0 flex-1">
         <WindMapLoader
-          baseLayer={baseLayer}
           stationFilter={stationFilter}
           onStationFilterChange={setStationFilter}
           historyFrame={historyFrame}

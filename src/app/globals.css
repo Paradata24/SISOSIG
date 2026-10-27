@@ -30,26 +30,6 @@ body {
   font-family: var(--font-barlow-semi-condensed), Arial, Helvetica, sans-serif;
 }
 
-/* Höhenlinien-Ebene der Karte (WindMap.tsx, Klasse wird dort über
-   className an die WMS-Ebene gehängt).
-
-   Der Landesserver liefert die Linien in einem eigenen Farbton (bräunlich).
-   Auf unserer grauen Reliefkarte soll aber NICHTS mit den Windpfeilen um
-   Aufmerksamkeit ringen — die Pfeile tragen die eigentliche Information.
-   Deshalb hier zweierlei:
-   - grayscale: nimmt die Farbe komplett heraus, es bleibt reines Grau
-   - contrast: hellt die Linien zusätzlich auf, damit sie andeuten statt zu
-     dominieren
-   Die dritte Stellschraube ist die Deckkraft, die steht als CONTOUR_OPACITY
-   in WindMap.tsx.
-
-   pointer-events kommt von Leaflet und bleibt unangetastet: die Ebene ist
-   ein reines Bild, Klicks gehen weiterhin an die Windpfeile darunter/darüber
-   durch. */
-.hoehenlinien-ebene {
-  filter: grayscale(100%) contrast(65%);
-}
-
 /* OpenTopoMap-Ebene der Karte (WindMap.tsx, Standardkarte).
    Die Originalkarte ist bunt (grüne Wälder, braune Höhenlinien, gelbe
    Straßen) und würde mit den farbigen Windpfeilen konkurrieren. Deshalb:

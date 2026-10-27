@@ -10,16 +10,13 @@ import {
   TileLayer,
   useMap,
   useMapEvents,
-  WMSTileLayer,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  CARTO_API_KEY,
   getWindColor,
   matchesStationFilter,
   snapDirectionTo8,
-  type BaseLayer,
   type StationFilter,
   type SuspectInfo,
   type TimelineFrame,
@@ -61,9 +58,9 @@ const SOUTH_TYROL_ZOOM = 9;
 //
 // Vorher stand hier NICHTS — und genau das war das Problem: ohne eigene
 // Angabe nimmt Leaflet die Obergrenze der Kachel-Ebenen, also 18. So weit
-// reicht aber die Esri-Schummerung ("Relief (Grau)") in Südtirol nicht: ab
-// einem gewissen Punkt liefert sie nur noch graue Platzhalter-Kacheln mit dem
-// Text "Map data not yet available".
+// reichte aber die Esri-Schummerung der früheren Karte "Relief (Grau)" in
+// Südtirol nicht: ab einem gewissen Punkt lieferte sie nur noch graue
+// Platzhalter-Kacheln mit dem Text "Map data not yet available".
 //
 // Der Wert steht BEWUSST an der Karte selbst und nicht an den Kachel-Ebenen.
 // Nur so hört auch das Scrollrad, der Doppelklick und das Aufziehen mit zwei
@@ -71,14 +68,14 @@ const SOUTH_TYROL_ZOOM = 9;
 // würde die Karte weiterzoomen lassen und nur die Kacheln vergrößert
 // stehenlassen.
 //
-// 15 gilt für BEIDE Basiskarten, obwohl OpenTopoMap (bis 17) und die
-// Beschriftungen (CARTO, bis 20) mehr könnten: Die Karte soll sich beim
-// Umschalten nicht unterschiedlich verhalten. Zum Fliegen reicht Stufe 15
+// Seit Okt. 2026 gibt es auf der Hauptseite nur noch OpenTopoMap (bis 17);
+// die Grenze bleibt trotzdem bei 15 (feste Entscheidung des
+// Projektbesitzers, Ausnahme nur der Flugmodus). Zum Fliegen reicht Stufe 15
 // bequem (rund 3,5 m je Bildpunkt).
 const MAP_MAX_ZOOM = 15;
 // Ausnahme Flugmodus: eine Stufe mehr (Wunsch des Projektbesitzers, Okt.
 // 2026). Dort gibt es nur OpenTopoMap (echte Kacheln bis 17, Zoom 16 im Okt.
-// 2026 geprüft), die Esri-Schummerung mit ihren Platzhaltern ist nie zu sehen.
+// 2026 geprüft).
 // Beim Verlassen des Flugmodus zoomt Leaflet selbst auf MAP_MAX_ZOOM zurück.
 const FLIGHT_MAX_ZOOM = 16;
 
@@ -91,63 +88,13 @@ const FLIGHT_MAX_ZOOM = 16;
 const TOPO_URL = "https://tile.opentopomap.org/{z}/{x}/{y}.png";
 const TOPO_MAX_NATIVE_ZOOM = 17;
 
-// --- Höhenlinien-Ebene (nur bei "Relief (Grau)") ---
-// Kartendienst des Landes Südtirol (Geoportal). Die Linien liegen als
-// durchsichtiges Bild ÜBER der Esri-Schummerung; die Schummerung selbst
-// bleibt unverändert der Untergrund.
-//
-// Der Dienst rechnet die Daten (Original EPSG:25832) selbst nach
-// EPSG:3857 um, das Leaflet braucht, und liefert transparentes PNG — beides
-// vorab am fertigen Bild geprüft.
-const CONTOUR_WMS_URL =
-  "https://geoservices9.civis.bz.it/geoserver/p_bz-Elevation/ows";
-// Von den mehreren angebotenen Varianten die für HELLE Hintergründe — also
-// genau unser Fall (graue Reliefkarte). Der Dienst dünnt die Linien beim
-// Herauszoomen selbst aus, wir bekommen also nicht überall die vollen 2,5 m
-// Abstand des Geländemodells.
-const CONTOUR_WMS_LAYER = "p_bz-Elevation:ContourLines-ForLightBackgrounds";
-// Erst ab dieser Stufe einblenden. Darunter lägen die Linien so dicht
-// beieinander, dass sie nur ein grauer Schleier wären und die Windpfeile
-// stören würden. Leaflet lädt unterhalb der Grenze gar keine Kacheln — das
-// spart nebenbei Anfragen an den Landesserver.
-const CONTOUR_MIN_ZOOM = 13;
-// Deckkraft: die Linien sollen das Gelände andeuten, nicht mit den
-// Windpfeilen konkurrieren. Zusammen mit dem Graufilter in globals.css
-// (Klasse .hoehenlinien-ebene) treten sie deutlich zurück.
-const CONTOUR_OPACITY = 0.5;
-// Die Geodaten des Landes stehen unter CC BY: Quellenangabe ist Pflicht.
-// Sie steht (wie Esri, CARTO und OpenStreetMap) seit Sept. 2026 im Menü-Popup
-// unter "Quellen" — siehe MAP_SOURCES in src/lib/wind.ts.
-// Ortsnamen-Ebenen über dem Relief (siehe Kommentar im JSX): CARTO braucht
-// seit Sept. 2026 einen Schlüssel (CARTO_API_KEY), Esri ist der Ersatz ohne.
-const CARTO_LABELS_URL =
-  "https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png";
-const ESRI_LABELS_URL =
-  "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
-// Durchsichtiger 1×1-Punkt für Kacheln, die der Landesserver nicht liefert
-// (Ausfall, Zeitüberschreitung, Gebiet außerhalb Südtirols). Damit ist eine
-// fehlende Höhenlinien-Kachel schlicht LEER und kein sichtbarer Fehler — die
-// Karte, die Windpfeile und der Rest funktionieren unverändert weiter.
-const TRANSPARENT_TILE =
-  "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
-
-// Zeichenreihenfolge der Kachel-Ebenen innerhalb der Karte (kleiner = weiter
-// unten). Bewusst ausgeschrieben statt der Einfügereihenfolge überlassen:
-// Schummerung ganz unten, darüber die Höhenlinien, obenauf die Ortsnamen —
-// sonst könnten die Höhenlinien die Beschriftung überdecken.
-// Windpfeile und Auswahl-Ring liegen ohnehin darüber: Leaflet setzt Marker
-// und Linien grundsätzlich in eine höhere Ebene als alle Kartenkacheln.
-const Z_HILLSHADE = 1;
-// Deckkraft der Esri-Schummerung. Sie liegt auf weißem Kartengrund (siehe
-// style am MapContainer), 0,75 hellt das Relief also um ein Viertel auf —
-// die Windfarben leuchten dadurch stärker (Umbau "Karte lesbarer", Sept. 2026).
-const HILLSHADE_OPACITY = 0.75;
-// Kartengrund hinter den Kacheln. Leaflet setzt von sich aus Grau (#ddd); bei
-// halbdurchsichtigem Relief würde das durchscheinen. Inline statt über eine
-// Tailwind-Klasse, weil leaflet.css sonst Vorrang hätte.
+// Kartengrund hinter den Kacheln. Leaflet setzt von sich aus Grau (#ddd),
+// das z. B. beim Laden neuer Kacheln kurz durchscheinen würde. Inline statt
+// über eine Tailwind-Klasse, weil leaflet.css sonst Vorrang hätte.
+// (Die frühere zweite Karte "Relief (Grau)" mit Esri-Schummerung, Höhenlinien
+// des Landes und CARTO-/Esri-Ortsnamen wurde im Okt. 2026 auf Wunsch des
+// Projektbesitzers entfernt.)
 const MAP_BACKGROUND = "#ffffff";
-const Z_CONTOURS = 2;
-const Z_LABELS = 3;
 // Wie oft im Hintergrund neue Winddaten geholt werden. Die Stationen messen
 // nur alle 5-10 Minuten, ein kürzerer Takt holt also meistens nur dieselben
 // Werte noch einmal und kostet auf dem Handy unnötig Datenvolumen. Der Wert
@@ -667,12 +614,10 @@ function ContainerResizeWatcher() {
   return null;
 }
 
-// Kartenhintergrund (baseLayer) wird im Menü im Titel-Balken umgeschaltet
-// (WindApp.tsx), der Stationsfilter über das Filter-Schild oben mittig auf der
-// Karte (StationFilterPicker). Beide Zustände liegen in WindApp und kommen als
-// Props herein.
+// Der Stationsfilter wird über das Filter-Schild oben mittig auf der Karte
+// umgeschaltet (StationFilterPicker). Der Zustand liegt in WindApp und kommt
+// als Prop herein.
 export default function WindMap({
-  baseLayer,
   stationFilter,
   onStationFilterChange,
   historyFrame,
@@ -686,7 +631,6 @@ export default function WindMap({
   lastUpdated,
   onExitFlightMode,
 }: {
-  baseLayer: BaseLayer;
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild oben mittig auf der Karte). */
   onStationFilterChange: (filter: StationFilter) => void;
@@ -936,8 +880,8 @@ export default function WindMap({
         className="h-full w-full"
         style={{ background: MAP_BACKGROUND }}
       >
-        {/* Die key-Attribute sorgen dafür, dass beim Umschalten die alten
-            Kachel-Ebenen komplett entfernt und neue angelegt werden.
+        {/* Die key-Attribute sorgen dafür, dass beim Wechsel in den/aus dem
+            Flugmodus die alten Kachel-Ebenen komplett entfernt und neue angelegt werden.
 
             Die Kachel-Adressen stehen bewusst OHNE das früher übliche
             "{s}."-Kürzel (a./b./c.-Unterdomains). Das stammt noch aus der
@@ -951,9 +895,7 @@ export default function WindMap({
           // Karte und mit einem Hauch Farbe (.topo-ebene-flug in
           // globals.css) — im Flug muss man Grate,
           // Täler und Hänge auch bei Sonne auf dem Display erkennen
-          // (Wunsch des Projektbesitzers, Okt. 2026). Unabhängig von der im
-          // Menü gewählten Karte: Das Menü ist im Flugmodus ohnehin weg, und
-          // OpenTopoMap hat Höhenlinien und Schummerung in einem Bild. Eigener
+          // (Wunsch des Projektbesitzers, Okt. 2026). OpenTopoMap hat Höhenlinien und Schummerung in einem Bild. Eigener
           // key, weil Leaflet die Klasse einer bestehenden Ebene nicht tauscht.
           <TileLayer
             key="opentopomap-flug"
@@ -961,66 +903,17 @@ export default function WindMap({
             className="topo-ebene-flug"
             maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
           />
-        ) : baseLayer === "topo" ? (
-          // OpenTopoMap (Standardkarte): bringt Höhenlinien, Schummerung und
-          // Ortsnamen schon selbst mit, deshalb keine weiteren Ebenen darüber.
-          // Die Klasse .topo-ebene (globals.css) macht daraus eine sehr
-          // helle Graustufenkarte, damit die Windfarben leuchten.
+        ) : (
+          // OpenTopoMap (einzige Karte der Hauptseite): bringt Höhenlinien,
+          // Schummerung und Ortsnamen schon selbst mit, deshalb keine weiteren
+          // Ebenen darüber. Die Klasse .topo-ebene (globals.css) macht daraus
+          // eine sehr helle Graustufenkarte, damit die Windfarben leuchten.
           <TileLayer
             key="opentopomap"
             url={TOPO_URL}
             className="topo-ebene"
             maxNativeZoom={TOPO_MAX_NATIVE_ZOOM}
           />
-        ) : (
-          <>
-            <TileLayer
-              key="esri-hillshade"
-              url="https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}"
-              zIndex={Z_HILLSHADE}
-              opacity={HILLSHADE_OPACITY}
-            />
-            {/* Höhenlinien des Landes Südtirol, nur bei "Relief (Grau)":
-                Bei "OpenTopoMap" sind Höhenlinien schon im Kartenbild
-                enthalten. Weil dieser Zweig nur im Relief-Fall gerendert
-                wird, ist die Ebene bei "OpenTopoMap" gar nicht erst
-                vorhanden und fragt auch nichts ab.
-                Fällt der Landesserver aus, bleiben die Kacheln dank
-                errorTileUrl einfach leer (siehe TRANSPARENT_TILE oben). */}
-            <WMSTileLayer
-              key="hoehenlinien"
-              url={CONTOUR_WMS_URL}
-              layers={CONTOUR_WMS_LAYER}
-              format="image/png"
-              transparent
-              version="1.3.0"
-              minZoom={CONTOUR_MIN_ZOOM}
-              opacity={CONTOUR_OPACITY}
-              className="hoehenlinien-ebene"
-              errorTileUrl={TRANSPARENT_TILE}
-              zIndex={Z_CONTOURS}
-            />
-            {/* Ortsnamen obenauf. Mit CARTO-Schlüssel (Umgebungsvariable,
-                siehe CARTO_API_KEY in wind.ts) die CARTO-Namen — zweisprachig
-                deutsch/italienisch. Ohne Schlüssel liefert CARTO seit
-                Sept. 2026 nur "API KEY REQUIRED"-Wasserzeichen; dann
-                ersatzweise die Esri-Ortsnamen (kein Schlüssel nötig, aber nur
-                italienische Namen). Unterschiedliche key-Attribute, damit
-                Leaflet beim Wechsel die Ebene sauber neu anlegt. */}
-            {CARTO_API_KEY ? (
-              <TileLayer
-                key="carto-labels"
-                url={`${CARTO_LABELS_URL}?key=${encodeURIComponent(CARTO_API_KEY)}`}
-                zIndex={Z_LABELS}
-              />
-            ) : (
-              <TileLayer
-                key="esri-labels"
-                url={ESRI_LABELS_URL}
-                zIndex={Z_LABELS}
-              />
-            )}
-          </>
         )}
         <GeoJSON
           data={staatsgrenzen as GeoJSON.GeoJsonObject}

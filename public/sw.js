@@ -16,7 +16,7 @@
 // für die Website in Chrome gilt, sobald die App installiert ist.
 //
 // Bewusst KEIN Knopf "ganzes Gebiet herunterladen": Die Kartendienste
-// (OpenTopoMap, Esri) verbieten Massen-Downloads in ihren Nutzungsregeln.
+// (OpenTopoMap) verbieten Massen-Downloads in ihren Nutzungsregeln.
 // Gespeichert wird nur, was man sich ohnehin ansieht.
 //
 // Bewusst ohne Zusatzpaket (z. B. Serwist) geschrieben: Das bräuchte eine
@@ -48,14 +48,11 @@ const TILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const STORED_HEADER = "x-sisosig-gespeichert";
 
 // Kartendienste, deren Kartenstücke gespeichert werden (gleiche Liste wie in
-// src/components/WindMap.tsx). Alle vier erlauben den Abruf von fremden Seiten
-// (CORS, im Okt. 2026 geprüft) — nur so lassen sich die Stücke speichern.
-const TILE_HOSTS = [
-  "tile.opentopomap.org",
-  "server.arcgisonline.com",
-  "basemaps.cartocdn.com",
-  "geoservices9.civis.bz.it",
-];
+// src/components/WindMap.tsx). OpenTopoMap erlaubt den Abruf von fremden
+// Seiten (CORS, im Okt. 2026 geprüft) — nur so lassen sich die Stücke
+// speichern. Esri, CARTO und die Höhenlinien des Landes sind mit der Karte
+// "Relief (Grau)" im Okt. 2026 weggefallen.
+const TILE_HOSTS = ["tile.opentopomap.org"];
 
 self.addEventListener("install", () => {
   // Neue Version sofort übernehmen statt erst nach dem Schließen aller Fenster.

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { BaseLayer, StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
+import type { StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
 
 const WindMap = dynamic(() => import("@/components/WindMap"), {
   ssr: false,
@@ -13,7 +13,6 @@ const WindMap = dynamic(() => import("@/components/WindMap"), {
 });
 
 export default function WindMapLoader({
-  baseLayer,
   stationFilter,
   onStationFilterChange,
   historyFrame,
@@ -27,7 +26,6 @@ export default function WindMapLoader({
   lastUpdated,
   onExitFlightMode,
 }: {
-  baseLayer: BaseLayer;
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
   onStationFilterChange: (filter: StationFilter) => void;
@@ -51,7 +49,6 @@ export default function WindMapLoader({
 }) {
   return (
     <WindMap
-      baseLayer={baseLayer}
       stationFilter={stationFilter}
       onStationFilterChange={onStationFilterChange}
       historyFrame={historyFrame}
