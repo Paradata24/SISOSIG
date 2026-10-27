@@ -230,13 +230,14 @@ function useNow(intervalMs: number): number {
 // offen und im Vordergrund ist. Lücken (Bildschirm aus, andere App) bleiben
 // sichtbar als Lücke in der Linie (TRACK_GAP_MS).
 
-// Start und Stop brauchen zwei Tipper (Wunsch des Projektbesitzers, Okt. 2026):
-// Der erste macht die Taste gelb ("WIRKLICH STARTEN?" bzw. "STOPPEN?") und
-// zeigt daneben ✕ zum Abbrechen, erst der zweite an derselben Stelle löst aus.
+// Start, Stop und das Beenden des Flugmodus brauchen zwei Tipper (Wunsch des
+// Projektbesitzers, Okt. 2026): Der erste macht die Taste gelb ("WIRKLICH
+// STARTEN?", "STOPPEN?" bzw. "BEENDEN?") und zeigt daneben ✕ zum Abbrechen,
+// erst der zweite an derselben Stelle löst aus.
 // Bewusst kein window.confirm: dessen kleine OK-/Abbrechen-Knöpfe trifft man
 // mit Handschuhen im Flug schlecht. Ohne zweiten Tipper springt die Taste nach
 // dieser Zeit von selbst zurück, damit sie nicht "scharf" stehen bleibt.
-const TRACK_CONFIRM_MS = 5000;
+const CONFIRM_MS = 5000;
 
 const TRACK_STORAGE_KEY = "sisosig-flugtrack-v1";
 // Violett: kommt in der Windskala (Blau/Grün/Gelb/Orange/Rot) nicht vor und
@@ -552,19 +553,25 @@ function useTrack(map: L.Map | null, position: OwnPosition | null) {
   return { recording, lengthM, start, stop, clear, exportFile };
 }
 
-// Zwischenschritt "wirklich starten/stoppen?" der Track-Taste (siehe
-// TRACK_CONFIRM_MS). Gemerkt wird, welche Aktion gerade bestätigt werden soll.
-function useTrackConfirm(recording: boolean) {
-  const [armed, setArmed] = useState<"start" | "stop" | null>(null);
+// Zwischenschritt "wirklich …?" (siehe CONFIRM_MS). Gemerkt wird, welche
+// Aktion gerade bestätigt werden soll; nach CONFIRM_MS ist sie vergessen.
+function useConfirmStep<T extends string>() {
+  const [armed, setArmed] = useState<T | null>(null);
   useEffect(() => {
     if (!armed) return;
-    const id = setTimeout(() => setArmed(null), TRACK_CONFIRM_MS);
+    const id = setTimeout(() => setArmed(null), CONFIRM_MS);
     return () => clearTimeout(id);
   }, [armed]);
+  return { armed, arm: setArmed, cancel: () => setArmed(null) };
+}
+
+// Bestätigung der Track-Taste (starten/stoppen).
+function useTrackConfirm(recording: boolean) {
+  const { armed, arm, cancel } = useConfirmStep<"start" | "stop">();
   // Passt die gemerkte Aktion nicht mehr zum Zustand (z. B. Track beim Laden
   // schon aufzeichnend), gilt sie nicht.
   const pending = armed === (recording ? "stop" : "start") ? armed : null;
-  return { pending, arm: setArmed, cancel: () => setArmed(null) };
+  return { pending, arm, cancel };
 }
 
 // --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
@@ -908,6 +915,7 @@ export default function FlightMode({
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
   const trackConfirm = useTrackConfirm(track.recording);
+  const exitConfirm = useConfirmStep<"exit">();
   const cables = useCables(map);
   const online = useOnline();
   const now = useNow(30_000);
@@ -1068,19 +1076,47 @@ export default function FlightMode({
   return (
     <>
       {/* Oben links: Flugmodus beenden. Etwas kleiner als die Bedientasten,
-          damit man ihn im Flug nicht aus Versehen trifft. */}
-      <div className="pointer-events-none absolute top-3 left-3 z-[1000]">
-        <button
-          type="button"
-          onClick={onExit}
-          aria-label="Flugmodus beenden"
-          title="Flugmodus beenden"
-          className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
-        >
-          <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
-          </svg>
-        </button>
+          damit man ihn im Flug nicht aus Versehen trifft, und wie die
+          Track-Taste mit zweitem Tipper (CONFIRM_MS): Der erste macht daraus
+          das gelbe "WIRKLICH BEENDEN?", darunter ✕ zum Abbrechen (nicht
+          daneben: dort steht oben mittig das Filter-Schild). */}
+      <div className="pointer-events-none absolute top-3 left-3 z-[1000] flex flex-col items-start gap-3">
+        {exitConfirm.armed ? (
+          <>
+            <button
+              type="button"
+              onClick={onExit}
+              aria-label="Flugmodus wirklich beenden"
+              className="pointer-events-auto flex h-12 flex-col items-center justify-center border-2 border-black bg-amber-300 px-2 text-zinc-900 shadow-lg select-none active:bg-amber-500"
+            >
+              <span className="text-[11px] font-bold leading-tight">WIRKLICH</span>
+              <span className="text-[11px] font-bold leading-tight">BEENDEN?</span>
+            </button>
+            <button
+              type="button"
+              onClick={exitConfirm.cancel}
+              aria-label="Abbrechen"
+              title="Abbrechen"
+              className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
+            >
+              <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+              </svg>
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => exitConfirm.arm("exit")}
+            aria-label="Flugmodus beenden"
+            title="Flugmodus beenden"
+            className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
+          >
+            <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 4 L16 16 M16 4 L4 16" stroke="currentColor" strokeWidth="2.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Oben rechts: Statuszeile (GPS-Genauigkeit, Stand der Windwerte und ob
@@ -1118,7 +1154,7 @@ export default function FlightMode({
         <div className="flex items-end gap-3">
           {trackConfirm.pending ? (
             <>
-              {/* Zweiter Tipper an derselben Stelle bestätigt (TRACK_CONFIRM_MS). */}
+              {/* Zweiter Tipper an derselben Stelle bestätigt (CONFIRM_MS). */}
               <button
                 type="button"
                 onClick={() => {

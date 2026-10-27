@@ -317,7 +317,8 @@ also alle 3 h, wirklich neue Werte).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über das blaue **„GO"** im Titel („Should I stay or should I GO",
-  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte. Titel-
+  Großbuchstaben), beendet über die ✕-Taste oben links auf der Karte (mit
+  zweitem Tipper „WIRKLICH BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
 - Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer Punkt mit
@@ -376,7 +377,7 @@ also alle 3 h, wirklich neue Werte).
   Linie (`TRACK_COLOR`), Länge in der Statuszeile. START und STOP brauchen
   **zwei Tipper**: Der erste macht die Taste gelb („WIRKLICH STARTEN?" /
   „WIRKLICH STOPPEN?") mit ✕ daneben, erst der zweite löst aus; nach 5 s
-  (`TRACK_CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
+  (`CONFIRM_MS`) springt sie von selbst zurück (Wunsch des
   Projektbesitzers; bewusst kein Handy-Nachfragefenster, dessen Knöpfe sind
   mit Handschuhen zu klein). STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
