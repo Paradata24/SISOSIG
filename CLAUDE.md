@@ -103,7 +103,8 @@ also alle 3 h, wirklich neue Werte).
 
 | Datei | Zuständig für |
 | --- | --- |
-| `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte |
+| `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte (auch Grau-Grenzen `STALE_AFTER_MINUTES` und Zeitlimits) |
+| `src/lib/bolzano.ts` | Bozner Wetterdienst (Abruf, Zeitstempel-Umwandlung) — für Karte und Sammler |
 | `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
 | `src/lib/freshCache.ts` | Kurzer Zwischenspeicher für Live-Messwerte (Pioupiou, GeoSphere, MeteoSchweiz, LWD Tirol, DWD), der nach Ablauf sofort frisch holt |
@@ -113,8 +114,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
-| `src/app/api/wind/route.ts` | Live-Werte aller Stationen (Bozen, Pioupiou, SLF, GeoSphere), inkl. Caching |
-| `src/app/api/collect/route.ts` | Schreibt Messwerte nach Supabase (POST, per `CRON_SECRET` geschützt) |
+| `src/app/api/wind/route.ts` | Live-Werte aller Quellen (jede als Zusatz, mit Zeitlimit), inkl. Caching; meldet Quellen ohne Daten in einer Kopfzeile |
+| `src/app/api/collect/route.ts` | Schreibt Messwerte aller Quellen nach Supabase (POST, per `CRON_SECRET` geschützt) |
+| `vercel.json` | Server-Region der Vercel-Funktionen: Dublin (`dub1`), neben der Datenbank |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
@@ -131,7 +133,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
-| `supabase/*.sql` | Tabellen-Schemas, Cron, einmalige Migrations-/Aufräumskripte |
+| `supabase/*.sql` | Tabellen-Schemas, Cron (`collect-cron.sql`, `forecast-cron.sql`), einmalige Migrations-/Aufräumskripte |
 
 ## Feste Entscheidungen (nicht ohne Rücksprache ändern)
 
@@ -140,7 +142,43 @@ also alle 3 h, wirklich neue Werte).
 - Hosting **Vercel**, Datenbank **Supabase**, Datensammlung über
   `/api/collect`, angestoßen von **Supabase Cron** (nicht GitHub Actions)
 - Secrets (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`)
-  **niemals** im Code — nur Umgebungsvariablen in Vercel/Supabase
+  **niemals** im Code — nur Umgebungsvariablen in Vercel/Supabase (in den
+  Zeitplan-Jobs aus dem Supabase-Tresor/Vault, siehe `supabase/collect-cron.sql`)
+- **Server-Region Dublin** (`vercel.json`, Okt. 2026): Vorher liefen die
+  Vercel-Funktionen in Washington (`iad1`, Vercel-Standard) — jede
+  Datenbankabfrage (Supabase steht in Dublin) und jeder Abruf bei den
+  Wetterdiensten ging über den Atlantik (gemessen: eine Verlaufsabfrage 7 ms
+  in der Datenbank, ~0,3 s mit dem Umweg). Nicht zurückstellen. Die Datei hat
+  Vorrang vor der Einstellung im Vercel-Dashboard.
+
+**Datenbeschaffung (Okt. 2026)**
+- **Jede Quelle ist ein Zusatz — auch Bozen.** Karte (`/api/wind`), Sammler
+  (`/api/collect`) und Prognose-Funktion fragen alle Quellen gleichzeitig ab;
+  scheitert eine, laufen die übrigen weiter (vorher war bei einem Ausfall des
+  Bozner Dienstes alles leer). Quellen ohne Daten meldet `/api/wind` in der
+  Kopfzeile `MISSING_SOURCES_HEADER`; die Karte zeigt dann den Hinweis
+  „MeteoSchweiz liefert gerade keine Daten" (Hauptseite oben mittig, gelb; im
+  Flugmodus als gelbe Zeile in der Statuszeile, damit oben keine Tasten
+  verdeckt werden).
+- **Grau (ausgefallen) schon nach einer halben Stunde** (Wunsch des
+  Projektbesitzers, Okt. 2026; vorher 2 h): `STALE_AFTER_MINUTES` in
+  `src/lib/wind.ts`. Grundregel 30 min; Quellen, die schon im Normalbetrieb
+  später oder seltener liefern, haben mehr (Bozen 35, MeteoSchweiz 40,
+  LWD Tirol 50, SLF 55, DWD 75 — an echten Daten gemessen, Begründung dort).
+  Nicht pauschal auf 30 setzen, sonst blinken diese Stationen vor jedem neuen
+  Wert grau.
+- **Zeitlimits für alle Abrufe** (`SOURCE_TIMEOUT_MS` 8 s,
+  `METADATA_TIMEOUT_MS`, `DATABASE_TIMEOUT_MS` in `src/lib/wind.ts`; eigene in
+  der Edge Function und in `/api/kabel`). Vorher hatte keine Anfrage eines —
+  ein hängender Dienst hielt die ganze Karte auf. Nicht entfernen.
+- **Sammler: Werte älter als 1 h werden nur ergänzt, nicht überschrieben**
+  (`OVERWRITE_WINDOW_MS` in `/api/collect`; vorher schrieb jeder Lauf ~1.200
+  längst gespeicherte SLF-Werte neu). SLF und DWD liefern ihren Verlauf mit,
+  der Sammler nimmt von beiden die letzten 3 h.
+- Offen (Punkt 10 der Code-Durchsicht, Okt. 2026): Liefert eine Quelle gar
+  nichts, verschwinden ihre Stationen noch von der Karte (samt Zeitbalken und
+  Verlaufsbalken). Geplant: mit letztem Wert stehen lassen und nach der
+  Grau-Grenze grau zeigen — braucht eine Stationsliste in der Datenbank.
 
 **Darstellung**
 - **Heller Modus dauerhaft an**, unabhängig vom Gerät des Besuchers (früher
@@ -465,7 +503,10 @@ also alle 3 h, wirklich neue Werte).
   Android gilt er nach der Installation trotzdem auch für Chrome (gleicher
   Speicher) — deshalb die Grundregel: **mit Netz verhält sich alles wie die
   Website** (Seite und `/api/` immer zuerst aus dem Netz, Speicher nur bei
-  Netzausfall). Nicht auf „zuerst aus dem Speicher" umbauen.
+  Netzausfall). Nicht auf „zuerst aus dem Speicher" umbauen. Als Netzausfall
+  zählt seit Okt. 2026 auch ein Netz, das nicht rechtzeitig antwortet (5 s
+  Seite, 8 s Daten: `PAGE_TIMEOUT_MS`/`DATA_TIMEOUT_MS` in `sw.js`) — typisch
+  bei schwachem Empfang am Berg; vorher hing die App dann minutenlang.
 - Ohne Netz kommen gespeicherte Windwerte mit der Kopfzeile
   `x-sisosig-gespeichert` (Speicherzeitpunkt); `WindMap` meldet dann diesen
   Zeitpunkt statt „jetzt", der Flugmodus zeigt „Offline" und färbt die
@@ -531,8 +572,12 @@ also alle 3 h, wirklich neue Werte).
 - Der Windanzeiger wählt sie über **Stationscodes** aus, nicht über Namen
   (Fehltreffer, z. B. SLF „Titlisboden" ↔ MeteoSchweiz „Titlis"). Robiei ist
   bewusst nicht dabei: MeteoSchweiz-Kürzel `ROB` = Poschiavo/Robbia im Tal.
-- **Zugspitze (DWD) liefert seit 25.09.2026 keine Werte** (Ausfall beim DWD);
-  sie ist grau, bis der DWD wieder veröffentlicht. Kein Fehler im Code.
+- **Zugspitze (DWD):** Der DWD stellt nur alle 30 min eine neue Datei mit den
+  10-Minuten-Werten bereit; der Sammler speichert deshalb alle Werte der
+  letzten 3 h (`fetchDwdReadingsSince`), nicht nur den neuesten (bis Okt. 2026
+  fehlten 2 von 3 Werten, und im Verlaufsbalken erschien keine Kurve). Ab dem
+  25.09.2026 lieferte der DWD eine Zeit lang nichts, spätestens seit
+  25.10.2026 wieder.
 
 **Nur Stationen in den Alpen (Okt. 2026)**
 - Gilt für ALLE Quellen: Angezeigt, gesammelt und prognostiziert werden nur
@@ -614,9 +659,6 @@ Projektbesitzers entfernt:
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht.
-- **Zeitstempel-Umwandlung doppelt:** `/api/wind` und `/api/collect` wandeln
-  beide das nicht-normgerechte Format des Bozner Dienstes um — bei Änderungen
-  beide anfassen.
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
   10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den
@@ -634,13 +676,21 @@ Projektbesitzers entfernt:
   nicht ändern** — fehlende Messwerte werden zu grauen Punkten, nicht
   herausgefiltert.
 - **Bestehende Datenbanken** brauchen die einmaligen SQL-Skripte in
-  `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte) — bei
-  einer Neuinstallation ist alles schon in `schema.sql`.
-- **Adresse des Bozner Dienstes steht dreifach** (`/api/wind`, `/api/collect`,
-  Edge Function) — seit Sept. 2026 `geoservices.buergernetz.bz.it`, die alte
-  `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug alle drei
+  `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte, seit
+  Okt. 2026 `datenbank-aufraeumen.sql` und `collect-cron-tresor.sql`) — bei
+  einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
+  bzw. `collect-cron.sql`.
+- **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`
+  steht bei jedem Lauf „succeeded“, auch wenn `/api/collect` scheitert (pg_net
+  arbeitet asynchron). Die echte Antwort steht in `net._http_response`, aber
+  nur 6 Stunden lang. `/api/collect` nennt darin je Quelle die Zahl der Werte
+  und die gescheiterten Quellen.
+- **Adresse des Bozner Dienstes steht zweifach** (`src/lib/bolzano.ts`, Edge
+  Function) — seit Sept. 2026 `geoservices.buergernetz.bz.it`, die alte
+  `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug beide
   ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
-  werden.
+  werden. Ebenso **LWD Tirol**: seit Okt. 2026 `wiski.tirol.gv.at` (die alte
+  Adresse `lawine.tirol.gv.at/data/…` leitet nur noch um).
 - **Open-Meteo-Kontingent:** kostenlos 10.000 Aufrufe am Tag. Gezählt wird
   je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben

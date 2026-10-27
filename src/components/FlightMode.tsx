@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
-import { getStationFilterLabel, STATION_FILTER_ORDER, type StationFilter } from "@/lib/wind";
+import {
+  getStationFilterLabel,
+  listSourceLabels,
+  STATION_FILTER_ORDER,
+  type StationFilter,
+  type WindStation,
+} from "@/lib/wind";
 
 // Flugmodus ("Flightcomputer", Okt. 2026, Wunsch des Projektbesitzers):
 // Angetippt über "GO" im Titel (WindApp). Die Karte füllt dann den ganzen
@@ -1085,6 +1091,7 @@ export default function FlightMode({
   onExit,
   stationFilter,
   onStationFilterChange,
+  missingSources,
 }: {
   /** Die Leaflet-Karte (aus WindMap); null, solange sie noch aufgebaut wird. */
   map: L.Map | null;
@@ -1097,6 +1104,8 @@ export default function FlightMode({
   /** Stationsfilter (Zustand in WindApp), umschaltbar im Menü unten links. */
   stationFilter: StationFilter;
   onStationFilterChange: (filter: StationFilter) => void;
+  /** Quellen ohne Daten beim letzten Abruf (siehe WindMap), als gelbe Statuszeile. */
+  missingSources: WindStation["source"][];
 }) {
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
@@ -1476,6 +1485,15 @@ export default function FlightMode({
           <span className={`px-1.5 py-0.5 shadow ${windOutdated ? "bg-amber-300" : "bg-white/90"}`}>
             {updatedText}
           </span>
+          {/* Quelle(n), die gerade keine Daten liefern — ihre Stationen fehlen
+              auf der Karte (siehe MISSING_SOURCES_HEADER in wind.ts). Höchstens
+              so breit, dass sie nicht unter die +/−-Tasten rechts läuft
+              (umbricht stattdessen). */}
+          {missingSources.length > 0 && (
+            <span className="max-w-[calc(100vw-7.5rem)] bg-amber-300 px-1.5 py-0.5 shadow">
+              Keine Daten: {listSourceLabels(missingSources)}
+            </span>
+          )}
           {/* Gelb, wenn die Kabel nicht aktuell sind (siehe cableWarning). */}
           <span className={`px-1.5 py-0.5 shadow ${cableWarning ? "bg-amber-300" : "bg-white/90"}`}>
             {cableText}

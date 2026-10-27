@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import type { WindStation } from "@/lib/wind";
+import { MISSING_SOURCES_HEADER, type WindStation } from "@/lib/wind";
+import { fetchBolzanoStations } from "@/lib/bolzano";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchSlfStations } from "@/lib/slf";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
@@ -7,25 +8,10 @@ import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
 import { fetchDwdStations } from "@/lib/dwd";
 
-// Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen.
-// Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
-// Zwei Anfragen genügen für alle Stationen: /sensors liefert die aktuellen
-// Messwerte ALLER Stationen auf einmal, /stations alle Metadaten.
+// Live-Werte ALLER Stationen für die Karte: Bozner Wetterdienst
+// (src/lib/bolzano.ts), OpenWindMap/Pioupiou, SLF, GeoSphere, MeteoSchweiz,
+// LWD Tirol und DWD — jede Quelle hat ihre eigene Datei in src/lib/.
 //
-// ADRESSE: Seit Sept. 2026 läuft der Dienst unter geoservices.buergernetz.bz.it.
-// Die frühere Adresse (daten.buergernetz.bz.it) antwortet nur noch mit 404
-// ("Questo endpoint è stato spostato") — die Karte zeigte dann keine Stationen
-// mehr. Die aktuelle Adresse steht auf der Datensatz-Seite oben. Sie steht
-// dreifach im Projekt: hier, in src/app/api/collect/route.ts und in der Edge
-// Function supabase/functions/fetch-wind-forecasts/index.ts — alle mitziehen.
-const API_BASE =
-  process.env.WIND_API_BASE_URL ??
-  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
-
-// Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen
-// (die Stationen messen normalerweise alle 5-10 Minuten).
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
-
 // --- Zwischenspeicherung (Caching) ---
 // Die Stationen messen nur alle 5-10 Minuten, daher muss nicht jeder
 // Seitenaufruf die Upstream-Dienste neu abfragen:
@@ -33,8 +19,8 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 //   60 s vom CDN (Vercel) geteilt: gleichzeitige Besucher bekommen dieselbe
 //   Antwort, ohne dass die Route erneut läuft. Damit fragt die Route den
 //   Bozner Dienst höchstens etwa einmal pro Minute ab.
-// - Die Bozner Messwerte (/sensors) holt die Route selbst dann immer frisch
-//   (`cache: "no-store"`). Bis Okt. 2026 lagen sie zusätzlich 60 s im
+// - Die Bozner Messwerte (/sensors) holt src/lib/bolzano.ts dabei immer
+//   frisch (`cache: "no-store"`). Bis Okt. 2026 lagen sie zusätzlich 60 s im
 //   Next.js-Daten-Cache, und das CDN durfte eine abgelaufene Antwort noch
 //   240 s weiter ausliefern (stale-while-revalidate). Beide Speicher geben
 //   nach Ablauf ZUERST den alten Stand heraus und holen erst danach im
@@ -47,185 +33,51 @@ const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 //   LWD Tirol, DWD, SLF) haben ihren eigenen kurzen Zwischenspeicher in
 //   src/lib/, der nach Ablauf ebenfalls sofort frisch holt
 //   (src/lib/freshCache.ts bzw. der eigene Speicher in slf.ts).
-// - Die Stationsmetadaten (/stations: Name, Koordinaten, Höhe) ändern sich
-//   praktisch nie und werden 6 h gehalten.
-// Das stale-Flag wird trotzdem bei jedem echten Routen-Lauf frisch gegen
-// die aktuelle Uhrzeit berechnet — bei einer 2h-Schwelle sind bis zu 60 s
-// alte Cache-Daten dafür bedeutungslos.
+// - Die Stationsmetadaten (Name, Koordinaten, Höhe) ändern sich praktisch
+//   nie und werden 6 h gehalten.
+// Das stale-Flag (grauer Ring) wird trotzdem bei jedem echten Routen-Lauf
+// frisch gegen die aktuelle Uhrzeit berechnet (STALE_AFTER_MINUTES in
+// src/lib/wind.ts) — bis zu 60 s alte Cache-Daten sind dafür bedeutungslos.
 //
-//   Die SLF-Stationen (src/lib/slf.ts) haben wegen ihrer Antwortgröße einen
-//   eigenen 2-Minuten-Zwischenspeicher, siehe dort.
-//
-// --- Gleichzeitige Abrufe ---
-// Die Upstream-Abrufe (/sensors, /stations, Pioupiou, SLF, GeoSphere) hängen NICHT
-// voneinander ab und werden deshalb mit einem einzigen Promise.all parallel
-// gestartet (siehe unten). Bei einem echten Routen-Lauf (Cache-Miss) dauert
-// die Route damit nur noch so lange wie der langsamste einzelne Abruf statt
-// wie alle zusammen.
-const STATIONS_REVALIDATE_S = 6 * 60 * 60;
+// --- Gleichzeitige Abrufe und Ausfälle ---
+// Die Quellen hängen NICHT voneinander ab und werden gleichzeitig abgefragt:
+// Die Route dauert damit nur so lange wie die langsamste Quelle, höchstens
+// aber bis zu deren Zeitlimit (SOURCE_TIMEOUT_MS in src/lib/wind.ts).
+// Jede Quelle ist ein "Zusatz": Scheitert sie oder liefert sie keine einzige
+// Station, zeigt die Karte die übrigen trotzdem. Das gilt seit Okt. 2026
+// auch für Bozen — vorher war bei einem Ausfall des Bozner Dienstes die ganze
+// Karte leer, auch die Schweiz und Österreich. Welche Quellen gerade fehlen,
+// steht in der Kopfzeile MISSING_SOURCES_HEADER; WindMap zeigt daraus den
+// Hinweis "… liefert gerade keine Daten".
+
 // Nachfrist (stale-while-revalidate) bewusst nur 30 s: Gerade wenn kaum
 // jemand zuschaut, wäre jede abgelaufene Antwort sonst noch Minuten alt.
 const RESPONSE_CACHE_CONTROL =
   "public, s-maxage=60, stale-while-revalidate=30";
 
-interface SensorReading {
-  SCODE: string;
-  TYPE: string;
-  DESC_D: string;
-  UNIT: string;
-  DATE: string;
-  VALUE: number | null;
-}
+// Alle Quellen der Karte. Eine neue Quelle braucht hier einen Eintrag (und in
+// /api/collect, damit ihr Verlauf gespeichert wird).
+const SOURCES: Array<[WindStation["source"], () => Promise<WindStation[]>]> = [
+  ["bolzano", fetchBolzanoStations],
+  ["openwindmap", fetchOpenWindMapStations],
+  ["slf", fetchSlfStations],
+  ["geosphere", fetchGeoSphereStations],
+  ["meteoswiss", fetchMeteoSwissStations],
+  ["lwdtirol", fetchLwdTirolStations],
+  ["dwd", fetchDwdStations],
+];
 
-interface StationMeta {
-  SCODE: string;
-  NAME_D?: string;
-  NAME_I?: string;
-  LAT?: number;
-  LONG?: number;
-  ALT?: number;
-}
-
-// Manche OGC/CKAN-Endpunkte liefern Stationen als flache Liste, andere als
-// GeoJSON-FeatureCollection (Koordinaten unter geometry.coordinates). Beide
-// Formen werden hier auf eine einheitliche Form gebracht.
-function normalizeStations(raw: unknown): StationMeta[] {
-  if (Array.isArray(raw)) return raw as StationMeta[];
-
-  if (raw && typeof raw === "object" && Array.isArray((raw as { features?: unknown }).features)) {
-    const features = (raw as { features: Array<Record<string, unknown>> }).features;
-    return features.map((f) => {
-      const props = (f.properties ?? {}) as Record<string, unknown>;
-      const coords = (f.geometry as { coordinates?: [number, number] } | undefined)
-        ?.coordinates;
-      return {
-        SCODE: String(props.SCODE ?? ""),
-        NAME_D: props.NAME_D as string | undefined,
-        NAME_I: props.NAME_I as string | undefined,
-        ALT: props.ALT as number | undefined,
-        LAT: (props.LAT as number | undefined) ?? coords?.[1],
-        LONG: (props.LONG as number | undefined) ?? coords?.[0],
-      };
-    });
-  }
-
-  return [];
-}
-
-// Der Dienst liefert Zeitstempel wie "2026-07-13T14:10:00CEST" — das ist
-// kein gültiges ISO 8601 und von JavaScript nicht parsebar. Die Zeitzonen-
-// Kürzel werden deshalb durch numerische Offsets ersetzt.
-function toIsoTimestamp(date: string | undefined): string | null {
-  if (!date) return null;
-  return date.replace(/CEST$/, "+02:00").replace(/CET$/, "+01:00");
-}
-
-function toKmh(value: number, unit: string | undefined): number {
-  if (unit && unit.toLowerCase().includes("m/s")) return value * 3.6;
-  return value;
-}
-
-// Koordinaten auf 5 Nachkommastellen kürzen (≈ 1 m genau — für einen
-// Kartenmarker mehr als ausreichend). Der Dienst liefert teils 10+ Stellen;
-// die machen die JSON-Antwort nur unnötig groß, ohne dass man auf der Karte
-// irgendetwas davon sieht.
-function round5(value: number): number {
-  return Math.round(value * 1e5) / 1e5;
-}
-
-const isDirection = (desc: string) => /windrichtung/i.test(desc);
-const isSpeed = (desc: string) =>
-  /windgeschwindigkeit/i.test(desc) && !/böe/i.test(desc);
-const isGust = (desc: string) => /böe/i.test(desc);
-const hasCoords = (meta: StationMeta | undefined): meta is StationMeta =>
-  typeof meta?.LAT === "number" && typeof meta?.LONG === "number";
-
-// --- Die drei Upstream-Abrufe als eigene Helfer ---
-// Jeder fängt seine Fehler selbst ab und liefert immer ein Ergebnis zurück
-// (statt zu werfen), damit sie unten mit einem einzigen Promise.all
-// GLEICHZEITIG laufen können. Vorher liefen sie nacheinander, die Route war
-// also so langsam wie die Summe der drei Abrufe; jetzt nur noch so langsam wie
-// der langsamste einzelne.
-
-async function fetchSensors(): Promise<{
-  sensors?: SensorReading[];
-  error?: string;
-}> {
-  try {
-    // Immer frisch, siehe "Zwischenspeicherung" oben.
-    const res = await fetch(`${API_BASE}/sensors`, { cache: "no-store" });
-    if (!res.ok) {
-      return { error: `Wetterdienst antwortete mit Status ${res.status}` };
-    }
-    return { sensors: await res.json() };
-  } catch {
-    return { error: "Wetterdienst der Provinz Bozen ist nicht erreichbar" };
-  }
-}
-
-// Metadaten sind nicht kritisch: fehlen sie, bleibt die Karte leer statt zu
-// scheitern — deshalb hier nur protokollieren und eine leere Map liefern.
-async function fetchStationMeta(): Promise<Map<string, StationMeta>> {
-  try {
-    const res = await fetch(`${API_BASE}/stations`, {
-      next: { revalidate: STATIONS_REVALIDATE_S },
-    });
-    if (!res.ok) {
-      console.error(`Stationsmetadaten: Status ${res.status}`);
-      return new Map();
-    }
-    const stations = normalizeStations(await res.json());
-    return new Map(stations.map((s) => [s.SCODE, s]));
-  } catch (err) {
-    console.error("Stationsmetadaten nicht abrufbar:", err);
-    return new Map();
-  }
-}
-
-// OpenWindMap/Pioupiou-Stationen sind additiv: schlägt der Abruf fehl
-// (Netzfehler, Dienst nicht erreichbar), zeigt die Karte trotzdem die
-// Bozner Stationen statt komplett zu scheitern.
-async function fetchOpenWindMapSafely(): Promise<WindStation[]> {
-  try {
-    return await fetchOpenWindMapStations();
-  } catch (err) {
-    console.error("OpenWindMap-Stationen nicht abrufbar:", err);
-    return [];
-  }
-}
-
-// SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv, gleiche Begründung.
-async function fetchSlfSafely(): Promise<WindStation[]> {
-  try {
-    return await fetchSlfStations();
-  } catch (err) {
-    console.error("SLF-Stationen nicht abrufbar:", err);
-    return [];
-  }
-}
-
-// GeoSphere-Austria-Stationen (die österreichischen Stationen mit Wind im Alpenraum, siehe
-// src/lib/geosphere.ts) sind genauso additiv wie OpenWindMap.
-async function fetchGeoSphereSafely(): Promise<WindStation[]> {
-  try {
-    return await fetchGeoSphereStations();
-  } catch (err) {
-    console.error("GeoSphere-Stationen nicht abrufbar:", err);
-    return [];
-  }
-}
-
-// MeteoSchweiz (Schweiz), Lawinenwarndienst Tirol (Hafelekar) und Deutscher
-// Wetterdienst (Zugspitze) — alle drei additiv wie die Quellen oben. Zu einem
-// Helfer zusammengefasst, weil jede nur eine Zeile Fehlerbehandlung braucht.
-async function fetchAdditionalSafely(
-  label: string,
+// Eine Quelle abfragen, ohne dass ihr Fehler (oder ihr Zeitlimit) die
+// anderen mitreißt: Im Fehlerfall wird nur protokolliert und eine leere Liste
+// geliefert.
+async function fetchSafely(
+  source: WindStation["source"],
   fetchStations: () => Promise<WindStation[]>,
 ): Promise<WindStation[]> {
   try {
     return await fetchStations();
   } catch (err) {
-    console.error(`${label}-Stationen nicht abrufbar:`, err);
+    console.error(`Quelle ${source} nicht abrufbar:`, err);
     return [];
   }
 }
@@ -234,110 +86,25 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const requestedStations = searchParams.get("station");
 
-  const [
-    sensorsResult,
-    stationsByCode,
-    openWindMapStations,
-    slfStations,
-    geoSphereStations,
-    meteoSwissStations,
-    lwdTirolStations,
-    dwdStations,
-  ] = await Promise.all([
-    fetchSensors(),
-    fetchStationMeta(),
-    fetchOpenWindMapSafely(),
-    fetchSlfSafely(),
-    fetchGeoSphereSafely(),
-    fetchAdditionalSafely("MeteoSchweiz", fetchMeteoSwissStations),
-    fetchAdditionalSafely("LWD Tirol", fetchLwdTirolStations),
-    fetchAdditionalSafely("DWD", fetchDwdStations),
-  ]);
+  const results = await Promise.all(
+    SOURCES.map(([source, fetchStations]) => fetchSafely(source, fetchStations)),
+  );
+  // Quellen ohne eine einzige Station: Fehler, Zeitlimit oder leere Antwort
+  // (z. B. veröffentlicht MeteoSchweiz zeitweise eine Datei ohne Windwerte).
+  const missingSources = SOURCES.filter((_, i) => results[i].length === 0).map(
+    ([source]) => source,
+  );
 
-  if (sensorsResult.error || !sensorsResult.sensors) {
+  let stations = results
+    .flat()
+    .sort((a, b) => a.stationName.localeCompare(b.stationName, "de"));
+
+  if (stations.length === 0) {
     return NextResponse.json(
-      { error: sensorsResult.error ?? "Winddaten nicht verfügbar" },
+      { error: "Winddaten sind gerade nicht verfügbar – keine Quelle liefert Werte" },
       { status: 502 },
     );
   }
-  const sensors = sensorsResult.sensors;
-
-  const byStation = new Map<string, SensorReading[]>();
-  for (const s of sensors) {
-    if (!byStation.has(s.SCODE)) byStation.set(s.SCODE, []);
-    byStation.get(s.SCODE)!.push(s);
-  }
-
-  const hasDirection = (r: SensorReading) => isDirection(r.DESC_D);
-  const hasSpeed = (r: SensorReading) => isSpeed(r.DESC_D);
-  const now = Date.now();
-
-  function buildWindStation(code: string): WindStation | null {
-    const readings = byStation.get(code);
-    if (!readings) return null;
-
-    // Nur Stationen mit Windsensoren; alle anderen (reine Pegel-/
-    // Temperaturstationen) werden gar nicht erst zurückgegeben.
-    const dirReading = readings.find(hasDirection);
-    const speedReading = readings.find(hasSpeed);
-    if (!dirReading && !speedReading) return null;
-
-    // Ohne Koordinaten kann kein Marker platziert werden.
-    const meta = stationsByCode.get(code);
-    if (!hasCoords(meta)) return null;
-
-    const gustReading = readings.find((r) => isGust(r.DESC_D));
-    const timestamp = toIsoTimestamp(speedReading?.DATE ?? dirReading?.DATE);
-
-    const direction = dirReading?.VALUE ?? null;
-    const speedKmh =
-      speedReading?.VALUE != null
-        ? Math.round(toKmh(speedReading.VALUE, speedReading.UNIT) * 10) / 10
-        : null;
-
-    // Station gilt als ausgefallen, wenn Richtung oder Geschwindigkeit
-    // fehlen (ohne Richtung kann kein Pfeil gezeichnet werden) oder der
-    // letzte Messwert zu alt ist.
-    const measuredAt = timestamp ? Date.parse(timestamp) : NaN;
-    const stale =
-      direction === null ||
-      speedKmh === null ||
-      Number.isNaN(measuredAt) ||
-      now - measuredAt > STALE_AFTER_MS;
-
-    return {
-      stationCode: code,
-      stationName: meta.NAME_D ?? meta.NAME_I ?? code,
-      lat: meta.LAT != null ? round5(meta.LAT) : null,
-      lng: meta.LONG != null ? round5(meta.LONG) : null,
-      altitude: meta.ALT ?? null,
-      direction,
-      speedKmh,
-      gustKmh:
-        gustReading?.VALUE != null
-          ? Math.round(toKmh(gustReading.VALUE, gustReading.UNIT) * 10) / 10
-          : null,
-      timestamp,
-      stale,
-      source: "bolzano",
-    };
-  }
-
-  const bolzanoStations = [...byStation.keys()]
-    .map(buildWindStation)
-    .filter((s): s is WindStation => s !== null);
-
-  let stations = [
-    ...bolzanoStations,
-    ...openWindMapStations,
-    ...slfStations,
-    ...geoSphereStations,
-    ...meteoSwissStations,
-    ...lwdTirolStations,
-    ...dwdStations,
-  ].sort((a, b) =>
-    a.stationName.localeCompare(b.stationName, "de"),
-  );
 
   // Optional gefiltert über ?station=CODE1,CODE2 (für Tests/Debugging;
   // funktioniert auch mit Codes wie "pioupiou-413", "slf-ZNZ1" oder "meteoswiss-SAE").
@@ -346,19 +113,18 @@ export async function GET(request: Request) {
       requestedStations.split(",").map((c) => c.trim()).filter(Boolean),
     );
     stations = stations.filter((s) => wanted.has(s.stationCode));
-  }
-
-  if (stations.length === 0) {
-    return NextResponse.json(
-      { error: "Keine Station mit Winddaten und Koordinaten gefunden" },
-      { status: 404 },
-    );
+    if (stations.length === 0) {
+      return NextResponse.json(
+        { error: "Keine der angefragten Stationen gefunden" },
+        { status: 404 },
+      );
+    }
   }
 
   // Nur die erfolgreiche Antwort darf vom CDN zwischengespeichert werden —
   // Fehlerantworten (oben) bekommen bewusst keinen Cache-Control-Header,
   // damit sich ein kurzer Ausfall nicht 60 s lang "festsetzt".
-  return NextResponse.json(stations, {
-    headers: { "Cache-Control": RESPONSE_CACHE_CONTROL },
-  });
+  const headers: Record<string, string> = { "Cache-Control": RESPONSE_CACHE_CONTROL };
+  if (missingSources.length > 0) headers[MISSING_SOURCES_HEADER] = missingSources.join(",");
+  return NextResponse.json(stations, { headers });
 }

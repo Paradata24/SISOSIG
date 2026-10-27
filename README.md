@@ -18,18 +18,33 @@ Die Winddaten kommen vom offenen Datenportal der Provinz Bozen
 ([data.civis.bz.it](https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche)),
 über den Webservice unter `geoservices.buergernetz.bz.it/services/meteo/v1`
 (bis Sept. 2026 `daten.buergernetz.bz.it` — die alte Adresse antwortet nur
-noch mit `404`; zeigt die Karte „Wetterdienst antwortete mit Status 404",
-zuerst auf der Datensatz-Seite nachsehen, ob die Adresse wieder umgezogen ist):
+noch mit `404`; zeigt die Karte dauerhaft „Wetterdienst Südtirol liefert
+gerade keine Daten", zuerst auf der Datensatz-Seite nachsehen, ob die Adresse
+wieder umgezogen ist — die Adresse steht in `src/lib/bolzano.ts` und in der
+Edge Function):
 
 - `/sensors` liefert die aktuellen Messwerte aller Stationen.
 - `/stations` liefert Name und Koordinaten der Stationen.
 
-Die Next.js-Route `src/app/api/wind/route.ts` ruft beide Endpunkte ab
-(insgesamt nur 2 Anfragen pro Aktualisierung) und gibt alle Stationen
-mit Windsensoren und Koordinaten als JSON-Liste zurück: Richtung,
-Mittelwind und Böe (umgerechnet in km/h) sowie ein `stale`-Flag für
-Stationen, deren Messwerte fehlen oder älter als 2 Stunden sind — diese
-erscheinen auf der Karte als grauer Punkt statt als Windpfeil.
+Die Next.js-Route `src/app/api/wind/route.ts` ruft über
+`src/lib/bolzano.ts` beide Endpunkte ab (insgesamt nur 2 Anfragen pro
+Aktualisierung) und gibt alle Stationen mit Windsensoren und Koordinaten als
+JSON-Liste zurück: Richtung, Mittelwind und Böe (umgerechnet in km/h) sowie
+ein `stale`-Flag für Stationen, deren Messwerte fehlen oder zu alt sind —
+diese erscheinen auf der Karte als grauer Ring statt als Windpfeil.
+
+**Wann eine Station grau wird (seit Okt. 2026):** grundsätzlich, wenn ihr
+neuester Wert älter als **30 Minuten** ist (vorher 2 Stunden). Quellen, die
+ihre Werte schon im Normalbetrieb später oder seltener liefern, bekommen
+mehr Zeit, sonst würden sie vor jedem neuen Wert kurz grau: Bozen 35,
+MeteoSchweiz 40, LWD Tirol 50, SLF 55 und DWD (Zugspitze) 75 Minuten.
+Einstellbar an einer Stelle: `STALE_AFTER_MINUTES` in `src/lib/wind.ts`.
+
+**Wenn eine Quelle ausfällt:** Alle Quellen (auch Bozen) werden gleichzeitig
+abgefragt, jede mit Zeitlimit (8 s). Scheitert eine oder liefert sie keine
+einzige Station, zeigt die Karte die übrigen trotzdem und oben den gelben
+Hinweis „… liefert gerade keine Daten" (im Flugmodus in der Statuszeile).
+Bis Okt. 2026 war bei einem Ausfall des Bozner Dienstes die ganze Karte leer.
 
 Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
 filtern. Die Stationscodes findet man in der Antwort von
@@ -43,7 +58,7 @@ genau wie die Bozner Stationen auf der Karte an — Pfeil, Farbskala,
 Klick-Historie, alles identisch. Ihre Stationscodes haben das Format
 `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie nicht mit den Bozner
 SCODEs kollidieren. Schlägt der Abruf fehl, zeigt die Karte trotzdem die
-Bozner Stationen (additiv, kein Blocker). Details zu Lizenz und Einheiten
+übrigen Stationen (additiv, kein Blocker). Details zu Lizenz und Einheiten
 siehe unten unter „OpenWindMap/Pioupiou-Stationen".
 
 Ebenso kommen über `src/lib/slf.ts` die **Schweizer IMIS-Stationen des
@@ -81,10 +96,16 @@ alle 3 Stunden neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
 und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
 jedes Mal aus der Datenbank.
 
-Die drei fremden Dienste, die `/api/wind` braucht (`/sensors`, `/stations`,
-Pioupiou), werden außerdem **gleichzeitig** abgefragt statt nacheinander:
-muss die Route wirklich einmal laufen (Cache-Miss), dauert sie damit nur so
-lange wie der langsamste einzelne Abruf.
+Die fremden Dienste, die `/api/wind` braucht, werden außerdem
+**gleichzeitig** abgefragt statt nacheinander: muss die Route wirklich einmal
+laufen (Cache-Miss), dauert sie damit nur so lange wie der langsamste
+einzelne Abruf — höchstens aber 8 Sekunden (Zeitlimit, siehe oben).
+
+**Server-Standort:** Die Server-Teile der Seite (alle `/api/…`-Routen) laufen
+seit Okt. 2026 in **Dublin**, im selben Rechenzentrum wie die Datenbank
+(`vercel.json`, `"regions": ["dub1"]`; diese Datei hat Vorrang vor der
+Einstellung im Vercel-Dashboard). Vorher liefen sie im Vercel-Standard
+Washington/USA, und jede Abfrage ging über den Atlantik.
 
 Praktische Folgen:
 
@@ -139,19 +160,39 @@ Abfrage des Zeitbalkens deutlich schneller. Schritt für Schritt:
 
 Ein zweites Ausführen schadet nicht (`if not exists`).
 
+**Aufräumen (Okt. 2026), ebenfalls einmalig bei einer bestehenden
+Datenbank:** `supabase/datenbank-aufraeumen.sql` auf dieselbe Weise ausführen.
+Es entfernt zwei doppelte Suchhilfen (Indizes), legt eine fehlende für die
+Prognose-Funktion an und richtet einen täglichen Job ein, der das Protokoll
+der Zeitplan-Jobs auf 7 Tage kürzt. Messwerte und Prognosen bleiben
+unberührt.
+
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
 wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
 mitschicken.
 
+Alle Quellen werden gleichzeitig abgefragt, jede mit Zeitlimit; scheitert
+eine (seit Okt. 2026 auch der Bozner Dienst), werden die übrigen trotzdem
+gespeichert. SLF und DWD liefern ihren Verlauf mit — von ihnen speichert jeder
+Lauf die letzten 3 Stunden, sodass sich Lücken von selbst füllen. Werte, die
+älter als eine Stunde sind, werden dabei nur noch ergänzt, nicht neu
+geschrieben.
+
 **Antwort der Route:**
 
 - **Erfolg:** Status `200` mit JSON, z. B.
-  `{ "ok": true, "saved": 42, "cleanupBefore": "…", "cleanupOk": true }`
-  (`saved` = Anzahl gespeicherter Stationswerte).
+  `{ "ok": true, "saved": 1558, "sources": { "bolzano": 82, "slf": 1176, … },
+  "failedSources": [], "cleanupBefore": "…", "cleanupOk": true }`
+  (`saved` = Anzahl übermittelter Werte, `sources` = Werte je Quelle,
+  `failedSources` = Quellen, die diesmal gescheitert sind).
 - **Falsches/fehlendes Token:** Status `401` (`{ "error": "Nicht autorisiert" }`).
 - **Fehlende Server-Variablen:** Status `500`.
-- **Wetterdienst nicht erreichbar / keine Werte:** Status `502`.
+- **Keine einzige Quelle lieferte Werte / Speichern scheiterte:** Status `502`.
+
+Achtung: Im Protokoll der Zeitplan-Jobs (`cron.job_run_details`) steht bei
+jedem Lauf „succeeded" — das heißt nur „Anfrage abgeschickt". Die echte
+Antwort (siehe oben) steht 6 Stunden lang in `net._http_response`.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
 letzten 12 Stunden einer Station (für den Verlaufsbalken).
@@ -170,42 +211,41 @@ Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 
 Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
-Supabase-Cron-Header steht derselbe Wert **mit** `Bearer ` davor.
+Zeitplan-Job wird `Bearer ` davorgesetzt.
 
 ### Supabase Cron einrichten
 
-1. In Supabase links auf **Integrations → Cron** (bzw. **Database → Cron
-   Jobs**) und **Create a new cron job**.
-2. Zeitplan **alle 5 Minuten** wählen (`*/5 * * * *`) — dieser Takt gilt
-   für alle Stationen (Bozen und OpenWindMap gemeinsam). Läuft bei dir
-   bereits ein Cron-Job mit einem anderen Takt (z. B. `*/20 * * * *`), den
-   bestehenden Job öffnen und den Zeitplan auf `*/5 * * * *` ändern statt
-   einen zweiten anzulegen.
+Der Zeitplan-Job heißt `collect-data` und läuft **alle 5 Minuten**
+(`*/5 * * * *`). Sein Geheimnis (`CRON_SECRET`) liegt seit Okt. 2026 im
+Supabase-Tresor (Vault) statt im Klartext im Job — genauso wie beim
+Prognose-Job.
 
-   **Warum 5 Minuten, obwohl die Stationen nur alle 10 Minuten messen?**
-   Der Bozner Dienst zeigt unter `/sensors` immer nur den **neuesten** Wert
-   und veröffentlicht ihn erst 5–10 Minuten nach der Messung. Jeder Wert ist
-   also rund 10 Minuten lang abrufbar. Mit einem 5-Minuten-Takt erwischt ihn
-   garantiert mindestens ein Abruf; bei 10 Minuten wäre es Glückssache.
-   Mehr Zeilen entstehen dadurch **nicht** — doppelt abgeholte Werte
-   verwirft die Datenbank (Upsert). Noch häufiger abzufragen bringt dagegen
-   nichts.
-3. Als Aktion **HTTP Request** wählen:
-   - Methode: **POST**
-   - Endpoint URL: `https://<deine-vercel-domain>/api/collect`
-   - Timeout: **30000 ms**. Seit dem Umzug des Bozner Dienstes (Sept. 2026)
-     braucht ein Sammel-Lauf gut 5 Sekunden; mit nur 5000 ms meldet
-     `net._http_response` dann „Timeout" statt der echten Antwort, und echte
-     Fehler (z. B. `502`) bleiben unsichtbar. Lässt die Oberfläche nur
-     5000 ms zu, den Wert per SQL setzen:
-     `select cron.alter_job(job_id := 1, command := (select replace(command, $$timeout_milliseconds:='5000'$$, $$timeout_milliseconds:='30000'$$) from cron.job where jobid = 1));`
-   - Header: `Authorization` = `Bearer <CRON_SECRET>` (derselbe Wert wie die
-     Vercel-Variable) und optional `Content-Type` = `application/json`
-   - Request Body: leer lassen.
-4. Speichern. Im Reiter **Runs/History** erscheint bei Erfolg „Succeeded";
-   dass die Werte auch wirklich in der Tabelle landen, sieht man im
-   **Table Editor → `wind_measurements`** (nach `inserted_at` absteigend
-   sortieren → oben stehen die neuesten Einträge).
+- **Neue Installation:** Im **SQL Editor** den Inhalt von
+  `supabase/collect-cron.sql` einfügen, vorher den Platzhalter
+  `DEIN_CRON_SECRET` durch denselben Wert wie in Vercel ersetzen (und ggf. die
+  Adresse der Seite), dann **Run**. Die echten Werte niemals in die Datei im
+  Repository zurückschreiben!
+- **Bestehende Datenbank mit Klartext im Job:** den Inhalt von
+  `supabase/collect-cron-tresor.sql` ausführen. Es übernimmt das Geheimnis
+  direkt aus dem bisherigen Job in den Tresor — eintippen muss man nichts.
+- **Kontrolle** nach ein paar Minuten:
+  `select status_code, left(content::text, 300), created from net._http_response order by created desc limit 5;`
+  — Status `200` und `"ok":true` heißt: läuft. Zusätzlich sieht man im
+  **Table Editor → `wind_measurements`** (nach `inserted_at` absteigend
+  sortiert) die neuesten Einträge.
+
+**Warum 5 Minuten, obwohl die Stationen nur alle 10 Minuten messen?**
+Der Bozner Dienst zeigt unter `/sensors` immer nur den **neuesten** Wert
+und veröffentlicht ihn erst 5–10 Minuten nach der Messung. Jeder Wert ist
+also rund 10 Minuten lang abrufbar. Mit einem 5-Minuten-Takt erwischt ihn
+garantiert mindestens ein Abruf; bei 10 Minuten wäre es Glückssache.
+Mehr Zeilen entstehen dadurch **nicht** — doppelt abgeholte Werte
+verwirft die Datenbank (Upsert). Noch häufiger abzufragen bringt dagegen
+nichts.
+
+**Zeitlimit des Jobs: 30000 ms.** Mit nur 5000 ms meldet
+`net._http_response` „Timeout" statt der echten Antwort, und echte Fehler
+(z. B. `502`) bleiben unsichtbar.
 
 ### Manuell testen (optional)
 
@@ -533,12 +573,12 @@ Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert
   nicht an echten Daten gegenprüfen — nach dem Deployment einmal die
   angezeigten Werte an einem bekannten Tag plausibilisieren).
 - **Veraltete Werte:** Pioupiou-Stationen melden nicht durchgehend
-  (nachts/windstill teils gar nicht). Es gilt dieselbe Regel wie bei Bozen:
-  fehlt Richtung/Geschwindigkeit oder ist die letzte Messung älter als 2
-  Stunden, erscheint die Station als grauer Punkt statt als Windpfeil.
+  (nachts/windstill teils gar nicht). Es gilt dieselbe Regel wie bei allen
+  Quellen: fehlt Richtung/Geschwindigkeit oder ist die letzte Messung älter
+  als 30 Minuten, erscheint die Station als grauer Ring statt als Windpfeil.
 - **Ausfallsicher:** Schlägt der Abruf fehl (Dienst nicht erreichbar),
   zeigen `/api/wind`, `/api/collect` und die Prognose-Edge-Function
-  trotzdem weiterhin die Bozner Stationen — die OpenWindMap-Stationen
+  trotzdem weiterhin die übrigen Stationen — die OpenWindMap-Stationen
   fallen für diesen einen Durchlauf einfach weg, statt alles zu blockieren.
 - **Herkunft:** In `wind_measurements` markiert die Spalte `source`
   (`bolzano`/`openwindmap`), woher eine Zeile stammt. Im Verlaufsbalken
@@ -593,7 +633,8 @@ Deno-Gründen separat dupliziert.
   Österreichs; Stationen ganz ohne Windwerte werden ausgelassen.
 - **Mehrere Zeitpunkte in einer Antwort:** Hinkt eine Station hinterher,
   enthält die Antwort mehrere Zeitpunkte. Je Station gilt der letzte
-  Zeitpunkt mit Windwert; ist er älter als 2 h, erscheint die Station grau.
+  Zeitpunkt mit Windwert; ist er älter als 30 Minuten, erscheint die Station
+  grau.
 - **Stationscodes:** `geosphere-<Nummer>` (z. B. `geosphere-11129` = Brenner).
 - **Werte:** `DD` (Richtung), `FF` (10-min-Mittelwind), `FFX` (Böe). Die API
   liefert m/s, umgerechnet wird auf km/h. Höhe kommt direkt aus den Metadaten.
@@ -658,17 +699,21 @@ sie neu deployen.
   Mock/Umbiegen: `METEOSWISS_CURRENT_URL`, `METEOSWISS_META_URL`.
 - **Lawinenwarndienst Tirol** (`src/lib/lwdtirol.ts`, Code `lwdtirol-ISEE1`):
   nur die Stationen in `LWD_TIROL_STATIONS` (derzeit **Hafelekar**). Quelle: die
-  GeoJSON-Datei `lawine.tirol.gv.at/data/produkte/ogd.geojson` (Land Tirol,
-  CC BY 4.0, km/h laut Datensatzbeschreibung auf data.gv.at). Weitere Stationen:
-  Nummer aus dem Feld „LWD-Nummer" der Datei eintragen. Umbiegen: `LWD_TIROL_URL`.
+  GeoJSON-Datei `wiski.tirol.gv.at/lawine/produkte/ogd.geojson` (Land Tirol,
+  CC BY 4.0, km/h laut Datensatzbeschreibung auf data.gv.at; bis Okt. 2026
+  `lawine.tirol.gv.at/data/produkte/ogd.geojson`, die alte Adresse leitet nur
+  noch um). Weitere Stationen: Nummer aus dem Feld „LWD-Nummer" der Datei
+  eintragen. Umbiegen: `LWD_TIROL_URL`.
 - **Deutscher Wetterdienst** (`src/lib/dwd.ts`, Code `dwd-05792`): nur die
   Stationen in `DWD_STATIONS` (derzeit die **Zugspitze**). Quelle: zwei kleine
   ZIP-Dateien der 10-Minuten-Werte (`…/CDC/observations_germany/climate/10_minutes/`,
   Mittelwind/Richtung und Böe). Die ZIP-Dateien liest ein eigener kleiner Leser
-  in `dwd.ts` (keine zusätzliche Bibliothek). **Stand 29.09.2026: Die Zugspitze
-  liefert beim DWD seit dem 25.09.2026 keine neuen Werte** (Enddatum in der
-  DWD-Stationsliste) — sie erscheint deshalb grau, bis der DWD wieder
-  veröffentlicht; sobald das der Fall ist, wird sie von selbst wieder farbig.
+  in `dwd.ts` (keine zusätzliche Bibliothek). Der DWD erneuert die Dateien nur
+  **alle 30 Minuten** (mit je drei neuen 10-Minuten-Werten); die Sammel-Route
+  speichert deshalb alle Werte der letzten 3 Stunden, nicht nur den neuesten
+  (bis Okt. 2026 fehlten so 2 von 3 Werten). Grau wird die Zugspitze erst nach
+  75 Minuten ohne neuen Wert. Ab dem 25.09.2026 lieferte der DWD eine Zeit
+  lang keine Werte, spätestens seit dem 25.10.2026 wieder.
   Umbiegen: `DWD_CDC_BASE_URL`.
 - **Bälmeten** (Paradeltaclub Uri, OpenWindMap-Station 1535, Code
   `pioupiou-1535`): Ausnahme in `EXTRA_STATIONS` in `src/lib/pioupiou.ts`,

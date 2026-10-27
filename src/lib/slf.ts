@@ -1,5 +1,5 @@
 import { isInAlps } from "./alps";
-import type { WindStation } from "./wind";
+import { isOutdated, METADATA_TIMEOUT_MS, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 
 // Gemeinsame Logik zum Abrufen der IMIS-Stationen des SLF (WSL-Institut für
 // Schnee- und Lawinenforschung, Davos) — dieselben Stationen, die whiterisk.ch
@@ -33,9 +33,6 @@ const API_BASE =
 // Vorangestellt an den SLF-Stationscode, damit er nicht mit den Bozner SCODEs
 // oder den Pioupiou-Codes kollidiert (z. B. "slf-ZNZ1").
 export const SLF_CODE_PREFIX = "slf-";
-
-// Wie bei Bozen und Pioupiou: Messwerte älter als 2 h gelten als ausgefallen.
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Stationsliste ändert sich praktisch nie (wie /stations beim Bozner Dienst).
 const STATIONS_REVALIDATE_S = 6 * 60 * 60;
@@ -92,6 +89,7 @@ function msToKmh(value: number | null): number | null {
 async function fetchStationMeta(): Promise<SlfStationMeta[]> {
   const res = await fetch(`${API_BASE}/imis/stations`, {
     next: { revalidate: STATIONS_REVALIDATE_S },
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`SLF-Stationsliste: Status ${res.status}`);
   const body: unknown = await res.json();
@@ -103,7 +101,10 @@ let measurementsCache: { at: number; promise: Promise<SlfMeasurement[]> } | null
 async function loadMeasurements(): Promise<SlfMeasurement[]> {
   // no-store: zu groß für den Next.js-Daten-Cache (siehe oben), der eigene
   // Zwischenspeicher darüber übernimmt.
-  const res = await fetch(`${API_BASE}/imis/measurements`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE}/imis/measurements`, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`SLF-Messwerte: Status ${res.status}`);
   const body: unknown = await res.json();
   return Array.isArray(body) ? (body as SlfMeasurement[]) : [];
@@ -177,12 +178,12 @@ export async function fetchSlfStations(): Promise<WindStation[]> {
     if (!readings || readings.length === 0) continue;
     const latest = readings[readings.length - 1];
 
-    const measuredAt = Date.parse(latest.measuredAt);
+    // Ausgefallen wie bei allen Quellen (STALE_AFTER_MINUTES in wind.ts; beim
+    // SLF wegen des 30-Minuten-Takts später als bei den anderen).
     const stale =
       latest.direction === null ||
       latest.speedKmh === null ||
-      Number.isNaN(measuredAt) ||
-      now - measuredAt > STALE_AFTER_MS;
+      isOutdated("slf", Date.parse(latest.measuredAt), now);
 
     result.push({
       stationCode: latest.stationCode,

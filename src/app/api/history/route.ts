@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { HISTORY_HOURS } from "@/lib/wind";
+import { DATABASE_TIMEOUT_MS, HISTORY_HOURS } from "@/lib/wind";
 
 // Liefert die Wind-Historie der letzten HISTORY_HOURS Stunden (siehe
 // src/lib/wind.ts, aktuell 12) einer Station aus der Supabase-Tabelle
@@ -70,30 +70,31 @@ export async function GET(request: Request) {
     `&order=measured_at.asc` +
     `&select=measured_at,direction,speed_kmh,gust_kmh`;
 
-  let res: Response;
+  // Das Zeitlimit gilt auch für das Lesen der Antwort — deshalb steht
+  // res.json() mit im try.
+  let entries: HistoryEntry[];
   try {
-    res = await fetch(query, {
+    const res = await fetch(query, {
       headers: {
         apikey: serviceKey,
         Authorization: `Bearer ${serviceKey}`,
       },
       cache: "no-store",
+      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
     });
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: `Supabase antwortete mit Status ${res.status}` },
+        { status: 502 },
+      );
+    }
+    entries = await res.json();
   } catch {
     return NextResponse.json(
       { error: "Supabase ist nicht erreichbar" },
       { status: 502 },
     );
   }
-
-  if (!res.ok) {
-    return NextResponse.json(
-      { error: `Supabase antwortete mit Status ${res.status}` },
-      { status: 502 },
-    );
-  }
-
-  const entries: HistoryEntry[] = await res.json();
   return NextResponse.json(
     {
       stationCode: station,

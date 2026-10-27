@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
+import { fetchBolzanoReadings } from "@/lib/bolzano";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
 import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
-import { fetchDwdStations } from "@/lib/dwd";
+import { fetchDwdReadingsSince } from "@/lib/dwd";
 import { fetchSlfReadingsSince } from "@/lib/slf";
-import type { WindStation } from "@/lib/wind";
+import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 
-// Sammel-Route: ruft den Open-Data-Wetterdienst der Provinz Bozen ab und
-// schreibt die aktuellen Windwerte aller Stationen in die Supabase-Tabelle
-// wind_measurements. Ersetzt den früheren GitHub-Actions-Workflow und wird
-// stattdessen von Supabase Cron per POST angestoßen.
+// Sammel-Route: ruft alle Wetterdienste ab (dieselben Quellen wie /api/wind,
+// Logik je Quelle in src/lib/) und schreibt die Windwerte in die
+// Supabase-Tabelle wind_measurements. Ersetzt den früheren
+// GitHub-Actions-Workflow und wird stattdessen von Supabase Cron per POST
+// angestoßen.
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -28,6 +30,13 @@ import type { WindStation } from "@/lib/wind";
 // 10-Minuten-Spalte bei allen Stationen gleichzeitig. Im Verlaufsbalken wird
 // eine solche einzelne Lücke überbrückt (BAND_GAP_MS in WindHistoryPanel.tsx).
 //
+// AUSFÄLLE: Alle Quellen werden gleichzeitig abgefragt, jede mit Zeitlimit
+// (SOURCE_TIMEOUT_MS in src/lib/wind.ts). Scheitert eine, werden die übrigen
+// trotzdem gespeichert — seit Okt. 2026 auch dann, wenn der Bozner Dienst
+// ausfällt (vorher brach der ganze Lauf ab, und es entstand eine Lücke bei
+// ALLEN Quellen). Die Antwort nennt je Quelle die Zahl der Werte und die
+// gescheiterten Quellen.
+//
 // Aufruf nur mit gültigem Token:
 //   POST /api/collect
 //   Header: Authorization: Bearer <CRON_SECRET>
@@ -37,55 +46,96 @@ import type { WindStation } from "@/lib/wind";
 //   SUPABASE_SERVICE_ROLE_KEY  service_role Key des Supabase-Projekts
 //   CRON_SECRET                selbst gewähltes Geheimnis für den Cron-Aufruf
 
-// Adresse des Bozner Dienstes — identisch zu src/app/api/wind/route.ts (dort
-// steht, warum sie im Sept. 2026 geändert wurde) und zur Edge Function.
-const API_BASE =
-  process.env.WIND_API_BASE_URL ??
-  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
-
 // Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt nur HISTORY_HOURS
 // (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
 // ausgefallene Sammel-Läufe und halten die Tabelle klein.
 const RETENTION_DAYS = 2;
+const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
-// SLF-Stationen: Das SLF liefert die letzten 24 h mit, deshalb schreibt jeder
-// Lauf die letzten 3 Stunden (je Station 6 Halbstundenwerte, zusammen gut
-// 1.000 Zeilen). Ein verpasster Lauf oder ein verspätet gelieferter Wert
-// füllt sich so beim nächsten Lauf von selbst auf; Doppelte fängt der Upsert
-// ab. Mehr als 3 h wäre bei 12 Läufen pro Stunde nur unnötige Schreiblast.
-const SLF_WINDOW_MS = 3 * 60 * 60 * 1000;
+// SLF und DWD liefern ihren Verlauf mit (SLF die letzten 24 h, DWD den
+// laufenden Tag). Deshalb schreibt jeder Lauf ihre Werte der letzten 3
+// Stunden, nicht nur den neuesten: Ein verpasster Lauf oder ein verspätet
+// gelieferter Wert füllt sich so beim nächsten Lauf von selbst auf. Beim DWD
+// ist das sogar nötig, weil er nur alle 30 min eine neue Datei mit drei neuen
+// Werten bereitstellt (siehe src/lib/dwd.ts).
+const HISTORY_WINDOW_MS = 3 * 60 * 60 * 1000;
+
+// Werte, die älter als eine Stunde sind, werden nur noch ERGÄNZT, nicht mehr
+// überschrieben (Okt. 2026): Bis dahin schrieb jeder Lauf rund 1.200
+// SLF-Werte neu, die längst gespeichert waren — gut drei Viertel der ganzen
+// Schreibarbeit, ohne dass sich etwas änderte. Jüngere Werte werden weiter
+// überschrieben, falls ein Dienst einen Wert nachträglich vervollständigt.
+const OVERWRITE_WINDOW_MS = 60 * 60 * 1000;
 
 // Nicht cachen und immer serverseitig zur Laufzeit ausführen — sonst würde
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
 export const dynamic = "force-dynamic";
 
-interface SensorReading {
-  SCODE: string;
-  DESC_D: string;
-  UNIT?: string;
-  DATE?: string;
-  VALUE: number | null;
+interface MeasurementRow {
+  station_code: string;
+  measured_at: string;
+  direction: number | null;
+  speed_kmh: number | null;
+  gust_kmh: number | null;
+  source: WindStation["source"];
 }
 
-const isDirection = (desc: string) => /windrichtung/i.test(desc);
-const isSpeed = (desc: string) =>
-  /windgeschwindigkeit/i.test(desc) && !/böe/i.test(desc);
-const isGust = (desc: string) => /böe/i.test(desc);
-
-// "2026-07-13T14:10:00CEST" → gültiges ISO 8601 mit numerischem Offset.
-function toIsoTimestamp(date: string | undefined): string | null {
-  if (!date) return null;
-  return date.replace(/CEST$/, "+02:00").replace(/CET$/, "+01:00");
+// Ein Messwert in unseren Einheiten (gemeinsame Form von BolzanoReading,
+// SlfReading und DwdReading).
+interface Reading {
+  stationCode: string;
+  measuredAt: string;
+  direction: number | null;
+  speedKmh: number | null;
+  gustKmh: number | null;
 }
 
-function toKmh(value: number, unit: string | undefined): number {
-  if (unit && unit.toLowerCase().includes("m/s")) return value * 3.6;
-  return value;
+function fromReadings(readings: Reading[], source: WindStation["source"]): MeasurementRow[] {
+  return readings.map((r) => ({
+    station_code: r.stationCode,
+    measured_at: r.measuredAt,
+    direction: r.direction,
+    speed_kmh: r.speedKmh,
+    gust_kmh: r.gustKmh,
+    source,
+  }));
 }
 
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
+// Quellen, die nur ihren neuesten Wert liefern (Live-Format der Karte).
+function fromStations(stations: WindStation[]): MeasurementRow[] {
+  const rows: MeasurementRow[] = [];
+  for (const s of stations) {
+    if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
+    if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
+    rows.push({
+      station_code: s.stationCode,
+      measured_at: s.timestamp,
+      direction: s.direction,
+      speed_kmh: s.speedKmh,
+      gust_kmh: s.gustKmh,
+      source: s.source,
+    });
+  }
+  return rows;
 }
+
+// Alle Quellen, je mit ihrer Umwandlung in Datenbankzeilen. Dieselben Quellen
+// wie in /api/wind — eine neue Quelle braucht an beiden Stellen einen Eintrag.
+const SOURCES: Array<[WindStation["source"], () => Promise<MeasurementRow[]>]> = [
+  ["bolzano", async () => fromReadings(await fetchBolzanoReadings(), "bolzano")],
+  ["openwindmap", async () => fromStations(await fetchOpenWindMapStations())],
+  ["geosphere", async () => fromStations(await fetchGeoSphereStations())],
+  ["meteoswiss", async () => fromStations(await fetchMeteoSwissStations())],
+  ["lwdtirol", async () => fromStations(await fetchLwdTirolStations())],
+  [
+    "dwd",
+    async () => fromReadings(await fetchDwdReadingsSince(Date.now() - HISTORY_WINDOW_MS), "dwd"),
+  ],
+  [
+    "slf",
+    async () => fromReadings(await fetchSlfReadingsSince(Date.now() - HISTORY_WINDOW_MS), "slf"),
+  ],
+];
 
 export async function POST(request: Request) {
   // 1) Zugriffsschutz: nur mit korrektem Bearer-Token ausführen.
@@ -116,165 +166,108 @@ export async function POST(request: Request) {
     "Content-Type": "application/json",
   };
 
-  // 2) Aktuelle Messwerte aller Stationen abrufen.
-  let sensors: SensorReading[];
-  try {
-    const res = await fetch(`${API_BASE}/sensors`, { cache: "no-store" });
-    if (!res.ok) {
-      return NextResponse.json(
-        { error: `Wetterdienst antwortete mit Status ${res.status}` },
-        { status: 502 },
-      );
-    }
-    sensors = await res.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Wetterdienst der Provinz Bozen ist nicht erreichbar" },
-      { status: 502 },
-    );
-  }
-
-  // 3) Messwerte je Station bündeln und zu Datenbankzeilen aufbereiten.
-  const byStation = new Map<string, SensorReading[]>();
-  for (const s of sensors) {
-    if (!byStation.has(s.SCODE)) byStation.set(s.SCODE, []);
-    byStation.get(s.SCODE)!.push(s);
-  }
-
-  const rows: Array<{
-    station_code: string;
-    measured_at: string;
-    direction: number | null;
-    speed_kmh: number | null;
-    gust_kmh: number | null;
-    source: WindStation["source"];
-  }> = [];
-
-  for (const [code, readings] of byStation) {
-    const dir = readings.find((r) => isDirection(r.DESC_D));
-    const speed = readings.find((r) => isSpeed(r.DESC_D));
-    if (!dir && !speed) continue; // Station ohne Windsensoren
-
-    const gust = readings.find((r) => isGust(r.DESC_D));
-    const measuredAt = toIsoTimestamp(speed?.DATE ?? dir?.DATE);
-    if (!measuredAt || Number.isNaN(Date.parse(measuredAt))) continue;
-
-    const direction = dir?.VALUE ?? null;
-    const speedKmh =
-      speed?.VALUE != null ? round1(toKmh(speed.VALUE, speed.UNIT)) : null;
-    if (direction === null && speedKmh === null) continue; // kein Messwert
-
-    rows.push({
-      station_code: code,
-      measured_at: measuredAt,
-      direction,
-      speed_kmh: speedKmh,
-      gust_kmh: gust?.VALUE != null ? round1(toKmh(gust.VALUE, gust.UNIT)) : null,
-      source: "bolzano",
-    });
-  }
-
-  // 3b) OpenWindMap/Pioupiou-, GeoSphere-Austria-, MeteoSchweiz-, LWD-Tirol- und
-  //     DWD-Stationen dazuholen —
-  //     additiv: schlägt ein Abruf fehl, werden trotzdem die übrigen
-  //     Messwerte gespeichert statt den ganzen Lauf abzubrechen.
-  const extraSources: Array<[string, () => Promise<WindStation[]>]> = [
-    ["OpenWindMap", fetchOpenWindMapStations],
-    ["GeoSphere", fetchGeoSphereStations],
-    ["MeteoSchweiz", fetchMeteoSwissStations],
-    ["LWD Tirol", fetchLwdTirolStations],
-    ["DWD", fetchDwdStations],
-  ];
-  for (const [label, fetchStations] of extraSources) {
-    try {
-      for (const s of await fetchStations()) {
-        if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
-        if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
-        // Längst ausgefallene Station (z. B. Zugspitze beim DWD): Der letzte
-        // Wert wäre älter als die Aufbewahrung und würde nach dem Speichern
-        // sofort wieder gelöscht — gar nicht erst schreiben.
-        if (Date.parse(s.timestamp) < Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000) continue;
-        rows.push({
-          station_code: s.stationCode,
-          measured_at: s.timestamp,
-          direction: s.direction,
-          speed_kmh: s.speedKmh,
-          gust_kmh: s.gustKmh,
-          source: s.source,
-        });
+  // 2) Alle Quellen gleichzeitig abrufen. Eine gescheiterte Quelle liefert
+  //    keine Zeilen, die übrigen werden trotzdem gespeichert.
+  const results = await Promise.all(
+    SOURCES.map(async ([source, load]) => {
+      try {
+        return { source, rows: await load(), error: null };
+      } catch (err) {
+        console.error(`Quelle ${source} nicht abrufbar:`, err);
+        return { source, rows: [] as MeasurementRow[], error: String(err) };
       }
-    } catch (err) {
-      console.error(`${label}-Stationen nicht abrufbar:`, err);
+    }),
+  );
+
+  // 3) Zeilen aufteilen: jung = überschreiben, älter als OVERWRITE_WINDOW_MS =
+  //    nur ergänzen. Längst ausgefallene Stationen (letzter Wert älter als die
+  //    Aufbewahrung, z. B. ein seit Tagen toter Sensor) würden nach dem
+  //    Speichern sofort wieder gelöscht — gar nicht erst schreiben.
+  const now = Date.now();
+  const recentRows: MeasurementRow[] = [];
+  const olderRows: MeasurementRow[] = [];
+  for (const { rows } of results) {
+    for (const row of rows) {
+      const t = Date.parse(row.measured_at);
+      if (Number.isNaN(t) || t < now - RETENTION_MS) continue;
+      (t >= now - OVERWRITE_WINDOW_MS ? recentRows : olderRows).push(row);
     }
   }
 
-  // 3c) SLF-IMIS-Stationen (Schweiz) — ebenfalls additiv.
-  try {
-    const slfReadings = await fetchSlfReadingsSince(Date.now() - SLF_WINDOW_MS);
-    for (const r of slfReadings) {
-      rows.push({
-        station_code: r.stationCode,
-        measured_at: r.measuredAt,
-        direction: r.direction,
-        speed_kmh: r.speedKmh,
-        gust_kmh: r.gustKmh,
-        source: "slf",
-      });
-    }
-  } catch (err) {
-    console.error("SLF-Stationen nicht abrufbar:", err);
-  }
+  const perSource = Object.fromEntries(results.map((r) => [r.source, r.rows.length]));
+  const failedSources = results.filter((r) => r.error !== null).map((r) => r.source);
 
-  if (rows.length === 0) {
+  if (recentRows.length + olderRows.length === 0) {
     return NextResponse.json(
-      { error: "Keine Windmesswerte im Datenbestand gefunden" },
+      { error: "Keine Windmesswerte erhalten", sources: perSource, failedSources },
       { status: 502 },
     );
   }
 
-  // 4) Upsert: vorhandene (station_code, measured_at)-Paare werden
-  //    aktualisiert statt doppelt angelegt.
-  const insertRes = await fetch(
-    `${supabaseUrl}/rest/v1/wind_measurements?on_conflict=station_code,measured_at`,
-    {
-      method: "POST",
-      headers: {
-        ...supabaseHeaders,
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(rows),
-    },
-  );
-  if (!insertRes.ok) {
+  // 4) Speichern. Upsert über (station_code, measured_at): Doppelte werden
+  //    bei jungen Werten aktualisiert ("merge-duplicates"), bei älteren
+  //    übersprungen ("ignore-duplicates"). Gibt null zurück, wenn alles
+  //    geklappt hat, sonst die Fehlermeldung.
+  const upsert = async (
+    rows: MeasurementRow[],
+    resolution: "merge-duplicates" | "ignore-duplicates",
+  ): Promise<string | null> => {
+    if (rows.length === 0) return null;
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/wind_measurements?on_conflict=station_code,measured_at`,
+        {
+          method: "POST",
+          headers: { ...supabaseHeaders, Prefer: `resolution=${resolution},return=minimal` },
+          body: JSON.stringify(rows),
+          signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+        },
+      );
+      return res.ok ? null : `Status ${res.status}: ${await res.text()}`;
+    } catch (err) {
+      return String(err);
+    }
+  };
+  const insertErrors = [
+    await upsert(recentRows, "merge-duplicates"),
+    await upsert(olderRows, "ignore-duplicates"),
+  ].filter((e): e is string => e !== null);
+  if (insertErrors.length > 0) {
     return NextResponse.json(
-      {
-        error: `Supabase-Insert schlug fehl (Status ${insertRes.status})`,
-        details: await insertRes.text(),
-      },
+      { error: "Supabase-Insert schlug fehl", details: insertErrors, sources: perSource },
       { status: 502 },
     );
   }
 
   // 5) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
-  const cutoff = new Date(
-    Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const cutoff = new Date(now - RETENTION_MS).toISOString();
   let deleted = true;
-  const deleteRes = await fetch(
-    `${supabaseUrl}/rest/v1/wind_measurements?measured_at=lt.${encodeURIComponent(cutoff)}`,
-    { method: "DELETE", headers: supabaseHeaders },
-  );
-  if (!deleteRes.ok) {
-    // Aufräumen ist unkritisch — Fehler nur protokollieren, nicht abbrechen.
-    console.error(
-      `WARNUNG: Aufräumen alter Einträge schlug fehl (Status ${deleteRes.status})`,
+  try {
+    const deleteRes = await fetch(
+      `${supabaseUrl}/rest/v1/wind_measurements?measured_at=lt.${encodeURIComponent(cutoff)}`,
+      {
+        method: "DELETE",
+        headers: supabaseHeaders,
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      },
     );
+    if (!deleteRes.ok) {
+      // Aufräumen ist unkritisch — Fehler nur protokollieren, nicht abbrechen.
+      console.error(
+        `WARNUNG: Aufräumen alter Einträge schlug fehl (Status ${deleteRes.status})`,
+      );
+      deleted = false;
+    }
+  } catch (err) {
+    console.error("WARNUNG: Aufräumen alter Einträge schlug fehl:", err);
     deleted = false;
   }
 
   return NextResponse.json({
     ok: true,
-    saved: rows.length,
+    saved: recentRows.length + olderRows.length,
+    sources: perSource,
+    failedSources,
     cleanupBefore: cutoff,
     cleanupOk: deleted,
   });

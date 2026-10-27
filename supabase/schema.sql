@@ -20,10 +20,11 @@ create table if not exists public.wind_measurements (
   unique (station_code, measured_at)
 );
 
--- Beschleunigt die 12h-Abfrage einer einzelnen Station (/api/history,
--- Verlaufsbalken).
-create index if not exists wind_measurements_station_time_idx
-  on public.wind_measurements (station_code, measured_at desc);
+-- Die 12h-Abfrage einer einzelnen Station (/api/history, Verlaufsbalken)
+-- nutzt die Suchhilfe, die unique (station_code, measured_at) oben schon
+-- mitbringt. Eine eigene zweite (station_code, measured_at desc) gab es bis
+-- Okt. 2026 — sie war doppelt und bremste nur das Speichern
+-- (supabase/datenbank-aufraeumen.sql entfernt sie bei bestehenden Datenbanken).
 
 -- Beschleunigt die Abfrage über ALLE Stationen in einem Zeitfenster
 -- (/api/timeline, Zeitbalken unter der Karte) und das Aufräumen alter Zeilen.

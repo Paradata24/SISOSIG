@@ -1,5 +1,11 @@
 import { isInAlps } from "./alps";
-import { WINDANZEIGER_STATION_CODES, type WindStation } from "./wind";
+import {
+  isOutdated,
+  METADATA_TIMEOUT_MS,
+  SOURCE_TIMEOUT_MS,
+  WINDANZEIGER_STATION_CODES,
+  type WindStation,
+} from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der automatischen Messstationen von MeteoSchweiz
@@ -44,9 +50,6 @@ const META_URL =
 // Vorangestellt an das MeteoSchweiz-Kürzel, damit die Codes nicht mit den
 // Bozner SCODEs, SLF-Codes ("slf-...") usw. kollidieren.
 export const METEOSWISS_CODE_PREFIX = "meteoswiss-";
-
-// Wie bei den anderen Quellen: Messwerte älter als 2 h gelten als ausgefallen.
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Neue Werte kommen alle 10 Minuten; 120 s Cache halten die Zahl der Abrufe
 // niedrig (/api/wind ≤ 30 pro Stunde), ohne die Anzeige spürbar zu verzögern.
@@ -114,7 +117,10 @@ function parseTimestamp(value: string | undefined): number {
 }
 
 async function fetchMeta(): Promise<Map<string, MeteoSwissMeta>> {
-  const res = await fetch(META_URL, { next: { revalidate: METADATA_REVALIDATE_S } });
+  const res = await fetch(META_URL, {
+    next: { revalidate: METADATA_REVALIDATE_S },
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
+  });
   if (!res.ok) throw new Error(`MeteoSchweiz-Stationsliste: Status ${res.status}`);
   const rows = parseCsv(decodeText(await res.arrayBuffer()));
   const byCode = new Map<string, MeteoSwissMeta>();
@@ -144,7 +150,10 @@ export async function fetchMeteoSwissStations(): Promise<WindStation[]> {
   const [meta, csv] = await Promise.all([
     fetchMeta(),
     cachedFresh(CURRENT_URL, MEASUREMENTS_TTL_MS, async () => {
-      const res = await fetch(CURRENT_URL, { cache: "no-store" });
+      const res = await fetch(CURRENT_URL, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+      });
       if (!res.ok) throw new Error(`MeteoSchweiz-Messwerte: Status ${res.status}`);
       return decodeText(await res.arrayBuffer());
     }),
@@ -175,12 +184,11 @@ export async function fetchMeteoSwissStations(): Promise<WindStation[]> {
     const gustKmh = numberOrNull(r["fu3010z1"]);
     if (direction === null && speedKmh === null && gustKmh === null) continue;
 
+    // Ausgefallen wie bei allen Quellen (STALE_AFTER_MINUTES in wind.ts; bei
+    // MeteoSchweiz etwas später, weil die Werte später veröffentlicht werden).
     const measuredAt = parseTimestamp(r["Date"]);
     const stale =
-      direction === null ||
-      speedKmh === null ||
-      Number.isNaN(measuredAt) ||
-      now - measuredAt > STALE_AFTER_MS;
+      direction === null || speedKmh === null || isOutdated("meteoswiss", measuredAt, now);
 
     result.push({
       stationCode: `${METEOSWISS_CODE_PREFIX}${abbr}`,

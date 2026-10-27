@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   buildTimelineSlots,
+  DATABASE_TIMEOUT_MS,
   GRID_MS,
   HISTORY_HOURS,
   snapToGrid,
@@ -124,17 +125,19 @@ export async function GET() {
       `&order=measured_at.asc,station_code.asc` +
       `&select=station_code,measured_at,direction,speed_kmh,gust_kmh,source` +
       `&limit=${size}&offset=${from}`;
-    let res: Response;
+    // Das Zeitlimit gilt auch für das Lesen der Antwort — deshalb steht
+    // res.json() mit im try.
     try {
-      res = await fetch(query, {
+      const res = await fetch(query, {
         headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
         cache: "no-store",
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
       });
+      if (!res.ok) return { error: `Supabase antwortete mit Status ${res.status}` };
+      return (await res.json()) as MeasurementRow[];
     } catch {
       return { error: "Supabase ist nicht erreichbar" };
     }
-    if (!res.ok) return { error: `Supabase antwortete mit Status ${res.status}` };
-    return (await res.json()) as MeasurementRow[];
   };
 
   const rows: MeasurementRow[] = [];

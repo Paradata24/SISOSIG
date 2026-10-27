@@ -101,6 +101,97 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
 };
 
 /**
+ * Kopfzeile der Antwort von /api/wind mit den Quellen, die gerade keine
+ * einzige Station liefern (Fehler, Zeitlimit oder leere Antwort), z. B.
+ * "meteoswiss,lwdtirol". WindMap zeigt daraus den Hinweis "… liefert gerade
+ * keine Daten".
+ */
+export const MISSING_SOURCES_HEADER = "x-sisosig-ohne-daten";
+
+/** Kurzname je Quelle, z. B. für den Hinweis "MeteoSchweiz liefert gerade keine Daten". */
+export const SOURCE_SHORT_LABEL: Record<WindStation["source"], string> = {
+  bolzano: "Wetterdienst Südtirol",
+  openwindmap: "OpenWindMap",
+  slf: "SLF",
+  geosphere: "GeoSphere Austria",
+  meteoswiss: "MeteoSchweiz",
+  lwdtirol: "LWD Tirol",
+  dwd: "DWD (Zugspitze)",
+};
+
+/** Liest die Kopfzeile MISSING_SOURCES_HEADER; unbekannte Einträge fallen weg. */
+export function parseMissingSources(header: string | null): WindStation["source"][] {
+  if (!header) return [];
+  return header
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is WindStation["source"] => Object.hasOwn(SOURCE_SHORT_LABEL, s));
+}
+
+/** Kurznamen als Aufzählung: "A", "A und B", "A, B und C". */
+export function listSourceLabels(sources: WindStation["source"][]): string {
+  const labels = sources.map((s) => SOURCE_SHORT_LABEL[s]);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} und ${labels[labels.length - 1]}`;
+}
+
+/**
+ * Ab welchem Alter (Minuten) der neueste Messwert einer Station als
+ * ausgefallen gilt: Die Station erscheint dann als blasser grauer Ring statt
+ * als Pfeil (stale).
+ *
+ * Grundregel: grau nach einer halben Stunde (Wunsch des Projektbesitzers,
+ * Okt. 2026; vorher 2 h). Manche Quellen liefern ihre Werte aber schon im
+ * Normalbetrieb später oder seltener — mit 30 min würden ihre Stationen vor
+ * jedem neuen Wert kurz grau. Für sie gilt deshalb ihr übliches Höchstalter
+ * plus etwas Spielraum. Gemessen im Okt. 2026 an 36 h echter Daten: wie alt
+ * der neueste Wert einer Station war, als der nächste ankam.
+ *  - bolzano 35: normal ~20 min. Der Dienst überspringt aber bei rund 5 % der
+ *    Messungen einen Wert (oft bei allen Stationen gleichzeitig, siehe
+ *    /api/collect) — mit 30 min würde dann ganz Südtirol kurz grau.
+ *  - openwindmap, geosphere 30: normal höchstens ~20–25 min.
+ *  - meteoswiss 40: MeteoSchweiz veröffentlicht erst 10–20 min nach der Messung.
+ *  - lwdtirol 50: Der Hafelekar meldet unregelmäßig (oft nur alle 20 min) und
+ *    rund 15 min verspätet.
+ *  - slf 55: nur ein Wert pro halbe Stunde (siehe SOURCE_INTERVAL_MINUTES).
+ *  - dwd 75: Der DWD stellt nur alle 30 min eine neue Datei bereit, deren
+ *    jüngster Wert dann schon 25–30 min alt ist.
+ */
+export const STALE_AFTER_MINUTES: Record<WindStation["source"], number> = {
+  bolzano: 35,
+  openwindmap: 30,
+  slf: 55,
+  geosphere: 30,
+  meteoswiss: 40,
+  lwdtirol: 50,
+  dwd: 75,
+};
+
+/**
+ * true, wenn der Messwert zu alt ist (siehe STALE_AFTER_MINUTES) oder keine
+ * gültige Messzeit hat. `measuredAtMs` und `now` in Epoch-ms.
+ */
+export function isOutdated(
+  source: WindStation["source"],
+  measuredAtMs: number,
+  now: number,
+): boolean {
+  return Number.isNaN(measuredAtMs) || now - measuredAtMs > STALE_AFTER_MINUTES[source] * 60_000;
+}
+
+// --- Zeitlimits für Abrufe auf dem Server (Okt. 2026) ---
+// Vorher hatte keine Anfrage ein Zeitlimit: Hing ein Dienst, wartete die ganze
+// Karte (bzw. der Sammler) auf ihn. Jetzt wird nach dieser Zeit abgebrochen und
+// ohne diese Quelle weitergemacht — sie erscheint dann im Hinweis "… liefert
+// gerade keine Daten" (WindMap).
+/** Live-Messwerte der Wetterdienste. Normal antworten sie in 0,5–2 s. */
+export const SOURCE_TIMEOUT_MS = 8_000;
+/** Stationslisten (werden 6 h zwischengespeichert, also nur selten wirklich geholt). */
+export const METADATA_TIMEOUT_MS = 15_000;
+/** Abfragen an die Supabase-Datenbank. */
+export const DATABASE_TIMEOUT_MS = 15_000;
+
+/**
  * Zeitfenster des Verlaufsbalkens: Die Zeitachse läuft fest von
  * (jetzt − HISTORY_HOURS) bis (jetzt + FUTURE_MARGIN_HOURS). Beide Werte
  * stehen bewusst hier zentral, damit das Panel (WindHistoryPanel) und die
