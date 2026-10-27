@@ -52,6 +52,8 @@ type OwnPosition = {
   accuracyM: number;
   /** Flugrichtung in Grad (0 = Nord), null = noch unbekannt. */
   heading: number | null;
+  /** Zeitpunkt der Messung (ms seit 1970), für die Track-Aufzeichnung. */
+  time: number;
 };
 
 type GpsStatus = "searching" | "ok" | "denied" | "unavailable";
@@ -111,6 +113,7 @@ function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
           lng: longitude,
           accuracyM: accuracy,
           heading: lastHeading.current,
+          time: pos.timestamp,
         });
         setStatus("ok");
       },
@@ -174,6 +177,202 @@ function useWakeLock(): boolean | null {
   return active;
 }
 
+// --- Track-Aufzeichnung ---
+// Start-Taste im Flugmodus: Ab dann wird der geflogene Weg als violette Linie
+// auf der Karte gezeichnet. Stop unterbricht nur — erneutes Start setzt
+// denselben Track fort (ein versehentliches Stop mit Handschuhen kostet so
+// nichts). Neu beginnen = Track über die Papierkorb-Taste löschen.
+//
+// Gespeichert wird im Browser des Handys (localStorage), nicht in der
+// Datenbank: Der Track gehört nur diesem Gerät, und er übersteht so ein
+// Neuladen der Seite, ein Beenden und Wiederöffnen des Flugmodus oder einen
+// Absturz des Browsers. War die Aufzeichnung beim Verlassen an, läuft sie beim
+// nächsten Öffnen des Flugmodus weiter.
+// Einschränkung wie beim Standort: Aufgezeichnet wird nur, solange die Seite
+// offen und im Vordergrund ist. Lücken (Bildschirm aus, andere App) bleiben
+// sichtbar als Lücke in der Linie (TRACK_GAP_MS).
+
+const TRACK_STORAGE_KEY = "sisosig-flugtrack-v1";
+// Violett: kommt in der Windskala (Blau/Grün/Gelb/Orange/Rot) nicht vor und
+// unterscheidet sich vom blauen eigenen Standort.
+const TRACK_COLOR = "#a21caf";
+// Neuer Punkt erst ab diesem Abstand zum letzten. Spart Speicher und
+// Zeichenarbeit (im Flug mit ~30 km/h etwa alle 2 s ein Punkt) und filtert
+// das GPS-Zittern im Stand heraus.
+const TRACK_MIN_STEP_M = 15;
+// Ungenaue GPS-Werte (z. B. kurz nach dem Start) werden nicht aufgezeichnet,
+// sonst entstehen Zacken.
+const TRACK_MAX_ACCURACY_M = 50;
+// Längere Pause zwischen zwei Werten = Lücke: Die Linie verbindet die beiden
+// Stellen dann nicht mit einer geraden Linie.
+const TRACK_GAP_MS = 60_000;
+// Wie oft der Track höchstens gespeichert wird. Bei jedem GPS-Wert zu
+// speichern würde nach ein paar Stunden (~10.000 Punkte) jede Sekunde ein paar
+// hundert KB schreiben — unnötige Akku-Last. Zusätzlich wird bei Start/Stop,
+// beim Verlassen und wenn die Seite in den Hintergrund geht gespeichert.
+const TRACK_SAVE_INTERVAL_MS = 15_000;
+
+type StoredTrack = {
+  recording: boolean;
+  /** Teilstücke ohne Lücke, jeder Punkt [Breite, Länge]. */
+  segments: [number, number][][];
+  /** Zeitpunkt des letzten Punkts (für die Lücken-Erkennung). */
+  lastTime: number | null;
+};
+
+function loadTrack(): StoredTrack {
+  try {
+    const raw = window.localStorage.getItem(TRACK_STORAGE_KEY);
+    if (raw) {
+      const data = JSON.parse(raw) as StoredTrack;
+      if (Array.isArray(data.segments)) return data;
+    }
+  } catch {
+    // Privater Modus, gesperrter Speicher, kaputter Inhalt: leer beginnen.
+  }
+  return { recording: false, segments: [], lastTime: null };
+}
+
+function saveTrack(track: StoredTrack) {
+  try {
+    window.localStorage.setItem(TRACK_STORAGE_KEY, JSON.stringify(track));
+  } catch {
+    // Speicher voll oder gesperrt: Die Linie bleibt trotzdem auf der Karte,
+    // sie übersteht dann nur kein Neuladen.
+  }
+}
+
+function trackLengthM(segments: [number, number][][]): number {
+  let total = 0;
+  for (const segment of segments) {
+    for (let i = 1; i < segment.length; i++) {
+      total += L.latLng(segment[i - 1]).distanceTo(segment[i]);
+    }
+  }
+  return total;
+}
+
+// Aufzeichnung, Speicher und die Linie auf der Karte. Der Track selbst liegt
+// in einem ref (nicht im state): Er wächst mit jedem GPS-Wert und wird nur
+// von Leaflet gezeichnet, React braucht ihn nicht. Für die Anzeige gibt es
+// nur Aufzeichnungs-Zustand, Länge und "gibt es einen Track".
+function useTrack(map: L.Map | null, position: OwnPosition | null) {
+  const track = useRef<StoredTrack | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [lengthM, setLengthM] = useState(0);
+  const dirty = useRef(false);
+  const lineRef = useRef<L.Polyline | null>(null);
+
+  // Gespeicherten Track laden und die Linie anlegen (einmal je Flugmodus).
+  // Die setState-Aufrufe sitzen bewusst in requestAnimationFrame: Laden aus
+  // dem Browser-Speicher geht nur im Browser, also erst nach dem Aufbau.
+  useEffect(() => {
+    if (!map) return;
+    const loaded = loadTrack();
+    track.current = loaded;
+    lineRef.current = L.polyline(loaded.segments, {
+      color: TRACK_COLOR,
+      weight: 3,
+      opacity: 0.9,
+      interactive: false,
+    }).addTo(map);
+    const frame = requestAnimationFrame(() => {
+      setRecording(loaded.recording);
+      setLengthM(trackLengthM(loaded.segments));
+    });
+
+    const flush = () => {
+      if (dirty.current && track.current) {
+        saveTrack(track.current);
+        dirty.current = false;
+      }
+    };
+    const interval = setInterval(flush, TRACK_SAVE_INTERVAL_MS);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onHide);
+      flush();
+      lineRef.current?.remove();
+      lineRef.current = null;
+      track.current = null;
+    };
+  }, [map]);
+
+  // Jeden neuen GPS-Wert prüfen und ggf. anhängen.
+  useEffect(() => {
+    const t = track.current;
+    if (!t || !t.recording || !position) return;
+    if (position.accuracyM > TRACK_MAX_ACCURACY_M) return;
+    const point: [number, number] = [
+      Math.round(position.lat * 1e5) / 1e5,
+      Math.round(position.lng * 1e5) / 1e5,
+    ];
+    let segment = t.segments[t.segments.length - 1];
+    const isGap = t.lastTime !== null && position.time - t.lastTime > TRACK_GAP_MS;
+    if (!segment || (isGap && segment.length > 0)) {
+      segment = [];
+      t.segments.push(segment);
+    }
+    const last = segment[segment.length - 1];
+    let step = 0;
+    if (last) {
+      step = L.latLng(last).distanceTo(point);
+      if (step < TRACK_MIN_STEP_M) {
+        // Zu nah am letzten Punkt: nicht speichern, aber als "noch da"
+        // werten, damit langsames Fliegen keine Lücke erzeugt.
+        t.lastTime = position.time;
+        return;
+      }
+    }
+    segment.push(point);
+    t.lastTime = position.time;
+    dirty.current = true;
+    lineRef.current?.setLatLngs(t.segments);
+    if (step > 0) setLengthM((m) => m + step);
+  }, [position]);
+
+  const start = useCallback(() => {
+    const t = track.current;
+    if (!t) return;
+    t.recording = true;
+    // Neues Teilstück: Nach einer Pause wird nicht quer übers Tal verbunden.
+    if (t.segments.length === 0 || t.segments[t.segments.length - 1].length > 0) {
+      t.segments.push([]);
+    }
+    saveTrack(t);
+    dirty.current = false;
+    setRecording(true);
+  }, []);
+
+  const stop = useCallback(() => {
+    const t = track.current;
+    if (!t) return;
+    t.recording = false;
+    saveTrack(t);
+    dirty.current = false;
+    setRecording(false);
+  }, []);
+
+  const clear = useCallback(() => {
+    const t = track.current;
+    if (!t) return;
+    if (!window.confirm("Bisherigen Track löschen?")) return;
+    t.segments = [];
+    t.lastTime = null;
+    saveTrack(t);
+    dirty.current = false;
+    lineRef.current?.setLatLngs([]);
+    setLengthM(0);
+  }, []);
+
+  return { recording, lengthM, start, stop, clear };
+}
+
 // Icon des eigenen Standorts: blauer Punkt, davor eine Spitze in Flugrichtung.
 // Bewusst ein Kreis und kein Pfeil, damit er nicht mit den Windpfeilen
 // verwechselt wird. Ohne bekannte Richtung nur der Punkt.
@@ -218,6 +417,7 @@ export default function FlightMode({
 }) {
   const { position, status } = useOwnPosition();
   const wakeLockActive = useWakeLock();
+  const track = useTrack(map, position);
 
   // Mitführen: Die Karte folgt dem eigenen Standort, bis man sie selbst
   // verschiebt. Die Rücksetztaste schaltet es wieder ein. Als ref, weil der
@@ -338,6 +538,10 @@ export default function FlightMode({
   const updatedText = lastUpdated
     ? `Wind ${lastUpdated.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`
     : "Wind lädt…";
+  const trackText =
+    track.recording || track.lengthM > 0
+      ? `Track ${(track.lengthM / 1000).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`
+      : null;
 
   // Gemeinsamer Stil der großen Tasten: schwarz/weiß und eckig wie der
   // Menü-Knopf im Titel, 72 px groß (mit Handschuhen gut zu treffen).
@@ -369,15 +573,71 @@ export default function FlightMode({
       <div className="pointer-events-none absolute top-3 right-3 z-[1000] flex flex-col items-end gap-1 text-right text-xs font-bold text-zinc-900">
         <span className="bg-white/90 px-1.5 py-0.5 shadow">{gpsText}</span>
         <span className="bg-white/90 px-1.5 py-0.5 shadow">{updatedText}</span>
+        {trackText && (
+          <span className="bg-white/90 px-1.5 py-0.5 shadow" style={{ color: TRACK_COLOR }}>
+            {trackText}
+          </span>
+        )}
         {wakeLockActive === false && (
           <span className="bg-amber-300 px-1.5 py-0.5 shadow">Bildschirm kann sich sperren</span>
         )}
       </div>
 
-      {/* Unten links: Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe;
-          ohne Standort auf die Startansicht). Gefüllt, solange die Karte dem
-          Standort folgt — so sieht man, ob sie gerade mitläuft. */}
-      <div className="pointer-events-none absolute bottom-6 left-3 z-[1000]">
+      {/* Unten links: oben die Track-Taste (Start/Stop, daneben bei
+          gestopptem Track die kleinere Löschtaste), darunter die
+          Rücksetztaste (auf den eigenen Standort, Flug-Zoomstufe; ohne
+          Standort auf die Startansicht). Die Rücksetztaste ist gefüllt,
+          solange die Karte dem Standort folgt — so sieht man, ob sie gerade
+          mitläuft. Gleicher Abstand wie bei +/−. */}
+      <div className="pointer-events-none absolute bottom-6 left-3 z-[1000] flex flex-col gap-4">
+        <div className="flex items-end gap-3">
+          {track.recording ? (
+            <button
+              type="button"
+              onClick={track.stop}
+              aria-label="Track-Aufzeichnung stoppen"
+              title="Track-Aufzeichnung stoppen"
+              className={`${bigButton} flex-col gap-1 bg-red-600 text-white active:bg-red-800`}
+            >
+              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+                <rect x="2" y="2" width="18" height="18" fill="currentColor" />
+              </svg>
+              <span className="text-xs font-bold">STOP</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={track.start}
+              aria-label="Track-Aufzeichnung starten"
+              title="Track-Aufzeichnung starten"
+              className={`${bigButtonLight} flex-col gap-1`}
+            >
+              <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+                <circle cx="11" cy="11" r="10" fill="#dc2626" />
+              </svg>
+              <span className="text-xs font-bold">START</span>
+            </button>
+          )}
+          {!track.recording && track.lengthM > 0 && (
+            <button
+              type="button"
+              onClick={track.clear}
+              aria-label="Track löschen"
+              title="Track löschen"
+              className="pointer-events-auto flex h-12 w-12 items-center justify-center border-2 border-black bg-white shadow-lg active:bg-zinc-200"
+            >
+              {/* Papierkorb */}
+              <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M4 6 H20 M9 6 V3 H15 V6 M6 6 L7 21 H17 L18 6 M10 10 V17 M14 10 V17"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
         <button
           type="button"
           onClick={handleReset}

@@ -117,7 +117,7 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte, klappt beim Antippen die Stationsfilter auf |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebenen (Schummerung/Höhenlinien/Beschriftung), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus („GO" im Titel): eigener Standort mit Flugrichtung, Track-Aufzeichnung, große Zoom-/Rücksetztasten, Bildschirm-Wachhalten |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
 | `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
@@ -307,6 +307,14 @@ also alle 3 h, wirklich neue Werte).
   ohne GPS die Startansicht), Bildschirm-Wachhalten (Screen Wake Lock),
   Statuszeile oben rechts. Diese großen Tasten gelten nur im Flugmodus — die
   normale Karte bleibt ohne Zoom-Knöpfe.
+- **Track-Aufzeichnung** (Taste START/STOP über der Rücksetztaste): violette
+  Linie (`TRACK_COLOR`), Länge in der Statuszeile. STOP unterbricht nur,
+  START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
+  beginnen nur über die Papierkorb-Taste (mit Rückfrage). Gespeichert im
+  Browser des Handys (localStorage, `TRACK_STORAGE_KEY`), nicht in Supabase —
+  übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
+  nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
+  Seite; Pausen > 60 s bleiben als Lücke sichtbar.
 - Geplante weitere Schritte: Landeplätze vorübergehend setzen; Karte ohne
   Netz (Kachel-Zwischenspeicher), „Zum Home-Bildschirm", Akku-Feinschliff.
 
