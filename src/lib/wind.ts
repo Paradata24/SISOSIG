@@ -256,7 +256,7 @@ export const TIMELINE_SLOT_COUNT =
  * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
  * noch durchgezogen werden: 2,5 Messtakte der Quelle. Bei 10-Minuten-Quellen
  * sind das 25 min (EIN fehlender Wert wird überbrückt, ab ZWEI reißt die
- * Kurve auf — siehe die ausführliche Begründung bei BAND_GAP_MS in
+ * Kurve auf — siehe die ausführliche Begründung bei snapPointsToGrid in
  * WindHistoryPanel.tsx). Für die 30-Minuten-Werte des SLF gilt dieselbe Regel
  * im eigenen Takt: 75 min. Mit dem 10-Minuten-Wert wäre jede SLF-Kurve nur
  * noch eine Reihe einzelner Punkte.
@@ -347,8 +347,6 @@ export interface TimelinePayload {
   times: number[];
   /** Anzahl gelesener Datenbankzeilen — nur zur Fehlersuche. */
   rows: number;
-  /** true, wenn die Seiten-Obergrenze griff (siehe /api/timeline). */
-  truncated: boolean;
   stations: Record<string, TimelineSeries>;
 }
 

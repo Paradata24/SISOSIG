@@ -105,7 +105,7 @@ also alle 3 h, wirklich neue Werte).
 | --- | --- |
 | `src/lib/wind.ts` | Gemeinsame Typen, Farbskala, Zeitraster, Konstanten — die zentrale Stelle für fast alle Einstellwerte (auch Grau-Grenzen `STALE_AFTER_MINUTES` und Zeitlimits) |
 | `src/lib/bolzano.ts` | Bozner Wetterdienst (Abruf, Zeitstempel-Umwandlung) — für Karte und Sammler |
-| `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen (Abruf + Südtirol-Bounding-Box) |
+| `src/lib/pioupiou.ts` | OpenWindMap/Pioupiou-Stationen im Alpenraum (Abruf, Höhe aus dem Namen) |
 | `src/lib/slf.ts` | Schweizer IMIS-Stationen des SLF (wie auf whiterisk.ch), Messtakt 30 min |
 | `src/lib/freshCache.ts` | Kurzer Zwischenspeicher für Live-Messwerte (Pioupiou, GeoSphere, MeteoSchweiz, LWD Tirol, DWD), der nach Ablauf sofort frisch holt |
 | `src/lib/plausibility.ts` | Erkennung wahrscheinlicher Messfehler (eingefroren, Windfahne klemmt, unmögliche Werte) |
@@ -128,7 +128,8 @@ also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben rechts im Titelbalken der Hauptseite, klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild in `WindMap`, Umschalten im Menü) |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
-| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): eigener Standort mit Flugrichtung, Track-Aufzeichnung, KK7-Thermikkarte, große Zoom-/Rücksetz-/Übersichtstasten, Bildschirm-Wachhalten |
+| `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): Tasten (Zoom, Rücksetzen, Übersicht, START/STOP, Beenden), Statuszeile, Menü, Mitführen der Karte, Standort-Marker |
+| `src/components/flight/` | Teile des Flugmodus (Okt. 2026 ausgelagert): `position.ts` (GPS, Flugrichtung, Standort-Icon), `device.ts` (Bildschirm wach halten, Netz, Uhr), `track.ts` (Track-Aufzeichnung und -Linie), `igc.ts` (IGC-Datei), `cables.ts` (Kabel), `kk7.ts` (KK7-Thermikkarte) |
 | `src/app/manifest.ts`, `public/apple-touch-icon.png`, `public/icons/` | Web-App „SISOSIG": App-Beschreibung (Name, Symbol, Abkürzung Flugmodus) |
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
@@ -190,6 +191,15 @@ also alle 3 h, wirklich neue Werte).
   Ausfall (Aufbewahrung) verschwinden sie also doch.
 
 **Darstellung**
+- **Filter und Kartenausschnitt werden gemerkt** (Punkt 20 der
+  Code-Durchsicht, Okt. 2026): Der zuletzt gewählte Stationsfilter
+  (`FILTER_STORAGE_KEY` in `WindApp`, gilt auch im Flugmodus) und der zuletzt
+  angesehene Ausschnitt der Hauptseite (`VIEW_STORAGE_KEY` in `WindMap`, im
+  Flugmodus wird nichts gemerkt) liegen im Browser des Geräts; ohne
+  Gemerktes startet die Karte wie bisher mit „Alle" über Südtirol. Der Filter
+  wird erst nach dem ersten Bildaufbau übernommen (der Server kennt den
+  Speicher nicht), die Zoomstufe der Pfeile kommt aus der Karte selbst
+  (`WindMarkers`), nicht mehr fest aus `SOUTH_TYROL_ZOOM`.
 - **Heller Modus dauerhaft an**, unabhängig vom Gerät des Besuchers (früher
   war es umgekehrt der Dunkelmodus). Umgesetzt dadurch, dass in
   `src/app/layout.tsx` **keine** Klasse `dark` am `<html>` steht; die
@@ -350,7 +360,10 @@ also alle 3 h, wirklich neue Werte).
   5 min später in der Datenbank. Für Live-Messwerte keinen
   `next: { revalidate }` mehr verwenden (Metadaten dürfen es).
   `/api/history` hat ebenfalls nur noch 30 s Nachfrist; `/api/timeline`
-  behält 300 s, weil seine Abfrage mehrere Sekunden dauert.
+  behält 300 s (eingeführt, als seine Abfrage noch mehrere Sekunden dauerte;
+  seit Okt. 2026 holt sie alles in einem Schritt über die Datenbank-Funktion
+  `wind_timeline`, `supabase/zeitbalken-funktion.sql`, ~0,2 s in der
+  Datenbank).
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
   `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".
@@ -381,9 +394,12 @@ also alle 3 h, wirklich neue Werte).
   zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
   Windpfeile öffnet nichts (Handschuhe, Verlaufsbalken würde Karte verdecken).
-- Alles in `src/components/FlightMode.tsx`: eigener Standort (blauer
+- In `src/components/FlightMode.tsx` und seinen Teilen in
+  `src/components/flight/` (bis Okt. 2026 eine Datei mit 1.700 Zeilen):
+  eigener Standort (blauer
   **Navigationspfeil** mit Kerbe hinten, ohne Richtung ein blauer Punkt; vom
-  Projektbesitzer aus Entwürfen gewählt, `createOwnPositionIcon`;
+  Projektbesitzer aus Entwürfen gewählt, `createOwnPositionIcon` in
+  `flight/position.ts`;
   **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
   durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
   „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
@@ -432,9 +448,10 @@ also alle 3 h, wirklich neue Werte).
   `stale-while-revalidate`) — kein Cron nötig. Die lange Nachfrist ist hier
   Absicht (Kabel sind keine Live-Werte; die Regel „kurze Nachfrist" unter
   „Caching nicht entfernen" gilt für sie nicht). Gezeichnet in
-  `FlightMode.tsx` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
+  `flight/cables.ts` (`useCables`): **magentarote Linie (`#c2255c`, 2 px) mit
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
-  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`).
+  gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`; hing bis Okt. 2026 an der
+  Flug-Zoomstufe und lag deshalb ungewollt bei 15).
   **Höhen-Schilder** („60–100 m") an Kabeln über 25 m über Grund, **erst
   ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
   Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
@@ -458,7 +475,7 @@ also alle 3 h, wirklich neue Werte).
   Südtirol.
 - **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
   Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
-  durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `FlightMode.tsx`).
+  durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `flight/kk7.ts`).
   Ein/aus im **Menü** (siehe nächster Punkt), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
   **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
   (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
@@ -486,14 +503,18 @@ also alle 3 h, wirklich neue Werte).
   mit Handschuhen zu klein). STOP unterbricht nur,
   START setzt denselben Track fort (versehentliches Stop kostet nichts); neu
   beginnen nur über die Papierkorb-Taste (mit Rückfrage). Gespeichert im
-  Browser des Handys (localStorage, `TRACK_STORAGE_KEY`), nicht in Supabase —
+  Browser des Handys (localStorage, `TRACK_STORAGE_KEY` in
+  `flight/track.ts`), nicht in Supabase —
   übersteht Neuladen und Wiederöffnen, eine laufende Aufzeichnung läuft beim
   nächsten Öffnen des Flugmodus weiter. Aufgezeichnet wird nur bei offener
-  Seite; Pausen > 60 s bleiben als Lücke sichtbar.
+  Seite; Pausen > 60 s bleiben als Lücke sichtbar. Die Linie besteht aus
+  Stücken zu höchstens 200 Punkten (`TRACK_CHUNK_POINTS`); ein neuer Punkt
+  verlängert nur das jüngste Stück (bis Okt. 2026 wurde bei jedem Punkt die
+  ganze Linie neu gezeichnet).
 - **IGC-Export** (Taste „IGC" unten links neben dem Papierkorb, bei gestopptem Track):
   Datei mit Zeit, Position und **GPS-Höhe** je Punkt, am Handy über das
   Teilen-Menü, sonst als Download (`buildIgc`/`exportIgc` in
-  `FlightMode.tsx`). Keine Druckhöhe (Browser haben keinen Zugriff auf den
+  `flight/igc.ts`). Keine Druckhöhe (Browser haben keinen Zugriff auf den
   Luftdruck-Sensor) und keine Signatur (G-Zeile) — für Wettbewerbe mit
   Signaturpflicht reicht die Datei nicht. Zeit und Höhe werden erst seit Okt.
   2026 mitgespeichert; ältere Tracks lassen sich nicht exportieren.
@@ -575,9 +596,10 @@ also alle 3 h, wirklich neue Werte).
   Stationen haben keine Prognose-Kurve, das ist kein Fehler.
 
 **Windanzeiger-Quellen (Sept. 2026)**
-- Die neuen Quellen (MeteoSchweiz, LWD Tirol, DWD, Bälmeten über
-  `EXTRA_STATIONS` in `pioupiou.ts`) haben **keine Prognose-Kurve** — die Edge
-  Function kennt sie nicht (Details in `README.md`).
+- Die neuen Quellen (MeteoSchweiz, LWD Tirol, DWD, Bälmeten und seit Okt.
+  2026 alle OpenWindMap-Stationen außerhalb Südtirols) haben **keine
+  Prognose-Kurve** — die Edge Function kennt sie nicht (Details in
+  `README.md`).
 - Der Windanzeiger wählt sie über **Stationscodes** aus, nicht über Namen
   (Fehltreffer, z. B. SLF „Titlisboden" ↔ MeteoSchweiz „Titlis"). Robiei ist
   bewusst nicht dabei: MeteoSchweiz-Kürzel `ROB` = Poschiavo/Robbia im Tal.
@@ -598,10 +620,18 @@ also alle 3 h, wirklich neue Werte).
   Mühl-/Waldviertel, Schweizer Mittelland mit Bern/Zürich/Basel/Genf, Jura)
   fallen weg, auch wenn sie höher liegen. Nicht auf eine Höhengrenze
   umbauen und nicht auf „alle Stationen" zurückbauen.
-- Angewendet in `geosphere.ts`, `meteoswiss.ts`, `slf.ts` (Anzeige und
-  Sammeln) und in der Edge Function (Prognose, auf die ganze Stationsliste).
-  Bozen, OpenWindMap (Südtirol-Box), LWD Tirol und Zugspitze liegen ohnehin
-  komplett in den Alpen.
+- Angewendet in `geosphere.ts`, `meteoswiss.ts`, `slf.ts`, `pioupiou.ts`
+  (Anzeige und Sammeln) und in der Edge Function (Prognose, auf die ganze
+  Stationsliste). Bozen, LWD Tirol und Zugspitze liegen ohnehin komplett in
+  den Alpen.
+- **OpenWindMap im ganzen Umriss** (Punkt 26, Okt. 2026, Wunsch des
+  Projektbesitzers; vorher nur eine Südtirol-Box mit 6 Stationen, jetzt rund
+  90). Stationen, die seit über 2 Tagen nichts gemeldet haben, erscheinen
+  nicht (`MAX_SILENCE_MS`). Prognosen gibt es für OpenWindMap weiterhin nur
+  in Südtirol (Südtirol-Box in der Edge Function). **Offen:** Der gerade
+  West-/Südrand des Umrisses schneidet die französischen und italienischen
+  Alpen ab (dort gut 170 weitere aktive OpenWindMap-Stationen) — Erweiterung
+  nur auf Wunsch des Projektbesitzers.
 - **Ausnahme Windanzeiger:** Die vom Projektbesitzer gewählten
   Windanzeiger-Stationen bleiben immer, auch außerhalb des Umrisses
   (MeteoSchweiz **Chasseral** und **La Dôle** liegen im Jura). Steht in
@@ -656,10 +686,11 @@ Projektbesitzers entfernt:
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  von Zeitfenster-Konstanten, der Pioupiou-Bounding-Box, des SLF-
-  Stationsabrufs und der GeoSphere-Adresse. Wird `HISTORY_HOURS` /
-  `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in `src/lib/wind.ts`, `SOUTH_TYROL_BBOX` in
-  `src/lib/pioupiou.ts` (gilt auch für die GeoSphere-Prognosen) oder
+  von Zeitfenster-Konstanten, des SLF-Stationsabrufs und der
+  GeoSphere-Adresse, dazu eine eigene Südtirol-Box für die
+  OpenWindMap-Prognosen (die Karte zeigt OpenWindMap im ganzen Alpenraum).
+  Wird `HISTORY_HOURS` /
+  `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in `src/lib/wind.ts` oder
   Adresse/Codepräfix in `src/lib/slf.ts` bzw. `src/lib/geosphere.ts` oder der
   Alpenraum-Umriss `ALPS_POLYGON` in `src/lib/alps.ts` geändert, muss die
   Edge Function mitgezogen werden (und danach im Supabase-Dashboard neu
@@ -686,8 +717,8 @@ Projektbesitzers entfernt:
   herausgefiltert.
 - **Bestehende Datenbanken** brauchen die einmaligen SQL-Skripte in
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte, seit
-  Okt. 2026 `datenbank-aufraeumen.sql`, `collect-cron-tresor.sql` und
-  `stationsliste.sql`) — bei
+  Okt. 2026 `datenbank-aufraeumen.sql`, `collect-cron-tresor.sql`,
+  `stationsliste.sql` und `zeitbalken-funktion.sql`) — bei
   einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
   bzw. `collect-cron.sql`.
 - **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`
@@ -704,8 +735,8 @@ Projektbesitzers entfernt:
 - **Open-Meteo-Kontingent:** kostenlos 10.000 Aufrufe am Tag. Gezählt wird
   je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
-  Anfrage kosten erst ab 10 Reihen extra. Stand Sept. 2026: ~430 Stationen
-  (nur Alpenraum) × 8 Modellläufe ≈ 3.400 am Tag, plus 16 für den
+  Anfrage kosten erst ab 10 Reihen extra. Stand Okt. 2026: ~490 Stationen
+  (nur Alpenraum) × 8 Modellläufe ≈ 3.900 am Tag, plus 16 für den
   Höhenwind (2 Stationen × 8). Wird die
   Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
   entfernt, wären es stündlich ≈ 14.000 — über der Grenze.

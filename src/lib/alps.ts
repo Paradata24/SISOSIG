@@ -7,9 +7,10 @@
 // Basel/Genf, Jura, Mühl-/Waldviertel) fallen weg — auch wenn sie höher liegen
 // als manche Alpen-Talstation.
 //
-// Genutzt von src/lib/geosphere.ts, src/lib/meteoswiss.ts und src/lib/slf.ts.
-// Die Bozner Stationen, OpenWindMap (Südtirol-Box), LWD Tirol und die
-// Zugspitze liegen ohnehin komplett in den Alpen und brauchen den Test nicht.
+// Genutzt von src/lib/geosphere.ts, src/lib/meteoswiss.ts, src/lib/slf.ts und
+// (seit Okt. 2026) src/lib/pioupiou.ts. Die Bozner Stationen, LWD Tirol und
+// die Zugspitze liegen ohnehin komplett in den Alpen und brauchen den Test
+// nicht.
 //
 // ACHTUNG: Die Edge Function fetch-wind-forecasts hat eine Kopie dieses
 // Vielecks (Deno kann nicht aus src/ importieren) — bei Änderungen beide
@@ -20,8 +21,14 @@
 // 04.10.2026 gegen alle Stationen von GeoSphere (286), MeteoSchweiz (151) und
 // SLF (208) geprüft. Punkte als [Länge, Breite], gegen den Uhrzeigersinn ab
 // dem Südwesten. Westen und Süden sind bewusst großzügig/gerade, weil dort
-// (Frankreich, Italien) keine Stationen vorkommen — nur der Südrand bei
+// (Frankreich, Italien) damals keine Stationen vorkamen — nur der Südrand bei
 // 45,85/45,9° schneidet die Poebene (Stabio) weg.
+// Seit OpenWindMap im ganzen Umriss gezeigt wird (Okt. 2026), liegen dort doch
+// Stationen: Der gerade West- und Südrand schneidet den französischen und
+// italienischen Alpenteil ab (z. B. Chamonix-Tal drin, Annecy und Aosta
+// draußen; Okt. 2026 gezählt: gut 160 aktive OpenWindMap-Stationen in den
+// französischen Alpen und 13 am italienischen Alpenrand außerhalb). Den Umriss
+// dorthin zu erweitern, wäre eine Entscheidung des Projektbesitzers.
 const ALPS_POLYGON: Array<[number, number]> = [
   // Westrand und Nordrand der Schweizer Alpen: Genfersee (Vevey, Aigle drin;
   // Genf, Nyon, Lausanne draußen) → Freiburger Voralpen → Thun → Entlebuch

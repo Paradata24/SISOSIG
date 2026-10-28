@@ -65,7 +65,7 @@ const ARROW_ROW_H = 20; // Höhe der Messwert-Pfeilreihe
 // unter "ihrem" Pfeil sitzen und das Panel insgesamt flacher bleibt (Wunsch
 // des Projektbesitzers: mehr Karte sichtbar).
 const VALUES_GAP = 4;
-// Messwerte UND Prognosewerte stehen in eingefärbten Quadraten (Farbe =
+// Die Messwerte stehen in eingefärbten Quadraten (Farbe =
 // Windskala des jeweiligen Werts), damit man die Windstärke schon an der
 // Zahlenreihe ablesen kann. Bewusst quadratisch und ohne abgerundete Ecken
 // (Wunsch des Projektbesitzers): Breite = Höhe, deshalb EINE gemeinsame
@@ -706,7 +706,7 @@ export default function WindHistoryPanel({
     const innerW = svgWidth - 2 * AXIS_PAD;
     // … die Farbbänder reichen dagegen bis zum kleineren PAD_X-Innenrand, damit
     // links/rechts kein unbemalter Streifen im Kurvenbereich entsteht (der
-    // größere AXIS_PAD ist nur für den Prognose-Block unten nötig).
+    // größere AXIS_PAD ist nur für die Pfeile und Wert-Quadrate am Rand nötig).
     const bandWidth = svgWidth - 2 * PAD_X;
     // Auf breiten Bildschirmen füllt das Diagramm die volle Breite; beide
     // Abschnitte werden dabei im gleichen Verhältnis gestreckt.
@@ -753,7 +753,7 @@ export default function WindHistoryPanel({
     // 10-Minuten-Raster; "stündlich" heißt deshalb schlicht: Minute 00. Eine
     // Suche nach dem "nächstgelegenen" Punkt ist nicht mehr nötig.
     // Diese Punkte werden gebraucht für
-    //  - die fette Schrift der stündlichen Werte im Zahlenblock,
+    //  - die fette Schrift der stündlichen Werte in den Wert-Quadraten,
     //  - den Vorrang bei der Ausdünnung der Pfeil-/Wertespalten.
     // Die beiden Messkurven benutzen sie NICHT — die folgen allen
     // 10-Minuten-Werten (siehe speedPath/gustPath unten).

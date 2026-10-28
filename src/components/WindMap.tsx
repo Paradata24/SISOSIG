@@ -53,6 +53,43 @@ const WindHistoryPanel = dynamic(loadHistoryPanel, {
 const SOUTH_TYROL_CENTER: [number, number] = [46.5, 11.35];
 const SOUTH_TYROL_ZOOM = 9;
 
+// Zuletzt angesehener Kartenausschnitt der Hauptseite, im Browser des Geräts
+// gemerkt (Punkt 20 der Code-Durchsicht, Okt. 2026): Die Karte öffnet dort,
+// wo man sie verlassen hat — wer in der Schweiz fliegt, muss nicht jedes Mal
+// von Südtirol aus hinschieben. Ohne gemerkten Ausschnitt (erster Besuch,
+// privates Fenster) startet sie wie bisher über Südtirol. Im Flugmodus wird
+// nichts gemerkt, dort folgt die Karte dem eigenen Standort (ViewSaver).
+const VIEW_STORAGE_KEY = "sisosig-kartenausschnitt-v1";
+
+interface MapView {
+  center: [number, number];
+  zoom: number;
+}
+
+// WindMap läuft nur im Browser (WindMapLoader lädt sie ohne Server-Rendering),
+// der Speicher lässt sich deshalb direkt beim ersten Aufbau lesen.
+function readStoredView(): MapView | null {
+  try {
+    const raw = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    if (!raw) return null;
+    const { lat, lng, zoom } = JSON.parse(raw) as { lat?: unknown; lng?: unknown; zoom?: unknown };
+    if (
+      typeof lat !== "number" ||
+      typeof lng !== "number" ||
+      typeof zoom !== "number" ||
+      !Number.isFinite(lat + lng + zoom) ||
+      Math.abs(lat) > 85 ||
+      Math.abs(lng) > 180
+    ) {
+      return null;
+    }
+    // Ein im Flugmodus erreichter Zoom 16 gilt auf der Hauptseite als 15.
+    return { center: [lat, lng], zoom: Math.min(Math.max(Math.round(zoom), 0), MAP_MAX_ZOOM) };
+  } catch {
+    return null;
+  }
+}
+
 // Wie weit man höchstens hineinzoomen darf.
 //
 // Vorher stand hier NICHTS — und genau das war das Problem: ohne eigene
@@ -457,8 +494,11 @@ function WindMarkers({
   /** Stationshöhe unter der Plakette (Flugmodus, siehe ALTITUDE_FONT_PX). */
   showAltitude: boolean;
 }) {
-  const [zoom, setZoom] = useState(SOUTH_TYROL_ZOOM);
-  const map = useMapEvents({
+  // Startwert aus der Karte selbst: Sie öffnet seit Okt. 2026 im zuletzt
+  // angesehenen Ausschnitt (VIEW_STORAGE_KEY), nicht mehr immer auf Zoom 9.
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useMapEvents({
     zoomend: () => setZoom(map.getZoom()),
   });
   const tier = getZoomTier(zoom);
@@ -597,6 +637,31 @@ function ViewportReporter({
   return null;
 }
 
+// Merkt den Kartenausschnitt der Hauptseite nach jedem Verschieben oder
+// Zoomen (siehe VIEW_STORAGE_KEY). Im Flugmodus (enabled = false) nicht.
+// Muss innerhalb von <MapContainer> stehen.
+function ViewSaver({ enabled }: { enabled: boolean }) {
+  const map = useMapEvents({
+    moveend: () => {
+      if (!enabled) return;
+      const center = map.getCenter();
+      try {
+        window.localStorage.setItem(
+          VIEW_STORAGE_KEY,
+          JSON.stringify({
+            lat: Math.round(center.lat * 1e5) / 1e5,
+            lng: Math.round(center.lng * 1e5) / 1e5,
+            zoom: map.getZoom(),
+          }),
+        );
+      } catch {
+        // Ohne Speicher startet die Karte beim nächsten Mal eben über Südtirol.
+      }
+    },
+  });
+  return null;
+}
+
 // Leaflet merkt nur Änderungen der FENSTER-Größe. Ändert sich der
 // Kartenbereich auf anderem Weg, bliebe die Karte ohne diese Meldung im alten
 // Format stehen (Kacheln fehlen am Rand, Kartenmitte verrutscht). Früher
@@ -672,6 +737,12 @@ export default function WindMap({
   topInset: number;
 }) {
   const [stations, setStations] = useState<WindStation[]>([]);
+  // Startansicht: zuletzt angesehener Ausschnitt, sonst Südtirol. Nur beim
+  // ersten Aufbau gelesen — MapContainer übernimmt center/zoom ohnehin nur
+  // einmal.
+  const [initialView] = useState<MapView>(
+    () => readStoredView() ?? { center: SOUTH_TYROL_CENTER, zoom: SOUTH_TYROL_ZOOM },
+  );
   // Die Leaflet-Karte selbst, für den Flugmodus: Er liegt außerhalb von
   // <MapContainer> (seine Tasten sollen keine Karten-Gesten auslösen) und
   // steuert die Karte deshalb über dieses Objekt.
@@ -860,8 +931,8 @@ export default function WindMap({
     <div className="relative h-full w-full">
       <MapContainer
         ref={setLeafletMap}
-        center={SOUTH_TYROL_CENTER}
-        zoom={SOUTH_TYROL_ZOOM}
+        center={initialView.center}
+        zoom={initialView.zoom}
         maxZoom={MAP_MAX_ZOOM}
         zoomControl={false}
         // Leaflets Quellen-Zeile unten rechts ist aus: Sie belegte auf dem
@@ -903,6 +974,7 @@ export default function WindMap({
           showAltitude={flightMode}
         />
         <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
+        <ViewSaver enabled={!flightMode} />
         <ContainerResizeWatcher />
       </MapContainer>
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig

@@ -54,6 +54,34 @@ create table if not exists public.wind_stations (
 );
 alter table public.wind_stations enable row level security;
 
+-- Zeitbalken: die Messwerte aller Stationen ab einem Zeitpunkt in EINER
+-- Antwort (/api/timeline). Erklärungen in supabase/zeitbalken-funktion.sql.
+create or replace function public.wind_timeline(since timestamptz)
+returns json
+language sql
+stable
+set search_path = ''
+as $$
+  select coalesce(
+    json_agg(
+      json_build_array(
+        m.station_code,
+        round(extract(epoch from m.measured_at) * 1000)::bigint,
+        m.direction,
+        m.speed_kmh,
+        m.gust_kmh,
+        m.source
+      )
+      order by m.measured_at, m.station_code
+    ),
+    '[]'::json
+  )
+  from public.wind_measurements m
+  where m.measured_at >= since;
+$$;
+revoke execute on function public.wind_timeline(timestamptz) from public, anon, authenticated;
+grant execute on function public.wind_timeline(timestamptz) to service_role;
+
 create or replace view public.wind_stations_latest
 with (security_invoker = true) as
 select s.station_code, s.source, s.name, s.lat, s.lng, s.altitude,

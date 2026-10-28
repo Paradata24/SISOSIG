@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -16,12 +17,35 @@ import {
   CABLE_SOURCE,
   KK7_SOURCE,
   MAP_SOURCES,
+  STATION_FILTER_ORDER,
   type StationFilter,
   type TimelinePayload,
 } from "@/lib/wind";
 import WindMapLoader from "@/components/WindMapLoader";
 import StationFilterPicker from "@/components/StationFilterPicker";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
+
+// Zuletzt gewählter Stationsfilter, im Browser des Geräts gemerkt (Punkt 20
+// der Code-Durchsicht, Okt. 2026): Wer z. B. meist den Windanzeiger nutzt,
+// muss ihn nicht bei jedem Öffnen neu wählen. Gilt für Hauptseite und
+// Flugmodus gemeinsam. Den Kartenausschnitt merkt sich WindMap.
+const FILTER_STORAGE_KEY = "sisosig-filter-v1";
+
+// Für useSyncExternalStore unten: ein "Speicher", der sich nie ändert — es
+// geht nur um den Unterschied Server (false) / Browser (true).
+function subscribeNothing() {
+  return () => {};
+}
+
+function readStoredFilter(): StationFilter | null {
+  try {
+    const value = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    // Nur bekannte Filter (ein alter oder fremder Wert gilt als "nichts gemerkt").
+    return STATION_FILTER_ORDER.find((filter) => filter === value) ?? null;
+  } catch {
+    return null;
+  }
+}
 
 // Titel-Balken + Karte + Zeitbalken. Im Titel-Balken steht der Titel mit dem
 // "GO" für den Flugmodus, ganz rechts das Filter-Schild (StationFilterPicker), das
@@ -33,10 +57,37 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 // gehört sein Zustand hierher.
 export default function WindApp() {
   const [stationFilter, setStationFilter] = useState<StationFilter>("all");
+  // Den gemerkten Filter erst nach dem ersten Bildaufbau übernehmen (wie bei
+  // "?flug" unten): Der Server kennt den Speicher des Geräts nicht, und so
+  // bleibt der erste Bildaufbau gleich dem vom Server. Die Karte ist dann noch
+  // gar nicht geladen, es springt also nichts sichtbar um.
+  useEffect(() => {
+    const saved = readStoredFilter();
+    if (!saved || saved === "all") return;
+    const frame = requestAnimationFrame(() => setStationFilter(saved));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  // Feste Referenz: Filter-Schild und Flugmodus-Menü bekommen sie als Prop.
+  const changeStationFilter = useCallback((filter: StationFilter) => {
+    setStationFilter(filter);
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, filter);
+    } catch {
+      // Ohne Speicher (z. B. privates Fenster) gilt die Wahl bis zum Neuladen.
+    }
+  }, []);
 
   // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
   // steht als "Zuletzt aktualisiert" mittig unter dem Rad im Zeitbalken.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Der Zeitbalken erscheint erst im Browser (Okt. 2026): Er zeigt Uhrzeiten
+  // aus der Uhr des Browsers, die beim Bauen vorbereitete Seite enthielt aber
+  // die Uhrzeit des Bauens (in der Zeitzone des Servers). React meldete
+  // deshalb bei jedem Aufruf "Hydration failed" (Fehler #418) und baute die
+  // Seite ein zweites Mal auf. Die Karte lädt ohnehin erst im Browser; der
+  // Balken kommt also mit ihr, ohne sichtbaren Unterschied.
+  const inBrowser = useSyncExternalStore(subscribeNothing, () => true, () => false);
 
   // --- Zeitbalken ---
   // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
@@ -135,7 +186,7 @@ export default function WindApp() {
   // gleich beim Seitenaufruf geholt und alle 10 min (neuer Rasterschritt)
   // aufgefrischt: Der Farbstrich im Zeitbalken braucht sie, um ohne Anfassen
   // zu zeigen, wann es windig war (früher erst beim ersten Anfassen, um die
-  // rund 20 KB zu sparen). Nachgeladen wird nur, wenn der Datenstand älter
+  // Datenmenge zu sparen). Nachgeladen wird nur, wenn der Datenstand älter
   // als ein Rasterschritt ist; /api/timeline ist außerdem 60 s zwischen-
   // gespeichert.
   // Als Promise-Kette statt async/await geschrieben: So ist auch für die
@@ -260,7 +311,7 @@ export default function WindApp() {
           <div className="relative z-[1100] shrink-0">
             <StationFilterPicker
               value={stationFilter}
-              onChange={setStationFilter}
+              onChange={changeStationFilter}
               align="right"
               tall
               footer={
@@ -306,7 +357,7 @@ export default function WindApp() {
       <main className="absolute inset-0 z-0">
         <WindMapLoader
           stationFilter={stationFilter}
-          onStationFilterChange={setStationFilter}
+          onStationFilterChange={changeStationFilter}
           historyFrame={historyFrame}
           timeline={timeline}
           onViewportStationsChange={setViewportCodes}
@@ -326,7 +377,7 @@ export default function WindApp() {
           geöffneter Station ist sie weg (Wunsch des Projektbesitzers): Dann
           zeigt die Karte nur die aktuellen Werte, und der Verlaufsbalken
           reicht bis zum Seitenende. */}
-      {selectedStationCode === null && !flightMode && (
+      {inBrowser && selectedStationCode === null && !flightMode && (
         <div className="absolute inset-x-0 bottom-0 z-[1000]">
           <TimeSlider
             slots={slots}

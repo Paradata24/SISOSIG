@@ -1,15 +1,22 @@
+import { isInAlps } from "./alps";
 import { isOutdated, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
-// Gemeinsame Logik zum Abrufen der Südtiroler OpenWindMap-Stationen
-// (Pioupiou-Netzwerk). Genutzt von /api/wind (Live-Anzeige) und
-// /api/collect (Sammel-Route für die Historie) — nicht aber von der
-// Supabase Edge Function fetch-wind-forecasts, die läuft unter Deno und
-// dupliziert diese Logik dort (siehe Kommentar in dieser Datei am Ende).
+// Gemeinsame Logik zum Abrufen der OpenWindMap-Stationen (Pioupiou-Netzwerk)
+// im Alpenraum. Genutzt von /api/wind (Live-Anzeige) und /api/collect
+// (Sammel-Route für die Historie) — nicht aber von der Supabase Edge Function
+// fetch-wind-forecasts, die läuft unter Deno und hat eine eigene Kopie.
 //
 // Endpunkt: https://api.pioupiou.fr/v1/live/all liefert ALLE Stationen
-// weltweit ohne Regionsfilter — Südtirol wird über eine grobe Bounding Box
-// herausgefiltert (siehe SOUTH_TYROL_BBOX unten).
+// weltweit ohne Regionsfilter. Behalten werden die im Alpenraum (isInAlps,
+// dieselbe Regel wie bei allen Quellen) — meist Vereinsstationen direkt an
+// Startplätzen. Bis Okt. 2026 war es nur eine grobe Südtirol-Box (6 Stationen
+// statt rund 90); auf Wunsch des Projektbesitzers erweitert (Punkt 26 der
+// Code-Durchsicht).
+//
+// Prognosen: Die Edge Function fragt OpenWindMap weiterhin nur für Südtirol
+// ab (ihre eigene Südtirol-Box). Die übrigen OpenWindMap-Stationen haben
+// deshalb — wie MeteoSchweiz — keine Prognose-Kurve.
 //
 // Lizenz: Die Daten stehen unter der kostenlosen OpenWindMap-Community-
 // Lizenz, die einen sichtbaren Credit mit Link verlangt. Die frühere Fußzeile
@@ -19,30 +26,24 @@ import { cachedFresh } from "./freshCache";
 const API_BASE =
   process.env.PIOUPIOU_API_BASE_URL ?? "https://api.pioupiou.fr/v1";
 
-// Grobe Bounding Box Südtirol (Näherungswerte laut Projektbesitzer, bei
-// Bedarf hier nachjustieren).
-export const SOUTH_TYROL_BBOX = {
-  latMin: 46.2,
-  latMax: 47.1,
-  lngMin: 10.3,
-  lngMax: 12.5,
-};
+// Stationen, die so lange nichts gemeldet haben, gelten als abgebaut oder für
+// die Saison abgeschaltet und erscheinen nicht auf der Karte (Okt. 2026 waren
+// das im Alpenraum 4 von 94, zwei davon ausdrücklich "off"). Gleiche Dauer wie
+// die Aufbewahrung in der Datenbank (/api/collect): Danach gäbe es auch im
+// Verlaufsbalken nichts mehr zu sehen. Kürzere Pausen (nachts, windstill)
+// bleiben als grauer Ring stehen.
+const MAX_SILENCE_MS = 2 * 24 * 60 * 60 * 1000;
 
 /**
- * Einzelne Stationen AUSSERHALB der Südtirol-Bounding-Box, die trotzdem
- * abgerufen werden (Schlüssel = Pioupiou-Stations-ID). Ausdrücklicher Wunsch
- * des Projektbesitzers, Sept. 2026: die Vereinsstation des Paradeltaclubs Uri
- * am Bälmeten (Schweiz) im Windanzeiger. Die Höhe steht hier, weil sie weder
- * die API noch der Stationsname ("Bälmeten Backup") liefert; sie stammt vom
- * Projektbesitzer.
- *
- * Bewusst KEINE Vergrößerung der Bounding-Box: Sonst kämen alle Pioupiou-
- * Stationen der Schweiz dazu. Die Edge Function (Prognosen) hat eine eigene
- * Kopie der Box und kennt diese Stationen nicht — sie bekommen keine
- * Prognose-Kurve.
+ * Feste Höhenangaben für Stationen, deren Name keine Höhe enthält
+ * (Schlüssel = Pioupiou-Stations-ID). Sept. 2026, Wunsch des Projektbesitzers:
+ * die Vereinsstation des Paradeltaclubs Uri am Bälmeten (Schweiz) im
+ * Windanzeiger — die Höhe liefert weder die API noch der Stationsname
+ * ("Bälmeten Backup"); sie stammt vom Projektbesitzer. (Bis Okt. 2026 stand
+ * die Station hier, weil sie außerhalb der Südtirol-Box lag.)
  */
-const EXTRA_STATIONS: Record<number, { altitude: number }> = {
-  1535: { altitude: 2414 }, // Bälmeten Backup (Paradeltaclub Uri)
+const ALTITUDE_OVERRIDES: Record<number, number> = {
+  1535: 2414, // Bälmeten Backup (Paradeltaclub Uri)
 };
 
 // Vorangestellt an die Pioupiou-Stations-ID, damit die Stationscodes nicht
@@ -88,9 +89,9 @@ interface PioupiouStation {
 const ALTITUDE_IN_NAME =
   /(\d{1,4}(?:[.,]\d{3})?)\s*(?:m(?:t|eter|etri)?|m\s*ü\.?\s*m\.?)(?![\p{L}\d])/giu;
 
-// Plausibilitätsgrenzen für Südtirol: unter dem Etschtal (~200 m) und über dem
-// Ortler (3.905 m) liegt sicher keine Wetterstation. Was außerhalb liegt, ist
-// eher eine andere Zahl im Namen (z. B. eine Hausnummer) als eine Höhe.
+// Plausibilitätsgrenzen: Unter 100 m und über 4.000 m liegt im Alpenraum
+// sicher keine dieser Stationen. Was außerhalb liegt, ist eher eine andere
+// Zahl im Namen (z. B. eine Hausnummer) als eine Höhe.
 const MIN_PLAUSIBLE_ALTITUDE_M = 100;
 const MAX_PLAUSIBLE_ALTITUDE_M = 4000;
 
@@ -125,15 +126,6 @@ export function parseAltitudeFromName(name: string): number | null {
   return altitude;
 }
 
-function inSouthTyrolBbox(lat: number, lng: number): boolean {
-  return (
-    lat >= SOUTH_TYROL_BBOX.latMin &&
-    lat <= SOUTH_TYROL_BBOX.latMax &&
-    lng >= SOUTH_TYROL_BBOX.lngMin &&
-    lng <= SOUTH_TYROL_BBOX.lngMax
-  );
-}
-
 // INTERNE EINHEIT: km/h (wie bei den Bozner Stationen). Laut Pioupiou-
 // API-Doku (developers.pioupiou.fr) liefert wind_speed_avg/-max bereits
 // km/h — hier ist also keine Umrechnung nötig. Die Werte laufen trotzdem
@@ -156,11 +148,11 @@ function round5(value: number): number {
 }
 
 /**
- * Ruft alle Pioupiou/OpenWindMap-Stationen ab und gibt nur jene innerhalb
- * der Südtirol-Bounding-Box (plus die Ausnahmen in EXTRA_STATIONS) mit
- * gültigen Koordinaten zurück, im selben
- * WindStation-Format wie die Bozner Stationen (gleiche Farbskala, gleiches
- * stale-Verhalten, gleiche Karten-/Verlaufsbalken-Darstellung).
+ * Ruft alle Pioupiou/OpenWindMap-Stationen ab und gibt nur jene im
+ * Alpenraum mit gültigen Koordinaten und einer Meldung in den letzten 2 Tagen
+ * zurück (MAX_SILENCE_MS), im selben WindStation-Format wie die Bozner
+ * Stationen (gleiche Farbskala, gleiches stale-Verhalten, gleiche
+ * Karten-/Verlaufsbalken-Darstellung).
  */
 export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
   const url = `${API_BASE}/live/all`;
@@ -187,13 +179,17 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
       !loc?.success ||
       typeof loc.latitude !== "number" ||
       typeof loc.longitude !== "number" ||
-      !(s.id in EXTRA_STATIONS || inSouthTyrolBbox(loc.latitude, loc.longitude))
+      !isInAlps(loc.latitude, loc.longitude)
     ) {
       continue;
     }
 
     const m = s.measurements;
     const timestamp = m?.date ?? null;
+    const measuredAt = timestamp ? Date.parse(timestamp) : NaN;
+    // Seit Tagen stumm: abgebaut oder abgeschaltet (siehe MAX_SILENCE_MS).
+    if (Number.isNaN(measuredAt) || now - measuredAt > MAX_SILENCE_MS) continue;
+
     const direction = m?.wind_heading ?? null;
     const speedKmh =
       m?.wind_speed_avg != null ? round1(toKmh(m.wind_speed_avg)) : null;
@@ -204,7 +200,6 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
     // zu alt (STALE_AFTER_MINUTES in wind.ts). Pioupiou-Stationen sind
     // batteriebetrieben und melden nachts/windstill teils gar nicht — dann
     // lieber grau als ein veralteter Pfeil.
-    const measuredAt = timestamp ? Date.parse(timestamp) : NaN;
     const stale =
       direction === null || speedKmh === null || isOutdated("openwindmap", measuredAt, now);
 
@@ -218,7 +213,7 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
       stationName,
       lat: round5(loc.latitude),
       lng: round5(loc.longitude),
-      altitude: EXTRA_STATIONS[s.id]?.altitude ?? parseAltitudeFromName(stationName),
+      altitude: ALTITUDE_OVERRIDES[s.id] ?? parseAltitudeFromName(stationName),
       direction,
       speedKmh,
       gustKmh,
