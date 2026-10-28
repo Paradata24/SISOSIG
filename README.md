@@ -167,6 +167,15 @@ Prognose-Funktion an und richtet einen täglichen Job ein, der das Protokoll
 der Zeitplan-Jobs auf 7 Tage kürzt. Messwerte und Prognosen bleiben
 unberührt.
 
+**Stationsliste (Okt. 2026), ebenfalls einmalig bei einer bestehenden
+Datenbank:** `supabase/stationsliste.sql` auf dieselbe Weise ausführen. Es
+legt nur die Tabelle `wind_stations` (Name, Lage, Höhe jeder Station) und die
+Sicht `wind_stations_latest` (neuester gespeicherter Wert je Station) an;
+gelöscht oder verändert wird nichts. Die Liste füllt der Sammler beim
+nächsten Lauf. Wozu: Liefert eine Quelle gar nichts, zeigt die Karte deren
+Stationen mit dem letzten gespeicherten Wert weiter (nach der Grau-Grenze
+grau), statt sie auszublenden (`src/lib/stationList.ts`).
+
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
 wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
@@ -183,9 +192,10 @@ geschrieben.
 
 - **Erfolg:** Status `200` mit JSON, z. B.
   `{ "ok": true, "saved": 1558, "sources": { "bolzano": 82, "slf": 1176, … },
-  "failedSources": [], "cleanupBefore": "…", "cleanupOk": true }`
+  "failedSources": [], "stationListOk": true, "cleanupBefore": "…", "cleanupOk": true }`
   (`saved` = Anzahl übermittelter Werte, `sources` = Werte je Quelle,
-  `failedSources` = Quellen, die diesmal gescheitert sind).
+  `failedSources` = Quellen, die diesmal gescheitert sind, `stationListOk` =
+  Stationsliste gespeichert).
 - **Falsches/fehlendes Token:** Status `401` (`{ "error": "Nicht autorisiert" }`).
 - **Fehlende Server-Variablen:** Status `500`.
 - **Keine einzige Quelle lieferte Werte / Speichern scheiterte:** Status `502`.

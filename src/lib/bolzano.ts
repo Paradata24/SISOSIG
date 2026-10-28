@@ -177,15 +177,14 @@ function kmhOrNull(reading: SensorReading | undefined): number | null {
   return reading?.VALUE != null ? round1(toKmh(reading.VALUE, reading.UNIT)) : null;
 }
 
-/**
- * Live-Werte aller Bozner Stationen mit Windsensoren UND Koordinaten (für
- * /api/wind), im gemeinsamen WindStation-Format. Wirft, wenn /sensors nicht
- * erreichbar ist.
- */
-export async function fetchBolzanoStations(): Promise<WindStation[]> {
-  const [sensors, stationsByCode] = await Promise.all([fetchSensors(), fetchStationMeta()]);
+// Stationen im gemeinsamen WindStation-Format — nur die mit Windsensoren UND
+// Koordinaten (gemeinsam für fetchBolzanoStations und fetchBolzanoForCollect).
+function toStations(
+  sensors: SensorReading[],
+  stationsByCode: Map<string, StationMeta>,
+  now: number,
+): WindStation[] {
   const readings = windReadingsByStation(sensors);
-  const now = Date.now();
   const result: WindStation[] = [];
 
   for (const [code, { direction: dirReading, speed: speedReading, gust: gustReading }] of readings) {
@@ -221,14 +220,9 @@ export async function fetchBolzanoStations(): Promise<WindStation[]> {
   return result;
 }
 
-/**
- * Die aktuellen Messwerte aller Bozner Stationen mit Windsensoren (für
- * /api/collect). Anders als fetchBolzanoStations bewusst OHNE die
- * Stationsmetadaten: Gespeichert wird auch dann, wenn /stations gerade nicht
- * erreichbar ist. Wirft, wenn /sensors nicht erreichbar ist.
- */
-export async function fetchBolzanoReadings(): Promise<BolzanoReading[]> {
-  const sensors = await fetchSensors();
+// Die Messwerte für die Datenbank. Bewusst OHNE die Stationsmetadaten:
+// Gespeichert wird auch dann, wenn /stations gerade nicht erreichbar ist.
+function toReadings(sensors: SensorReading[]): BolzanoReading[] {
   const rows: BolzanoReading[] = [];
   for (const [code, { direction: dir, speed, gust }] of windReadingsByStation(sensors)) {
     const measuredAt = toIsoTimestamp(speed?.DATE ?? dir?.DATE);
@@ -239,4 +233,30 @@ export async function fetchBolzanoReadings(): Promise<BolzanoReading[]> {
     rows.push({ stationCode: code, measuredAt, direction, speedKmh, gustKmh: kmhOrNull(gust) });
   }
   return rows;
+}
+
+/**
+ * Live-Werte aller Bozner Stationen mit Windsensoren UND Koordinaten (für
+ * /api/wind), im gemeinsamen WindStation-Format. Wirft, wenn /sensors nicht
+ * erreichbar ist.
+ */
+export async function fetchBolzanoStations(): Promise<WindStation[]> {
+  const [sensors, stationsByCode] = await Promise.all([fetchSensors(), fetchStationMeta()]);
+  return toStations(sensors, stationsByCode, Date.now());
+}
+
+/**
+ * Für /api/collect: die aktuellen Messwerte aller Bozner Stationen mit
+ * Windsensoren und dazu die Stationen mit Name und Lage für die Stationsliste
+ * in der Datenbank (src/lib/stationList.ts) — beides aus EINEM Abruf von
+ * /sensors. Fehlen die Metadaten, ist nur die Stationsliste leer; die
+ * Messwerte werden trotzdem gespeichert. Wirft, wenn /sensors nicht
+ * erreichbar ist.
+ */
+export async function fetchBolzanoForCollect(): Promise<{
+  readings: BolzanoReading[];
+  stations: WindStation[];
+}> {
+  const [sensors, stationsByCode] = await Promise.all([fetchSensors(), fetchStationMeta()]);
+  return { readings: toReadings(sensors), stations: toStations(sensors, stationsByCode, Date.now()) };
 }

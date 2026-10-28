@@ -7,6 +7,7 @@ import { fetchGeoSphereStations } from "@/lib/geosphere";
 import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
 import { fetchDwdStations } from "@/lib/dwd";
+import { fetchLastKnownStations } from "@/lib/stationList";
 
 // Live-Werte ALLER Stationen für die Karte: Bozner Wetterdienst
 // (src/lib/bolzano.ts), OpenWindMap/Pioupiou, SLF, GeoSphere, MeteoSchweiz,
@@ -49,6 +50,11 @@ import { fetchDwdStations } from "@/lib/dwd";
 // Karte leer, auch die Schweiz und Österreich. Welche Quellen gerade fehlen,
 // steht in der Kopfzeile MISSING_SOURCES_HEADER; WindMap zeigt daraus den
 // Hinweis "… liefert gerade keine Daten".
+// Die Stationen einer fehlenden Quelle verschwinden dabei nicht (Okt. 2026):
+// Sie kommen mit ihrem letzten gespeicherten Wert aus der Datenbank
+// (src/lib/stationList.ts) und werden nach der Grau-Grenze grau, wie bei
+// einem Sensorausfall. So bleiben auch Zeitbalken und Verlaufsbalken für sie
+// nutzbar.
 
 // Nachfrist (stale-while-revalidate) bewusst nur 30 s: Gerade wenn kaum
 // jemand zuschaut, wäre jede abgelaufene Antwort sonst noch Minuten alt.
@@ -94,10 +100,13 @@ export async function GET(request: Request) {
   const missingSources = SOURCES.filter((_, i) => results[i].length === 0).map(
     ([source]) => source,
   );
+  // Ihre Stationen mit dem letzten gespeicherten Wert (siehe oben). Nur bei
+  // einem Ausfall wird dafür die Datenbank gefragt.
+  const lastKnown = await fetchLastKnownStations(missingSources);
 
-  let stations = results
-    .flat()
-    .sort((a, b) => a.stationName.localeCompare(b.stationName, "de"));
+  let stations = [...results.flat(), ...lastKnown].sort((a, b) =>
+    a.stationName.localeCompare(b.stationName, "de"),
+  );
 
   if (stations.length === 0) {
     return NextResponse.json(
