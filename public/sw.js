@@ -14,6 +14,10 @@
 // Windwerte kommen immer zuerst frisch aus dem Netz, der Speicher ist nur der
 // Ersatz bei Netzausfall. Das ist wichtig, weil der Helfer bei Android auch
 // für die Website in Chrome gilt, sobald die App installiert ist.
+// Als Netzausfall zählt seit Okt. 2026 auch ein Netz, das nicht rechtzeitig
+// antwortet (PAGE_TIMEOUT_MS / DATA_TIMEOUT_MS): typisch bei schwachem
+// Empfang am Berg. Vorher hing die App dann, bis der Browser von selbst
+// aufgab — das kann Minuten dauern.
 //
 // Bewusst KEIN Knopf "ganzes Gebiet herunterladen": Die Kartendienste
 // (OpenTopoMap) verbieten Massen-Downloads in ihren Nutzungsregeln.
@@ -46,6 +50,15 @@ const TILE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Kopfzeile mit dem Zeitpunkt, an dem eine Antwort gespeichert wurde.
 const STORED_HEADER = "x-sisosig-gespeichert";
+
+// So lange wartet die App höchstens auf das Netz, bevor sie die gespeicherte
+// Fassung zeigt (siehe Grundregel oben). Mit normalem Netz kommen Seite und
+// Daten in 0,5–3 s, es ändert sich also nichts. Kommt die Antwort später doch
+// noch, wird sie trotzdem gespeichert; der nächste Abruf der Karte (alle
+// 3 min) zeigt dann frische Werte. Gespeicherte Windwerte erkennt die Seite an
+// STORED_HEADER und zeigt ihre Uhrzeit (im Flugmodus gelb, wenn alt).
+const PAGE_TIMEOUT_MS = 5000;
+const DATA_TIMEOUT_MS = 8000;
 
 // Kartendienste, deren Kartenstücke gespeichert werden (gleiche Liste wie in
 // src/components/WindMap.tsx und FlightMode.tsx). OpenTopoMap und KK7
@@ -121,11 +134,11 @@ self.addEventListener("fetch", (event) => {
 
   if (url.origin === self.location.origin) {
     if (request.mode === "navigate") {
-      event.respondWith(pageNetworkFirst(request));
+      event.respondWith(pageNetworkFirst(event));
     } else if (url.pathname.startsWith("/_next/static/")) {
       event.respondWith(cacheFirst(request, STATIC_CACHE, MAX_STATIC));
     } else if (url.pathname.startsWith("/api/")) {
-      event.respondWith(dataNetworkFirst(request));
+      event.respondWith(dataNetworkFirst(event));
     }
     // Alles andere (Symbole, Manifest …) geht unverändert ans Netz.
     return;
@@ -136,17 +149,46 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-// Seite: frisch aus dem Netz, ohne Netz die zuletzt gespeicherte.
-async function pageNetworkFirst(request) {
-  const cache = await caches.open(PAGE_CACHE);
-  try {
-    const response = await fetch(request);
-    if (response.ok) await cache.put("/", response.clone());
+// Seite: frisch aus dem Netz; ohne Netz (oder nach PAGE_TIMEOUT_MS) die
+// zuletzt gespeicherte.
+async function pageNetworkFirst(event) {
+  const network = fetch(event.request).then(async (response) => {
+    if (response.ok) {
+      try {
+        const cache = await caches.open(PAGE_CACHE);
+        await cache.put("/", response.clone());
+      } catch {
+        // Speicher voll o. ä.: Die Seite kommt trotzdem an.
+      }
+    }
     return response;
-  } catch (error) {
-    const cached = await cache.match("/", { ignoreVary: true });
-    if (cached) return cached;
-    throw error;
+  });
+  return networkOrStored(event, network, PAGE_TIMEOUT_MS, async () => {
+    const cache = await caches.open(PAGE_CACHE);
+    return cache.match("/", { ignoreVary: true });
+  });
+}
+
+// Gemeinsamer Ablauf für Seite und Daten: auf das Netz warten, höchstens
+// `timeoutMs` lang. Danach (oder bei Netzfehler) die gespeicherte Fassung,
+// falls es eine gibt — sonst weiter auf das Netz warten bzw. dessen Fehler
+// weitergeben. Die Netzantwort läuft im Hintergrund weiter und wird noch
+// gespeichert, wenn sie nach dem Zeitlimit eintrifft (waitUntil hält den
+// Helfer dafür wach; es muss vor dem ersten await aufgerufen werden).
+async function networkOrStored(event, network, timeoutMs, loadStored) {
+  event.waitUntil(network.catch(() => {}));
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("Zeitlimit")), timeoutMs);
+  });
+  try {
+    return await Promise.race([network, timeout]);
+  } catch {
+    const stored = await loadStored();
+    if (stored) return stored;
+    return network;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -165,22 +207,26 @@ async function cacheFirst(request, cacheName, maxEntries) {
 }
 
 // Windwerte & Co.: immer zuerst frisch aus dem Netz (die Seite verhält sich
-// mit Netz also wie bisher). Ohne Netz die zuletzt gespeicherte Antwort, mit
-// dem Zeitpunkt des Speicherns als Kopfzeile.
-async function dataNetworkFirst(request) {
-  const cache = await caches.open(DATA_CACHE);
-  try {
-    const response = await fetch(request);
+// mit Netz also wie bisher). Ohne Netz (oder nach DATA_TIMEOUT_MS) die zuletzt
+// gespeicherte Antwort, mit dem Zeitpunkt des Speicherns als Kopfzeile.
+async function dataNetworkFirst(event) {
+  const request = event.request;
+  const network = fetch(request).then(async (response) => {
     if (response.ok) {
-      await cache.put(request, await withStoredTime(response.clone()));
-      void trimCache(DATA_CACHE, MAX_DATA);
+      try {
+        const cache = await caches.open(DATA_CACHE);
+        await cache.put(request, await withStoredTime(response.clone()));
+        void trimCache(DATA_CACHE, MAX_DATA);
+      } catch {
+        // Speicher voll o. ä.: Die Antwort geht trotzdem an die Seite.
+      }
     }
     return response;
-  } catch (error) {
-    const cached = await cache.match(request, { ignoreVary: true });
-    if (cached) return cached;
-    throw error;
-  }
+  });
+  return networkOrStored(event, network, DATA_TIMEOUT_MS, async () => {
+    const cache = await caches.open(DATA_CACHE);
+    return cache.match(request, { ignoreVary: true });
+  });
 }
 
 // Kartenstücke: aus dem Speicher, wenn vorhanden (schneller, spart Akku und

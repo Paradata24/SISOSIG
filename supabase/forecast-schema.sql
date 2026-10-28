@@ -31,9 +31,15 @@ create table if not exists public.wind_forecasts (
   unique (station_code, model, forecast_time)
 );
 
--- Beschleunigt die Abfrage der Prognosen einer einzelnen Station.
-create index if not exists wind_forecasts_station_model_time_idx
-  on public.wind_forecasts (station_code, model, forecast_time desc);
+-- Die Abfrage der Prognosen einer einzelnen Station nutzt die Suchhilfe, die
+-- unique (station_code, model, forecast_time) oben schon mitbringt. Eine eigene
+-- zweite gab es bis Okt. 2026 — sie war doppelt (supabase/datenbank-aufraeumen.sql
+-- entfernt sie bei bestehenden Datenbanken).
+
+-- Beschleunigt "wann wurde ein Modell zuletzt geholt?" (Edge Function, vor
+-- jedem Lauf).
+create index if not exists wind_forecasts_model_fetched_idx
+  on public.wind_forecasts (model, fetched_at desc);
 
 -- Row Level Security aktivieren, OHNE Policies anzulegen: damit kann
 -- NUR der service_role Key (die Edge Function und später die API-Route)

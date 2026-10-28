@@ -78,12 +78,19 @@ interface WfsFeature {
 // vor), wird es einmal neu versucht — ein Fehlschlag hieße sonst: bis zum
 // nächsten Aufruf keine Kabel.
 const FETCH_ATTEMPTS = 2;
+// Zeitlimit je Versuch (Okt. 2026; vorher ohne): Normal dauert der Abruf
+// 1–3 s. Hängt der Landesserver, gibt das CDN weiter die letzte gute Fassung
+// aus (stale-if-error, siehe oben), statt dass die Anfrage ewig wartet.
+const FETCH_TIMEOUT_MS = 20_000;
 
 async function fetchFeatures(): Promise<WfsFeature[] | string> {
   let problem = "Kartendienst des Landes ist nicht erreichbar";
   for (let attempt = 0; attempt < FETCH_ATTEMPTS; attempt++) {
     try {
-      const res = await fetch(WFS_URL, { cache: "no-store" });
+      const res = await fetch(WFS_URL, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       if (!res.ok) {
         problem = `Kartendienst des Landes antwortet mit ${res.status}`;
         continue;

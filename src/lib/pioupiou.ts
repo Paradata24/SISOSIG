@@ -1,4 +1,4 @@
-import type { WindStation } from "./wind";
+import { isOutdated, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der Südtiroler OpenWindMap-Stationen
@@ -12,8 +12,9 @@ import { cachedFresh } from "./freshCache";
 // herausgefiltert (siehe SOUTH_TYROL_BBOX unten).
 //
 // Lizenz: Die Daten stehen unter der kostenlosen OpenWindMap-Community-
-// Lizenz, die einen sichtbaren Credit verlangt (siehe Fußzeile auf der
-// Seite, src/app/page.tsx).
+// Lizenz, die einen sichtbaren Credit mit Link verlangt. Die frühere Fußzeile
+// dafür ist auf Wunsch des Projektbesitzers entfernt; der Credit steht derzeit
+// nur als "Quelle:"-Link im Verlaufsbalken (offener Punkt, siehe CLAUDE.md).
 
 const API_BASE =
   process.env.PIOUPIOU_API_BASE_URL ?? "https://api.pioupiou.fr/v1";
@@ -43,13 +44,6 @@ export const SOUTH_TYROL_BBOX = {
 const EXTRA_STATIONS: Record<number, { altitude: number }> = {
   1535: { altitude: 2414 }, // Bälmeten Backup (Paradeltaclub Uri)
 };
-
-// Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen —
-// dieselbe Regel wie bei den Bozner Stationen (siehe /api/wind). Pioupiou-
-// Stationen sind batteriebetrieben und melden nachts/windstill teils gar
-// nicht, fallen dann also nach 2h ebenfalls auf den grauen "stale"-Punkt
-// zurück statt mit einem veralteten Pfeil angezeigt zu werden.
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Vorangestellt an die Pioupiou-Stations-ID, damit die Stationscodes nicht
 // mit den Bozner SCODEs kollidieren (z. B. "pioupiou-413").
@@ -171,7 +165,10 @@ function round5(value: number): number {
 export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
   const url = `${API_BASE}/live/all`;
   const body: unknown = await cachedFresh(url, CACHE_TTL_MS, async () => {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
     if (!res.ok) {
       throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
     }
@@ -203,12 +200,13 @@ export async function fetchOpenWindMapStations(): Promise<WindStation[]> {
     const gustKmh =
       m?.wind_speed_max != null ? round1(toKmh(m.wind_speed_max)) : null;
 
+    // Ausgefallen (grauer Ring) wie bei allen Quellen: ohne Richtung/Wind oder
+    // zu alt (STALE_AFTER_MINUTES in wind.ts). Pioupiou-Stationen sind
+    // batteriebetrieben und melden nachts/windstill teils gar nicht — dann
+    // lieber grau als ein veralteter Pfeil.
     const measuredAt = timestamp ? Date.parse(timestamp) : NaN;
     const stale =
-      direction === null ||
-      speedKmh === null ||
-      Number.isNaN(measuredAt) ||
-      now - measuredAt > STALE_AFTER_MS;
+      direction === null || speedKmh === null || isOutdated("openwindmap", measuredAt, now);
 
     // Der Name bleibt unverändert stehen (die Höhe wird also nicht
     // "herausgeschnitten") — so ist die Station auf der Karte und im

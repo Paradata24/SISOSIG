@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  DATABASE_TIMEOUT_MS,
   FUTURE_MARGIN_HOURS,
   HISTORY_HOURS,
   UPPER_WIND_STATIONS,
@@ -96,34 +97,39 @@ export async function GET(request: Request) {
     `${baseUrl}&model=eq.${MODEL_SURFACE}&select=${columns}`;
   const BASE_COLUMNS = "forecast_time,direction,speed_kmh,gust_kmh";
 
-  let res: Response;
+  // Das Zeitlimit gilt auch für das Lesen der Antwort — deshalb steht
+  // res.json() mit im try.
+  let entries: ForecastEntry[];
   try {
-    res = await fetch(surfaceQuery(`${BASE_COLUMNS},model_run`), {
+    let res = await fetch(surfaceQuery(`${BASE_COLUMNS},model_run`), {
       headers,
       cache: "no-store",
+      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
     });
     // Die Spalte model_run kommt erst mit supabase/add-model-run-column.sql.
     // Fehlt sie noch, antwortet Supabase mit 400 — dann ohne Laufzeit
     // abfragen, statt die ganze Prognose zu verlieren. So ist es egal, ob
     // zuerst die Webseite oder zuerst die Datenbank aktualisiert wird.
     if (res.status === 400) {
-      res = await fetch(surfaceQuery(BASE_COLUMNS), { headers, cache: "no-store" });
+      res = await fetch(surfaceQuery(BASE_COLUMNS), {
+        headers,
+        cache: "no-store",
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      });
     }
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: `Supabase antwortete mit Status ${res.status}` },
+        { status: 502 },
+      );
+    }
+    entries = await res.json();
   } catch {
     return NextResponse.json(
       { error: "Supabase ist nicht erreichbar" },
       { status: 502 },
     );
   }
-
-  if (!res.ok) {
-    return NextResponse.json(
-      { error: `Supabase antwortete mit Status ${res.status}` },
-      { status: 502 },
-    );
-  }
-
-  const entries: ForecastEntry[] = await res.json();
 
   // Höhenwind (ICON-D2) nur für die wenigen Stationen, die ihn haben — bei
   // allen anderen spart das eine Supabase-Abfrage. Additiv: Scheitert die
@@ -133,7 +139,7 @@ export async function GET(request: Request) {
     try {
       const upperRes = await fetch(
         `${baseUrl}&model=eq.${MODEL_UPPER}&select=${BASE_COLUMNS}`,
-        { headers, cache: "no-store" },
+        { headers, cache: "no-store", signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
       );
       if (upperRes.ok) upperWind = await upperRes.json();
     } catch {

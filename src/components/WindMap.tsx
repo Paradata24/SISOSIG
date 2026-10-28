@@ -15,7 +15,10 @@ import "leaflet/dist/leaflet.css";
 import {
   getStationFilterMapLabel,
   getWindColor,
+  listSourceLabels,
   matchesStationFilter,
+  MISSING_SOURCES_HEADER,
+  parseMissingSources,
   snapDirectionTo8,
   type StationFilter,
   type SuspectInfo,
@@ -674,6 +677,11 @@ export default function WindMap({
   // steuert die Karte deshalb über dieses Objekt.
   const [leafletMap, setLeafletMap] = useState<L.Map | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Quellen, die beim letzten Abruf keine einzige Station geliefert haben
+  // (Kopfzeile von /api/wind, Okt. 2026). Ihre Stationen fehlen dann auf der
+  // Karte — der Hinweis oben mittig (bzw. in der Statuszeile des Flugmodus)
+  // sagt, warum.
+  const [missingSources, setMissingSources] = useState<WindStation["source"][]>([]);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —
   // useMemo verhindert, dass sie bei jedem Neuzeichnen (z. B. beim Zoomen)
@@ -803,6 +811,7 @@ export default function WindMap({
         }
         setError(null);
         setStations(data as WindStation[]);
+        setMissingSources(parseMissingSources(res.headers.get(MISSING_SOURCES_HEADER)));
         // Ohne Netz liefert der Hintergrund-Helfer der Web-App (public/sw.js)
         // die zuletzt gespeicherten Werte, mit dem Zeitpunkt des Speicherns
         // in dieser Kopfzeile. Dann diesen Zeitpunkt melden, nicht "jetzt" —
@@ -922,6 +931,15 @@ export default function WindMap({
             {error}
           </div>
         )}
+        {/* Quelle(n) ohne Daten (Okt. 2026), gelb wie die Hinweise im
+            Flugmodus. Dort steht er stattdessen in der Statuszeile
+            (FlightMode), damit er oben keine Tasten verdeckt. */}
+        {!flightMode && !error && missingSources.length > 0 && (
+          <div className="border border-black bg-amber-300 px-2 py-0.5 text-center text-xs font-semibold text-zinc-900 shadow-sm">
+            {listSourceLabels(missingSources)}{" "}
+            {missingSources.length === 1 ? "liefert" : "liefern"} gerade keine Daten
+          </div>
+        )}
       </div>
       {flightMode && (
         <FlightMode
@@ -932,6 +950,7 @@ export default function WindMap({
           onExit={onExitFlightMode}
           stationFilter={stationFilter}
           onStationFilterChange={onStationFilterChange}
+          missingSources={missingSources}
         />
       )}
       {selectedStation && (

@@ -323,6 +323,29 @@ function snapPointsToGrid(points: Point[]): Point[] {
     .map(([, v]) => v.point);
 }
 
+// Ergebnis eines Ladevorgangs, inklusive Stationscode (siehe result im Panel).
+interface HistoryResult {
+  code: string;
+  entries?: HistoryEntry[];
+  // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
+  // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
+  forecast?: ForecastEntry[];
+  // Startzeit des ICON-CH1-Laufs der Prognose (ISO), null wenn unbekannt.
+  forecastRun?: string | null;
+  // Höhenwind ICON-D2 (nur einzelne Stationen, sonst leer).
+  upperWind?: ForecastEntry[];
+  error?: string;
+}
+
+// Scheitert das NACHLADEN (alle 3 min, siehe refreshToken), bleibt ein schon
+// gezeichnetes Diagramm derselben Station stehen — ein kurzer Netzaussetzer
+// soll nicht die ganze Kurve durch eine Fehlermeldung ersetzen (bis Okt. 2026
+// war das so; die Karte behielt ihre Werte dagegen schon immer). Nur wenn es
+// für diese Station noch keine Daten gibt, erscheint die Fehlermeldung.
+function keepOrError(prev: HistoryResult | null, code: string, message: string): HistoryResult {
+  return prev?.code === code && !prev.error ? prev : { code, error: message };
+}
+
 function formatHourLabel(date: Date): string {
   // Um Mitternacht das Datum statt "00:00" zeigen, damit der Tageswechsel
   // in der Zeitachse erkennbar ist.
@@ -504,18 +527,7 @@ export default function WindHistoryPanel({
   // Ergebnis des letzten Ladevorgangs, inklusive Stationscode. Solange der
   // Code nicht zur aktuell gewählten Station passt, gilt das Panel als
   // "lädt" — so braucht es beim Stationswechsel kein separates Zurücksetzen.
-  const [result, setResult] = useState<{
-    code: string;
-    entries?: HistoryEntry[];
-    // Prognose ist optional/additiv: schlägt sie fehl oder ist leer, bleibt
-    // dieses Feld leer, ohne die Messwert-Anzeige zu blockieren.
-    forecast?: ForecastEntry[];
-    // Startzeit des ICON-CH1-Laufs der Prognose (ISO), null wenn unbekannt.
-    forecastRun?: string | null;
-    // Höhenwind ICON-D2 (nur einzelne Stationen, sonst leer).
-    upperWind?: ForecastEntry[];
-    error?: string;
-  } | null>(null);
+  const [result, setResult] = useState<HistoryResult | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerW, setContainerW] = useState(0);
   // Bezugszeitpunkt "jetzt" für die feste Zeitachse. Wird beim Laden gesetzt,
@@ -545,29 +557,32 @@ export default function WindHistoryPanel({
             .then((r) => (r.ok ? r.json() : null))
             .catch(() => null),
         ]);
-        const forecastEntries =
-          (forecastJson?.entries as ForecastEntry[] | undefined) ?? [];
         const data = await res.json();
         if (cancelled) return;
-        setNow(Date.now());
         if (!res.ok) {
-          setResult({
-            code,
-            error: data.error ?? "Verlauf konnte nicht geladen werden",
-          });
-        } else {
-          setResult({
+          const message = data.error ?? "Verlauf konnte nicht geladen werden";
+          setResult((prev) => keepOrError(prev, code, message));
+          return;
+        }
+        setNow(Date.now());
+        setResult((prev) => {
+          // Prognose gescheitert, für diese Station aber schon eine da: die
+          // bisherige behalten, statt die Kurve beim Nachladen zu löschen.
+          if (forecastJson === null && prev?.code === code && !prev.error) {
+            return { ...prev, entries: data.entries as HistoryEntry[] };
+          }
+          return {
             code,
             entries: data.entries as HistoryEntry[],
-            forecast: forecastEntries,
+            forecast: (forecastJson?.entries as ForecastEntry[] | undefined) ?? [],
             forecastRun:
               typeof forecastJson?.modelRun === "string" ? forecastJson.modelRun : null,
             upperWind: (forecastJson?.upperWind as ForecastEntry[] | undefined) ?? [],
-          });
-        }
+          };
+        });
       } catch {
         if (!cancelled) {
-          setResult({ code, error: "Verlauf konnte nicht geladen werden" });
+          setResult((prev) => keepOrError(prev, code, "Verlauf konnte nicht geladen werden"));
         }
       }
     }

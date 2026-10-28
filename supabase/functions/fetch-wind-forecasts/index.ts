@@ -47,12 +47,18 @@
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
 //      (gleiches Muster wie CRON_SECRET bei /api/collect).
-//   2. Stationsliste ableiten: Bozner Wetterdienst — exakt dieselbe Logik
-//      wie /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
+//   2. Stationsliste ableiten (alle vier Listen gleichzeitig, jede "additiv":
+//      scheitert eine, gibt es eben für deren Stationen diesmal keine neue
+//      Prognose — seit Okt. 2026 gilt das auch für Bozen, vorher brach dann
+//      der ganze Lauf ab): Bozner Wetterdienst — exakt dieselbe Logik wie
+//      /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
 //      deterministisch nach Stationscode sortiert — plus Südtiroler
-//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter, additiv) — plus
-//      die SLF-IMIS-Stationen (Schweiz, additiv; ICON-CH1 deckt die ganze
-//      Schweiz ab).
+//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter) — plus die
+//      SLF-IMIS-Stationen (Schweiz; ICON-CH1 deckt die ganze Schweiz ab) —
+//      plus GeoSphere Austria.
+//      Achtung: Fällt eine Liste genau beim Abruf eines neuen Laufs aus,
+//      bekommen ihre Stationen erst mit dem nächsten Lauf (3 h) eine neue
+//      Prognose; die gespeicherte reicht 12 h, die Kurve bleibt also da.
 //   (davor: Höhenwind ICON-D2 mit eigener Laufprüfung, siehe
 //   refreshUpperWind; dann Prüfung, ob es einen neuen ICON-CH1-Lauf gibt)
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
@@ -187,6 +193,14 @@ const RETENTION_DAYS = 2;
 // das Batching auch mit wenigen Mock-Stationen prüfen lässt.
 const BATCH_SIZE = Number(Deno.env.get("FORECAST_BATCH_SIZE") ?? "50");
 
+// Zeitlimits (Okt. 2026; vorher ohne): Hängt ein Dienst, bricht die Funktion
+// diesen Abruf ab, statt zu warten, bis Supabase sie an ihrer Laufzeitgrenze
+// beendet (dann ginge auch alles schon Geholte verloren).
+const LIST_TIMEOUT_MS = 15_000; // Stationslisten der Quellen
+const META_TIMEOUT_MS = 10_000; // Laufzeit-Datei (meta.json) von Open-Meteo
+const OPEN_METEO_TIMEOUT_MS = 30_000; // ein Block von bis zu 50 Stationen
+const DATABASE_TIMEOUT_MS = 60_000; // Supabase (Speichern von ~14.000 Zeilen)
+
 interface SensorReading {
   SCODE: string;
   DESC_D: string;
@@ -276,13 +290,17 @@ function round1(value: number): number {
 // Stationen mit Windsensoren und Koordinaten aus dem Bozner Wetterdienst
 // ableiten — dieselben zwei Anfragen (/sensors + /stations) wie /api/wind.
 async function loadStations(): Promise<Station[]> {
-  const sensorsRes = await fetch(`${WIND_API_BASE}/sensors`);
+  const sensorsRes = await fetch(`${WIND_API_BASE}/sensors`, {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
   if (!sensorsRes.ok) {
     throw new Error(`Wetterdienst /sensors antwortete mit Status ${sensorsRes.status}`);
   }
   const sensors: SensorReading[] = await sensorsRes.json();
 
-  const stationsRes = await fetch(`${WIND_API_BASE}/stations`);
+  const stationsRes = await fetch(`${WIND_API_BASE}/stations`, {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
   if (!stationsRes.ok) {
     throw new Error(`Wetterdienst /stations antwortete mit Status ${stationsRes.status}`);
   }
@@ -320,7 +338,9 @@ interface PioupiouStation {
 // Läuft unabhängig von loadStations() — ein Fehler hier lässt die Bozner
 // Prognosen trotzdem weiterlaufen (siehe try/catch beim Aufruf).
 async function loadOpenWindMapStations(): Promise<Station[]> {
-  const res = await fetch(`${PIOUPIOU_API_BASE}/live/all`);
+  const res = await fetch(`${PIOUPIOU_API_BASE}/live/all`, {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
   }
@@ -363,7 +383,9 @@ interface SlfStationMeta {
 // Station Wind misst; die wenigen ohne Windsensor bekommen einfach eine
 // Prognose, die nie angezeigt wird (sie erscheinen nicht auf der Karte).
 async function loadSlfStations(): Promise<Station[]> {
-  const res = await fetch(`${SLF_API_BASE}/imis/stations`);
+  const res = await fetch(`${SLF_API_BASE}/imis/stations`, {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`SLF-Stationsliste antwortete mit Status ${res.status}`);
   }
@@ -445,7 +467,9 @@ function isInAlps(lat: number, lon: number): boolean {
 }
 
 async function loadGeoSphereStations(): Promise<Station[]> {
-  const res = await fetch(`${GEOSPHERE_API_BASE}/metadata`);
+  const res = await fetch(`${GEOSPHERE_API_BASE}/metadata`, {
+    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`GeoSphere-Metadaten antworteten mit Status ${res.status}`);
   }
@@ -480,7 +504,9 @@ async function fetchForecastBatch(
     timeformat: "unixtime",
   });
 
-  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`);
+  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`, {
+    signal: AbortSignal.timeout(OPEN_METEO_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`Open-Meteo antwortete mit Status ${res.status}: ${await res.text()}`);
   }
@@ -562,7 +588,9 @@ async function fetchUpperWind(
     timeformat: "unixtime",
   });
 
-  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`);
+  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`, {
+    signal: AbortSignal.timeout(OPEN_METEO_TIMEOUT_MS),
+  });
   if (!res.ok) {
     throw new Error(`Open-Meteo (ICON-D2) antwortete mit Status ${res.status}: ${await res.text()}`);
   }
@@ -639,6 +667,7 @@ async function refreshUpperWind(
         method: "POST",
         headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
       },
     );
     if (!res.ok) {
@@ -659,7 +688,7 @@ async function loadModelRun(
   label = "ICON-CH1",
 ): Promise<{ runIso: string; availableMs: number } | null> {
   try {
-    const res = await fetch(metaUrl);
+    const res = await fetch(metaUrl, { signal: AbortSignal.timeout(META_TIMEOUT_MS) });
     if (!res.ok) {
       console.error(`${label}-Metadaten: Status ${res.status} (${metaUrl})`);
       return null;
@@ -697,7 +726,7 @@ async function loadLastFetchedMs(
     const res = await fetch(
       `${supabaseUrl}/rest/v1/wind_forecasts?model=eq.${model}` +
         `&select=fetched_at&order=fetched_at.desc&limit=1`,
-      { headers },
+      { headers, signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
     );
     if (!res.ok) return null;
     const rows = (await res.json()) as Array<{ fetched_at?: string }>;
@@ -770,38 +799,39 @@ export async function handleRequest(request: Request): Promise<Response> {
     }
   }
 
-  // 2) Stationsliste ableiten: Bozner Stationen (Pflicht) + Südtiroler
-  //    OpenWindMap-Stationen (additiv — ein Fehler hier bricht den Lauf
-  //    nicht ab, es gibt dann eben keine Prognosen für diese Stationen).
-  let stations: Station[];
-  try {
-    stations = await loadStations();
-  } catch (err) {
-    console.error("Stationsliste nicht abrufbar:", err);
-    return json({ error: `Stationsliste nicht abrufbar: ${(err as Error).message}` }, 502);
-  }
-  try {
-    stations = [...stations, ...(await loadOpenWindMapStations())];
-  } catch (err) {
-    console.error("OpenWindMap-Stationsliste nicht abrufbar:", err);
-  }
-  try {
-    stations = [...stations, ...(await loadSlfStations())];
-  } catch (err) {
-    console.error("SLF-Stationsliste nicht abrufbar:", err);
-  }
-  try {
-    stations = [...stations, ...(await loadGeoSphereStations())];
-  } catch (err) {
-    console.error("GeoSphere-Stationsliste nicht abrufbar:", err);
-  }
+  // 2) Stationsliste ableiten: alle vier Listen gleichzeitig, jede additiv —
+  //    ein Fehler bricht den Lauf nicht ab, es gibt dann eben für diese
+  //    Stationen diesmal keine neue Prognose (seit Okt. 2026 auch für Bozen,
+  //    siehe Ablauf oben). Die gescheiterten Listen stehen in der Antwort.
+  const stationSources: Array<[string, () => Promise<Station[]>]> = [
+    ["Bozen", loadStations],
+    ["OpenWindMap", loadOpenWindMapStations],
+    ["SLF", loadSlfStations],
+    ["GeoSphere", loadGeoSphereStations],
+  ];
+  const stationListErrors: string[] = [];
+  const stationLists = await Promise.all(
+    stationSources.map(async ([label, load]) => {
+      try {
+        return await load();
+      } catch (err) {
+        console.error(`${label}-Stationsliste nicht abrufbar:`, err);
+        stationListErrors.push(`${label}: ${(err as Error).message}`);
+        return [];
+      }
+    }),
+  );
+  let stations = stationLists.flat();
   // Stationen außerhalb der Alpen (siehe isInAlps) und außerhalb des
   // Modellgebiets (siehe ICON_CH1_MAX_LNG) gar nicht erst abfragen.
   const beforeFilter = stations.length;
   stations = stations.filter((s) => insideIconCh1(s) && isInAlps(s.lat, s.lng));
   const outsideFiltered = beforeFilter - stations.length;
   if (stations.length === 0) {
-    return json({ error: "Keine Station mit Windsensoren und Koordinaten gefunden" }, 502);
+    return json(
+      { error: "Keine Station mit Windsensoren und Koordinaten gefunden", stationListErrors },
+      502,
+    );
   }
 
   // 3) Bodenwind (ICON-CH1) batchweise abfragen. Ein fehlgeschlagener
@@ -871,25 +901,30 @@ export async function handleRequest(request: Request): Promise<Response> {
 
   // 4) Upsert: vorhandene (station_code, model, forecast_time)-Kombinationen
   //    werden aktualisiert statt doppelt angelegt.
-  const insertRes = await fetch(
-    `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
-    {
-      method: "POST",
-      headers: {
-        ...supabaseHeaders,
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(rows),
-    },
-  );
-  if (!insertRes.ok) {
-    return json(
+  try {
+    const insertRes = await fetch(
+      `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
       {
-        error: `Supabase-Upsert schlug fehl (Status ${insertRes.status})`,
-        details: await insertRes.text(),
+        method: "POST",
+        headers: {
+          ...supabaseHeaders,
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
       },
-      502,
     );
+    if (!insertRes.ok) {
+      return json(
+        {
+          error: `Supabase-Upsert schlug fehl (Status ${insertRes.status})`,
+          details: await insertRes.text(),
+        },
+        502,
+      );
+    }
+  } catch (err) {
+    return json({ error: `Supabase-Upsert schlug fehl: ${(err as Error).message}` }, 502);
   }
 
   // 5) Aufräumen: Prognosen älter als RETENTION_DAYS Tage löschen.
@@ -897,13 +932,18 @@ export async function handleRequest(request: Request): Promise<Response> {
     Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
   let cleanupOk = true;
-  const deleteRes = await fetch(
-    `${supabaseUrl}/rest/v1/wind_forecasts?forecast_time=lt.${encodeURIComponent(cutoff)}`,
-    { method: "DELETE", headers: supabaseHeaders },
-  );
-  if (!deleteRes.ok) {
-    // Aufräumen ist unkritisch — Fehler nur protokollieren, nicht abbrechen.
-    console.error(`WARNUNG: Aufräumen alter Prognosen schlug fehl (Status ${deleteRes.status})`);
+  try {
+    const deleteRes = await fetch(
+      `${supabaseUrl}/rest/v1/wind_forecasts?forecast_time=lt.${encodeURIComponent(cutoff)}`,
+      { method: "DELETE", headers: supabaseHeaders, signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
+    );
+    if (!deleteRes.ok) {
+      // Aufräumen ist unkritisch — Fehler nur protokollieren, nicht abbrechen.
+      console.error(`WARNUNG: Aufräumen alter Prognosen schlug fehl (Status ${deleteRes.status})`);
+      cleanupOk = false;
+    }
+  } catch (err) {
+    console.error("WARNUNG: Aufräumen alter Prognosen schlug fehl:", err);
     cleanupOk = false;
   }
 
@@ -917,6 +957,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     outsideFiltered,
     outsideModel,
     batchErrors,
+    stationListErrors,
     upperWind,
     cleanupBefore: cutoff,
     cleanupOk,

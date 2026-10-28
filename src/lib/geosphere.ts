@@ -1,5 +1,5 @@
 import { isInAlps } from "./alps";
-import type { WindStation } from "./wind";
+import { isOutdated, METADATA_TIMEOUT_MS, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
@@ -46,10 +46,6 @@ import { cachedFresh } from "./freshCache";
 const API_BASE =
   process.env.GEOSPHERE_API_BASE_URL ??
   "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min";
-
-// Messwerte, die älter sind als diese Schwelle, gelten als ausgefallen —
-// dieselbe Regel wie bei den Bozner und den Pioupiou-Stationen.
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Vorangestellt an die GeoSphere-Stationsnummer, damit die Codes nicht mit
 // den Bozner SCODEs kollidieren (z. B. "geosphere-11129" = Brenner).
@@ -132,6 +128,7 @@ function valueAt(param: GeoSphereParameter | undefined, idx: number): number | n
 async function fetchActiveStations(): Promise<GeoSphereStationMeta[]> {
   const res = await fetch(`${API_BASE}/metadata`, {
     next: { revalidate: METADATA_REVALIDATE_S },
+    signal: AbortSignal.timeout(METADATA_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`GeoSphere-Metadaten: Status ${res.status}`);
@@ -163,7 +160,10 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
   });
   const url = `${API_BASE}?${params}`;
   const body = await cachedFresh(url, MEASUREMENTS_TTL_MS, async () => {
-    const res = await fetch(url, { cache: "no-store" });
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
     if (!res.ok) {
       throw new Error(`GeoSphere antwortete mit Status ${res.status}`);
     }
@@ -199,10 +199,10 @@ export async function fetchGeoSphereStations(): Promise<WindStation[]> {
     const speedKmh = speed !== null ? round1(msToKmh(speed)) : null;
     const measuredAt = times[idx];
 
-    // Eine ausgefallene Station (letzter Wert älter als 2 h) erscheint als
-    // grauer Punkt, genau wie bei den anderen Quellen.
+    // Eine ausgefallene Station (letzter Wert zu alt, STALE_AFTER_MINUTES in
+    // wind.ts) erscheint als grauer Ring, genau wie bei den anderen Quellen.
     const stale =
-      direction === null || speedKmh === null || now - measuredAt > STALE_AFTER_MS;
+      direction === null || speedKmh === null || isOutdated("geosphere", measuredAt, now);
 
     result.push({
       stationCode: `${CODE_PREFIX}${meta.id}`,

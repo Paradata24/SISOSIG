@@ -1,4 +1,4 @@
-import type { WindStation } from "./wind";
+import { isOutdated, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Ausgewählte Messstationen des Lawinenwarndienstes Tirol (LWD Tirol).
@@ -8,7 +8,10 @@ import { cachedFresh } from "./freshCache";
 //
 // Datenquelle: Open Government Data "Wetterstationsdaten Tirol" des Landes
 // Tirol, EINE GeoJSON-Datei mit allen ~220 Stationen (rund 180 KB), ohne
-// Anmeldung: https://lawine.tirol.gv.at/data/produkte/ogd.geojson
+// Anmeldung: https://wiski.tirol.gv.at/lawine/produkte/ogd.geojson
+// ADRESSE: Bis Okt. 2026 stand hier lawine.tirol.gv.at/data/produkte/ogd.geojson;
+// die leitet seitdem nur noch auf die neue Adresse um. Damit es nicht wie beim
+// Bozner Dienst eines Tages ganz bricht, steht hier direkt die neue.
 // Laut Datensatzbeschreibung (data.gv.at): Windgeschwindigkeit WG und Böe
 // WG_BOE in km/h, Windrichtung WR in Grad — keine Umrechnung nötig.
 // Lizenz: CC BY 4.0 — die Nennung steht über SOURCE_INFO in src/lib/wind.ts
@@ -23,7 +26,7 @@ import { cachedFresh } from "./freshCache";
 // (10-Minuten-Takt), der 5-Minuten-Takt von /api/collect passt.
 
 const API_URL =
-  process.env.LWD_TIROL_URL ?? "https://lawine.tirol.gv.at/data/produkte/ogd.geojson";
+  process.env.LWD_TIROL_URL ?? "https://wiski.tirol.gv.at/lawine/produkte/ogd.geojson";
 
 // Vorangestellt an die LWD-Nummer, damit die Codes nicht kollidieren
 // (z. B. "lwdtirol-ISEE1").
@@ -38,9 +41,6 @@ export const LWD_TIROL_CODE_PREFIX = "lwdtirol-";
 export const LWD_TIROL_STATIONS: Record<string, string> = {
   ISEE1: "Hafelekar (Nordkette, 2270 m)",
 };
-
-// Messwerte älter als 2 h gelten als ausgefallen (wie bei den anderen Quellen).
-const STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 // Neue Werte alle 10 Minuten; 120 s Cache genügen. Über cachedFresh
 // (src/lib/freshCache.ts), damit nach Ablauf sofort frisch geholt wird.
@@ -72,7 +72,10 @@ function numberOrNull(value: unknown): number | null {
 
 export async function fetchLwdTirolStations(): Promise<WindStation[]> {
   const body = await cachedFresh(API_URL, CACHE_TTL_MS, async () => {
-    const res = await fetch(API_URL, { cache: "no-store" });
+    const res = await fetch(API_URL, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    });
     if (!res.ok) throw new Error(`LWD Tirol antwortete mit Status ${res.status}`);
     return (await res.json()) as { features?: LwdFeature[] };
   });
@@ -95,12 +98,11 @@ export async function fetchLwdTirolStations(): Promise<WindStation[]> {
     if (direction === null && speed === null && gust === null) continue;
 
     // "2026-09-29T10:50:00+02:00" enthält den Zeitzonen-Versatz → direkt lesbar.
+    // Ausgefallen wie bei allen Quellen (STALE_AFTER_MINUTES in wind.ts; beim
+    // Hafelekar später, weil er unregelmäßig meldet).
     const measuredAt = p.date ? Date.parse(p.date) : NaN;
     const stale =
-      direction === null ||
-      speed === null ||
-      Number.isNaN(measuredAt) ||
-      now - measuredAt > STALE_AFTER_MS;
+      direction === null || speed === null || isOutdated("lwdtirol", measuredAt, now);
 
     result.push({
       stationCode: `${LWD_TIROL_CODE_PREFIX}${number}`,
