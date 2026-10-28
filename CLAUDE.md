@@ -114,8 +114,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
-| `src/app/api/wind/route.ts` | Live-Werte aller Quellen (jede als Zusatz, mit Zeitlimit), inkl. Caching; meldet Quellen ohne Daten in einer Kopfzeile |
-| `src/app/api/collect/route.ts` | Schreibt Messwerte aller Quellen nach Supabase (POST, per `CRON_SECRET` geschützt) |
+| `src/app/api/wind/route.ts` | Live-Werte aller Quellen (jede als Zusatz, mit Zeitlimit), inkl. Caching; meldet Quellen ohne Daten in einer Kopfzeile und zeigt deren Stationen mit dem letzten gespeicherten Wert |
+| `src/app/api/collect/route.ts` | Schreibt Messwerte aller Quellen nach Supabase (POST, per `CRON_SECRET` geschützt) und pflegt die Stationsliste |
+| `src/lib/stationList.ts` | Stationsliste in der Datenbank (`wind_stations`, Sicht `wind_stations_latest`): schreiben (Sammler) und letzte Werte ausgefallener Quellen lesen (`/api/wind`) |
 | `vercel.json` | Server-Region der Vercel-Funktionen: Dublin (`dub1`), neben der Datenbank |
 | `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
@@ -175,10 +176,18 @@ also alle 3 h, wirklich neue Werte).
   (`OVERWRITE_WINDOW_MS` in `/api/collect`; vorher schrieb jeder Lauf ~1.200
   längst gespeicherte SLF-Werte neu). SLF und DWD liefern ihren Verlauf mit,
   der Sammler nimmt von beiden die letzten 3 h.
-- Offen (Punkt 10 der Code-Durchsicht, Okt. 2026): Liefert eine Quelle gar
-  nichts, verschwinden ihre Stationen noch von der Karte (samt Zeitbalken und
-  Verlaufsbalken). Geplant: mit letztem Wert stehen lassen und nach der
-  Grau-Grenze grau zeigen — braucht eine Stationsliste in der Datenbank.
+- **Ausgefallene Quelle: Stationen bleiben stehen** (Punkt 10 der
+  Code-Durchsicht, Okt. 2026; vorher verschwanden sie samt Zeitbalken und
+  Verlaufsbalken). Liefert eine Quelle gar nichts, holt `/api/wind` ihre
+  Stationen mit dem letzten gespeicherten Wert aus der Datenbank
+  (`src/lib/stationList.ts`: Tabelle `wind_stations` + Sicht
+  `wind_stations_latest`, `supabase/stationsliste.sql`); nach der Grau-Grenze
+  werden sie grau wie bei einem Sensorausfall, der gelbe Hinweis bleibt. Nur
+  bei einem Ausfall fragt `/api/wind` die Datenbank. Die Stationsliste pflegt
+  der Sammler: neue Stationen sofort, Name/Lage/Höhe der bekannten nur zur
+  vollen Stunde (`STATION_LIST_REFRESH_MINUTES`, sonst ~700 unveränderte
+  Zeilen je Lauf). Stationen ohne gespeicherten Wert fehlen — nach 2 Tagen
+  Ausfall (Aufbewahrung) verschwinden sie also doch.
 
 **Darstellung**
 - **Heller Modus dauerhaft an**, unabhängig vom Gerät des Besuchers (früher
@@ -677,7 +686,8 @@ Projektbesitzers entfernt:
   herausgefiltert.
 - **Bestehende Datenbanken** brauchen die einmaligen SQL-Skripte in
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte, seit
-  Okt. 2026 `datenbank-aufraeumen.sql` und `collect-cron-tresor.sql`) — bei
+  Okt. 2026 `datenbank-aufraeumen.sql`, `collect-cron-tresor.sql` und
+  `stationsliste.sql`) — bei
   einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
   bzw. `collect-cron.sql`.
 - **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`

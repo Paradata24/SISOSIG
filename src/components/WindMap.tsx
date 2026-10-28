@@ -678,9 +678,9 @@ export default function WindMap({
   const [leafletMap, setLeafletMap] = useState<L.Map | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Quellen, die beim letzten Abruf keine einzige Station geliefert haben
-  // (Kopfzeile von /api/wind, Okt. 2026). Ihre Stationen fehlen dann auf der
-  // Karte — der Hinweis oben mittig (bzw. in der Statuszeile des Flugmodus)
-  // sagt, warum.
+  // (Kopfzeile von /api/wind, Okt. 2026). Ihre Stationen zeigt /api/wind mit
+  // dem letzten gespeicherten Wert, nach der Grau-Grenze also grau — der
+  // Hinweis oben mittig (bzw. in der Statuszeile des Flugmodus) sagt, warum.
   const [missingSources, setMissingSources] = useState<WindStation["source"][]>([]);
 
   // Die Filterung hängt nur an der Stationsliste und dem gewählten Filter —

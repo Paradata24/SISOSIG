@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { fetchBolzanoReadings } from "@/lib/bolzano";
+import { fetchBolzanoForCollect } from "@/lib/bolzano";
 import { fetchOpenWindMapStations } from "@/lib/pioupiou";
 import { fetchGeoSphereStations } from "@/lib/geosphere";
 import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
 import { fetchLwdTirolStations } from "@/lib/lwdtirol";
-import { fetchDwdReadingsSince } from "@/lib/dwd";
-import { fetchSlfReadingsSince } from "@/lib/slf";
+import { fetchDwdReadingsSince, fetchDwdStations } from "@/lib/dwd";
+import { fetchSlfReadingsSince, fetchSlfStations } from "@/lib/slf";
+import { saveStationList } from "@/lib/stationList";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 
 // Sammel-Route: ruft alle Wetterdienste ab (dieselben Quellen wie /api/wind,
@@ -13,6 +14,10 @@ import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 // Supabase-Tabelle wind_measurements. Ersetzt den früheren
 // GitHub-Actions-Workflow und wird stattdessen von Supabase Cron per POST
 // angestoßen.
+//
+// Nebenbei pflegt sie die Stationsliste (Tabelle wind_stations: Name, Lage,
+// Höhe, Okt. 2026). Aus ihr zeigt /api/wind die Stationen einer gerade
+// ausgefallenen Quelle mit ihrem letzten Wert weiter (src/lib/stationList.ts).
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -67,6 +72,11 @@ const HISTORY_WINDOW_MS = 3 * 60 * 60 * 1000;
 // überschrieben, falls ein Dienst einen Wert nachträglich vervollständigt.
 const OVERWRITE_WINDOW_MS = 60 * 60 * 1000;
 
+// Aus demselben Grund trägt jeder Lauf nur NEUE Stationen in die
+// Stationsliste ein. Name, Lage und Höhe der bekannten frischt nur der Lauf
+// zur vollen Stunde auf (der Cron-Job läuft zu :00, :05, …).
+const STATION_LIST_REFRESH_MINUTES = 5;
+
 // Nicht cachen und immer serverseitig zur Laufzeit ausführen — sonst würde
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
 export const dynamic = "force-dynamic";
@@ -90,6 +100,13 @@ interface Reading {
   gustKmh: number | null;
 }
 
+// Was eine Quelle liefert: die Messwerte für wind_measurements und ihre
+// Stationen (Name, Lage, Höhe) für die Stationsliste.
+interface SourceResult {
+  rows: MeasurementRow[];
+  stations: WindStation[];
+}
+
 function fromReadings(readings: Reading[], source: WindStation["source"]): MeasurementRow[] {
   return readings.map((r) => ({
     station_code: r.stationCode,
@@ -101,8 +118,9 @@ function fromReadings(readings: Reading[], source: WindStation["source"]): Measu
   }));
 }
 
-// Quellen, die nur ihren neuesten Wert liefern (Live-Format der Karte).
-function fromStations(stations: WindStation[]): MeasurementRow[] {
+// Quellen, die nur ihren neuesten Wert liefern (Live-Format der Karte): Ihre
+// Stationen sind zugleich die Einträge der Stationsliste.
+function fromStations(stations: WindStation[]): SourceResult {
   const rows: MeasurementRow[] = [];
   for (const s of stations) {
     if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
@@ -116,24 +134,56 @@ function fromStations(stations: WindStation[]): MeasurementRow[] {
       source: s.source,
     });
   }
-  return rows;
+  return { rows, stations };
+}
+
+// SLF und DWD: Messwerte und Stationen kommen aus zwei Funktionen, die sich
+// den Abruf teilen (Zwischenspeicher in slf.ts bzw. cachedFresh in dwd.ts).
+// Die Stationsliste ist nur ein Zusatz — scheitert sie, werden die Messwerte
+// trotzdem gespeichert.
+async function withStations(
+  readings: Promise<MeasurementRow[]>,
+  stations: Promise<WindStation[]>,
+): Promise<SourceResult> {
+  const [rows, list] = await Promise.all([
+    readings,
+    stations.catch((err) => {
+      console.error("Stationen für die Stationsliste nicht abrufbar:", err);
+      return [];
+    }),
+  ]);
+  return { rows, stations: list };
 }
 
 // Alle Quellen, je mit ihrer Umwandlung in Datenbankzeilen. Dieselben Quellen
 // wie in /api/wind — eine neue Quelle braucht an beiden Stellen einen Eintrag.
-const SOURCES: Array<[WindStation["source"], () => Promise<MeasurementRow[]>]> = [
-  ["bolzano", async () => fromReadings(await fetchBolzanoReadings(), "bolzano")],
+const SOURCES: Array<[WindStation["source"], () => Promise<SourceResult>]> = [
+  [
+    "bolzano",
+    async () => {
+      const { readings, stations } = await fetchBolzanoForCollect();
+      return { rows: fromReadings(readings, "bolzano"), stations };
+    },
+  ],
   ["openwindmap", async () => fromStations(await fetchOpenWindMapStations())],
   ["geosphere", async () => fromStations(await fetchGeoSphereStations())],
   ["meteoswiss", async () => fromStations(await fetchMeteoSwissStations())],
   ["lwdtirol", async () => fromStations(await fetchLwdTirolStations())],
   [
     "dwd",
-    async () => fromReadings(await fetchDwdReadingsSince(Date.now() - HISTORY_WINDOW_MS), "dwd"),
+    () =>
+      withStations(
+        fetchDwdReadingsSince(Date.now() - HISTORY_WINDOW_MS).then((r) => fromReadings(r, "dwd")),
+        fetchDwdStations(),
+      ),
   ],
   [
     "slf",
-    async () => fromReadings(await fetchSlfReadingsSince(Date.now() - HISTORY_WINDOW_MS), "slf"),
+    () =>
+      withStations(
+        fetchSlfReadingsSince(Date.now() - HISTORY_WINDOW_MS).then((r) => fromReadings(r, "slf")),
+        fetchSlfStations(),
+      ),
   ],
 ];
 
@@ -171,10 +221,10 @@ export async function POST(request: Request) {
   const results = await Promise.all(
     SOURCES.map(async ([source, load]) => {
       try {
-        return { source, rows: await load(), error: null };
+        return { source, ...(await load()), error: null };
       } catch (err) {
         console.error(`Quelle ${source} nicht abrufbar:`, err);
-        return { source, rows: [] as MeasurementRow[], error: String(err) };
+        return { source, rows: [] as MeasurementRow[], stations: [] as WindStation[], error: String(err) };
       }
     }),
   );
@@ -239,7 +289,19 @@ export async function POST(request: Request) {
     );
   }
 
-  // 5) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
+  // 5) Stationsliste pflegen (siehe STATION_LIST_REFRESH_MINUTES). Unkritisch —
+  //    ein Fehler wird nur protokolliert und in der Antwort gemeldet.
+  const stationListError = await saveStationList(
+    supabaseUrl,
+    supabaseHeaders,
+    results.flatMap((r) => r.stations),
+    new Date(now).getUTCMinutes() < STATION_LIST_REFRESH_MINUTES,
+  );
+  if (stationListError) {
+    console.error(`WARNUNG: Stationsliste nicht gespeichert: ${stationListError}`);
+  }
+
+  // 6) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
   const cutoff = new Date(now - RETENTION_MS).toISOString();
   let deleted = true;
   try {
@@ -268,6 +330,7 @@ export async function POST(request: Request) {
     saved: recentRows.length + olderRows.length,
     sources: perSource,
     failedSources,
+    stationListOk: stationListError === null,
     cleanupBefore: cutoff,
     cleanupOk: deleted,
   });

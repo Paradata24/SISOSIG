@@ -37,3 +37,32 @@ create index if not exists wind_measurements_time_idx
 -- NUR der service_role Key (der Sammel-Job und die API-Route) auf die
 -- Tabelle zugreifen — der öffentliche anon-Key hat keinen Zugriff.
 alter table public.wind_measurements enable row level security;
+
+-- Stationsliste (Name, Lage, Höhe; eingetragen von /api/collect) und der
+-- neueste gespeicherte Wert je Station. Damit zeigt /api/wind die Stationen
+-- einer gerade ausgefallenen Quelle weiter (src/lib/stationList.ts).
+-- Erklärungen in supabase/stationsliste.sql — dort steht dasselbe für
+-- bestehende Datenbanken.
+create table if not exists public.wind_stations (
+  station_code text primary key,
+  source text not null,
+  name text not null,
+  lat double precision not null,
+  lng double precision not null,
+  altitude real,
+  updated_at timestamptz not null default now()
+);
+alter table public.wind_stations enable row level security;
+
+create or replace view public.wind_stations_latest
+with (security_invoker = true) as
+select s.station_code, s.source, s.name, s.lat, s.lng, s.altitude,
+       m.measured_at, m.direction, m.speed_kmh, m.gust_kmh
+from public.wind_stations s
+cross join lateral (
+  select w.measured_at, w.direction, w.speed_kmh, w.gust_kmh
+  from public.wind_measurements w
+  where w.station_code = s.station_code
+  order by w.measured_at desc
+  limit 1
+) m;
