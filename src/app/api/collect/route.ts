@@ -33,7 +33,7 @@ import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 // Dienst einen Wert verspätet nach, nachdem der nächste schon da war, wird er
 // nie der "neueste" und taucht in /sensors überhaupt nicht auf. Dann fehlt eine
 // 10-Minuten-Spalte bei allen Stationen gleichzeitig. Im Verlaufsbalken wird
-// eine solche einzelne Lücke überbrückt (BAND_GAP_MS in WindHistoryPanel.tsx).
+// eine solche einzelne Lücke überbrückt (measurementGapMs in src/lib/wind.ts).
 //
 // AUSFÄLLE: Alle Quellen werden gleichzeitig abgefragt, jede mit Zeitlimit
 // (SOURCE_TIMEOUT_MS in src/lib/wind.ts). Scheitert eine, werden die übrigen

@@ -11,7 +11,7 @@ const barlowSemiCondensed = Barlow_Semi_Condensed({
 
 export const metadata: Metadata = {
   title: "Should I stay or should I go",
-  description: "Live-Windwerte Südtiroler Wetterstationen auf einer Karte",
+  description: "Live-Windwerte der Alpen-Wetterstationen auf einer Karte",
   // Für die Web-App am iPhone (Home-Bildschirm): Name unter dem Symbol und
   // ohne Safari-Leisten öffnen. Die Uhrzeit-Leiste oben bleibt hell
   // ("default"), die Seite beginnt darunter — so verdeckt nichts den

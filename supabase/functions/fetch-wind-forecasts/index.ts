@@ -91,9 +91,10 @@ const OPEN_METEO_BASE =
 const PIOUPIOU_API_BASE =
   Deno.env.get("PIOUPIOU_API_BASE_URL") ?? "https://api.pioupiou.fr/v1";
 
-// Grobe Bounding Box Südtirol — identisch zu src/lib/pioupiou.ts (dort für
-// /api/wind und /api/collect, hier separat dupliziert, weil diese Edge
-// Function unter Deno läuft und nichts aus src/lib importieren kann).
+// Grobe Bounding Box Südtirol: Prognosen gibt es nur für die Südtiroler
+// OpenWindMap-Stationen. Die Karte zeigt seit Okt. 2026 alle im Alpenraum
+// (src/lib/pioupiou.ts); die übrigen haben — wie MeteoSchweiz — keine
+// Prognose-Kurve.
 const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
 const PIOUPIOU_CODE_PREFIX = "pioupiou-";
 

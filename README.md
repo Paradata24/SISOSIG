@@ -1,7 +1,10 @@
-# SISOSIG – Südtirol Live-Wind
+# SISOSIG – Live-Wind in den Alpen
 
-Eine Website, die Live-Windwerte Südtiroler Wetterstationen auf einer Karte
-anzeigt (Leaflet + OpenTopoMap).
+Eine Website (und Web-App) für Gleitschirmflieger, die Live-Windwerte von
+Wetterstationen im Alpenraum auf einer Karte anzeigt (Leaflet + OpenTopoMap):
+Südtirol (Wetterdienst und OpenWindMap), Schweiz (SLF, MeteoSchweiz),
+Österreich (GeoSphere, LWD Tirol) und die Zugspitze (DWD) — mit
+12-Stunden-Verlauf, Prognose und Flugmodus.
 
 ## Lokal starten
 
@@ -50,10 +53,10 @@ Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
 filtern. Die Stationscodes findet man in der Antwort von
 `/services/meteo/v1/stations`.
 
-Zusätzlich holt `/api/wind` über `src/lib/pioupiou.ts` die Südtiroler
-Stationen des **OpenWindMap/Pioupiou-Netzwerks** dazu (Endpunkt
-`https://api.pioupiou.fr/v1/live/all`, gefiltert über eine grobe
-Südtirol-Bounding-Box, da die API keinen Regionsfilter kennt) und zeigt sie
+Zusätzlich holt `/api/wind` über `src/lib/pioupiou.ts` die Stationen des
+**OpenWindMap/Pioupiou-Netzwerks** im Alpenraum dazu (Endpunkt
+`https://api.pioupiou.fr/v1/live/all`, gefiltert über die Alpen-Regel, da
+die API keinen Regionsfilter kennt) und zeigt sie
 genau wie die Bozner Stationen auf der Karte an — Pfeil, Farbskala,
 Klick-Historie, alles identisch. Ihre Stationscodes haben das Format
 `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie nicht mit den Bozner
@@ -277,28 +280,34 @@ klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
 
 - eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
   „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
-- zwei weisse Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
+- zwei schwarze Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
   den Farbflächen der Windstärke-Skala (dieselbe Skala wie die Windpfeile
   auf der Karte); die Fläche **zwischen** den beiden Kurven ist
-  halbtransparent weiss gefüllt, damit man den Abstand zwischen Mittelwind
-  und Böen auf einen Blick sieht,
-- dasselbe Kurvenpaar noch einmal in **rot** für die ICON-CH1-Prognose,
-  inklusive roter Fläche dazwischen,
-- darunter eine Reihe Windrichtungs-Pfeile, einer je Messpunkt, jeweils in
+  halbtransparent gefüllt, damit man den Abstand zwischen Mittelwind und
+  Böen auf einen Blick sieht,
+- dasselbe Kurvenpaar für die ICON-CH1-Prognose in **Dunkelgrau,
+  gestrichelt**, mit blasserer Fläche dazwischen; rechts im Prognosebereich
+  stehen „Prognose ICON-CH1" und die Startzeit des Modelllaufs
+  („Lauf HH:MM Uhr"),
+- die Windrichtung der Prognose als Pfeilreihe **oben im Diagramm** (je
+  Stunde ein Pfeil),
+- bei Rittnerhorn und Leiterspitz zusätzlich der **Höhenwind** (ICON-D2,
+  700 hPa, ca. 3000 m) als blaue gestrichelte Linie,
+- unter dem Diagramm eine Reihe Windrichtungs-Pfeile der Messung, jeweils in
   die Windrichtung gedreht und nach Windstärke eingefärbt,
 - darunter die Messwerte als Zahlen (oben Mittelwind, unten Böe), jede Zahl
   in einem **eingefärbten Quadrat**: die Farbe entspricht der Windskala des
   jeweiligen Werts, sodass sich die Windstärke schon an der Zahlenreihe
   ablesen lässt (Zahlen zu vollen Stunden sind fett),
-- darunter noch einmal die Uhrzeiten, damit man die Zahlenreihen ohne
-  Blick nach ganz oben zeitlich einordnen kann,
-- ganz unten die Prognosewerte (ICON-CH1) in denselben Quadraten, mit dem
-  Richtungspfeil links daneben.
+- ganz unten die Datenquelle der Station als Link („Quelle: …").
+
+Liefert die Station auffällige Werte, steht über dem Diagramm der Hinweis
+„Wahrscheinlich Messfehler: …" (Regeln in `src/lib/plausibility.ts`).
 
 Das Diagramm ist breiter als der Bildschirm und lässt sich horizontal
-scrollen (Desktop und Handy); beim Öffnen steht es am rechten Rand
-(aktuelle Zeit), nach links scrollen zeigt die älteren Stunden. Schließen
-per X-Button oder Escape-Taste.
+scrollen (Desktop und Handy); beim Öffnen steht die aktuelle Uhrzeit in der
+Mitte, nach links scrollen zeigt die älteren Stunden. Schließen per X-Button
+oder Escape-Taste.
 
 Code: `src/components/WindHistoryPanel.tsx`. Geöffnet wird der Balken per
 Klick auf einen Marker in `src/components/WindMap.tsx`; die Daten kommen
@@ -311,17 +320,17 @@ geändert, müssen `PAST_HOURS`/`FORECAST_HOURS` in der Edge Function
 `supabase/functions/fetch-wind-forecasts/index.ts` mitgezogen werden (Deno
 kann nicht aus `src/lib` importieren).
 
-**Feste km/h-Skala:** Die senkrechte Achse geht immer von 0 bis 45 km/h
-(`Y_MAX_KMH` in `src/components/WindHistoryPanel.tsx`) — früher wuchs sie
-mit den Daten mit, wodurch ein ruhiger und ein stürmischer Tag gleich hoch
-aussahen. Werte über 45 km/h werden oben gekappt: die Kurve läuft dann am
-oberen Rand entlang. Die echten Zahlen stehen unverändert in den
-Werte-Zeilen unter den Pfeilen, und die Pfeilfarben nutzen weiterhin die
-volle Windskala.
+**Mitwachsende km/h-Skala:** Die senkrechte Achse beginnt immer bei 0 und
+reicht **mindestens bis 45 km/h** — so bleiben ruhige Tage untereinander
+vergleichbar (dieselbe Kurvenhöhe = dieselbe Windstärke). Ist der höchste
+Wert (Messung oder Prognose) größer, wächst die Obergrenze in
+15er-Schritten mit, sodass oben nichts mehr abgeschnitten wird.
+Stellknöpfe: `Y_MIN_MAX_KMH`, `Y_MAX_STEP_KMH` und `Y_MAX_HEADROOM_KMH` in
+`src/components/WindHistoryPanel.tsx`.
 
 Die Zahlen an der Achse stehen bewusst nicht in runden 10er-Schritten,
 sondern genau dort, wo im Diagramm die Farbe wechselt (0 / 10 / 20 / 25 /
-30, plus die Obergrenze 45 ganz oben). Sie kommen direkt aus
+30, plus die jeweilige Obergrenze ganz oben). Sie kommen direkt aus
 `WIND_COLOR_SCALE` in `src/lib/wind.ts`: Wird die Skala dort geändert,
 ändert sich die Achsenbeschriftung automatisch mit.
 
@@ -339,8 +348,9 @@ die Kurve dadurch aber nicht.
 
 **Hinweis zu Lücken in der Kurve:** Der Bozner Dienst überspringt gelegentlich
 einen einzelnen Messzeitpunkt — dann fehlt bei **allen** Stationen gleichzeitig
-eine Spalte. Solche einzelnen Aussetzer überbrückt die Kurve (`BAND_GAP_MS` in
-`src/components/WindHistoryPanel.tsx`, 25 Minuten). Fehlen zwei oder mehr Werte
+eine Spalte. Solche einzelnen Aussetzer überbrückt die Kurve
+(`measurementGapMs` in `src/lib/wind.ts`: 2,5 Messtakte, also 25 Minuten, beim
+SLF mit seinem 30-Minuten-Takt 75 Minuten). Fehlen zwei oder mehr Werte
 am Stück — also bei einem echten Stationsausfall —, reißt die Kurve weiterhin
 sichtbar auf. Pfeil und Werte-Quadrat fehlen an einer übersprungenen Stelle in
 jedem Fall, es wird also nichts dazuerfunden.
@@ -373,15 +383,24 @@ und z. B. sehen, wie der Föhn durchbricht.
   nur die aktuellen Werte, und der Verlaufsbalken der Station reicht bis zum
   unteren Rand. Schließt man ihn, ist der Zeitbalken wieder da (auf „Aktuell").
 - Stationen, für die zu diesem Zeitpunkt keine Messung gespeichert ist,
-  erscheinen als **grauer Punkt** — genauso wie eine Station, die gerade
-  ausgefallen ist. Es wird nichts dazugerechnet oder geschätzt.
+  erscheinen als **blasser grauer Ring** — genauso wie eine Station, die
+  gerade ausgefallen ist. Es wird nichts dazugerechnet oder geschätzt.
 
 **Datenquelle:** `src/app/api/timeline/route.ts` (Komponente:
-`src/components/TimeSlider.tsx`). Die Route liest die Tabelle
-`wind_measurements` seitenweise und liefert ein kompaktes Spaltenformat — eine
-gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund
-15–25 KB. Sie werden **gleich beim Öffnen der Seite** geholt (für den
+`src/components/TimeSlider.tsx`). Die Route holt alle Messwerte der letzten
+12 Stunden in **einem** Schritt über die Datenbank-Funktion `wind_timeline`
+(seit Okt. 2026; vorher seitenweise in gut 30 Paketen, zusammen gut 2 s — die
+Funktion selbst braucht ~0,2 s) und liefert ein kompaktes Spaltenformat: eine
+gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund 110 KB
+(komprimiert übertragen, ausgepackt knapp 400 KB; Okt. 2026, gut 560
+Stationen). Sie werden **gleich beim Öffnen der Seite** geholt (für den
 Farbstrich) und alle 10 Minuten aufgefrischt.
+
+**Bei einer bestehenden Datenbank einmalig:** `supabase/zeitbalken-funktion.sql`
+im Supabase SQL-Editor ausführen (legt nur die Funktion an, verändert keine
+Daten; bei einer Neuinstallation steckt sie schon in `schema.sql`). Fehlt
+sie, meldet `/api/timeline` „Funktion fehlt: supabase/zeitbalken-funktion.sql
+ausführen", und der Zeitbalken bleibt leer.
 
 > **Bezugsname für Änderungswünsche: „Zeitbalken".**
 
@@ -429,8 +448,9 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   Podersdorf, Andau, Hohenau) bekommen keine Prognose; sie werden vorab
   aussortiert, weil Open-Meteo sonst die ganze Anfrage ablehnt.
 - **Kontingent:** Open-Meteo erlaubt kostenlos 10.000 Aufrufe pro Tag,
-  gezählt je Station. ~430 Stationen × 8 Läufe ≈ **3.400 am Tag** (vorher
-  stündlich ~310 Stationen ≈ 7.400).
+  gezählt je Station. ~490 Stationen × 8 Läufe ≈ **3.900 am Tag**, dazu 16
+  für den Höhenwind (Okt. 2026; bis Sept. 2026 wurde stündlich abgefragt,
+  damals ~7.400 am Tag).
 - Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Angezeigt werden
   davon nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
   (und für einen ausgefallenen); `/api/forecast` schneidet den Überhang ab.
@@ -480,16 +500,18 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
    den service_role Key selbst und lehnt fremde Aufrufe mit `401` ab.
    Eigene Secrets müssen **nicht** gesetzt werden (`SUPABASE_URL` und
    `SUPABASE_SERVICE_ROLE_KEY` stellt Supabase automatisch bereit).
-4. **Stündlichen Abruf einrichten:** Wieder im **SQL Editor** den Inhalt
-   von `supabase/forecast-cron.sql` einfügen, vorher die zwei Platzhalter
-   ersetzen (Projekt-URL und service_role Key — dieselben Werte wie in den
-   Vercel-Umgebungsvariablen), dann **Run** klicken. Die echten Werte
-   niemals in die Datei im Repository zurückschreiben!
-5. **Prüfen:** Nach dem nächsten vollen Stundenwechsel (Minute 10) im
-   **Table Editor → `wind_forecasts`** nachsehen (nach `fetched_at`
-   absteigend sortieren). Ob der Cron-Job lief, zeigt
-   `select * from cron.job_run_details order by start_time desc limit 10;`
-   im SQL Editor.
+4. **Regelmäßigen Abruf einrichten (alle 15 Minuten):** Wieder im
+   **SQL Editor** den Inhalt von `supabase/forecast-cron.sql` einfügen,
+   vorher die zwei Platzhalter ersetzen (Projekt-URL und service_role Key —
+   dieselben Werte wie in den Vercel-Umgebungsvariablen), dann **Run**
+   klicken. Die echten Werte niemals in die Datei im Repository
+   zurückschreiben! Neue Prognosewerte holt die Funktion trotzdem nur bei
+   einem neuen Modelllauf (siehe oben).
+5. **Prüfen:** Nach spätestens 15 Minuten im **Table Editor →
+   `wind_forecasts`** nachsehen (nach `fetched_at` absteigend sortieren). Was
+   die Funktion geantwortet hat, zeigt
+   `select status_code, content, created from net._http_response order by created desc limit 5;`
+   im SQL Editor (siehe „Fehlersuche").
 
 ### Manuell testen (optional)
 
@@ -548,18 +570,25 @@ Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
 
 ## OpenWindMap/Pioupiou-Stationen
 
-Zusätzlich zu den Bozner Stationen zeigt die Karte Südtiroler Stationen aus
-dem **OpenWindMap/Pioupiou-Netzwerk** (batteriebetriebene, private
-Windsensoren, vor allem an Startplätzen für Gleitschirmflieger). Code:
-`src/lib/pioupiou.ts` (genutzt von `/api/wind` und `/api/collect`), in der
-Edge Function `fetch-wind-forecasts` aus Deno-Gründen separat dupliziert
-(siehe oben).
+Zusätzlich zu den Bozner Stationen zeigt die Karte die Stationen des
+**OpenWindMap/Pioupiou-Netzwerks** im Alpenraum (batteriebetriebene, private
+Windsensoren, vor allem an Startplätzen für Gleitschirmflieger; Okt. 2026
+rund 90 Stationen in Südtirol, der Schweiz, Österreich, Bayern und am
+Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt von
+`/api/wind` und `/api/collect`).
 
 - **Endpunkt:** `https://api.pioupiou.fr/v1/live/all` liefert ALLE
-  Stationen weltweit ohne Regionsfilter. Südtirol wird über eine grobe
-  Bounding Box herausgefiltert (Breite 46.2–47.1, Länge 10.3–12.5,
-  `SOUTH_TYROL_BBOX` in `src/lib/pioupiou.ts` — bei Bedarf dort
-  nachjustieren).
+  Stationen weltweit ohne Regionsfilter. Behalten werden die im Alpenraum
+  (`isInAlps` in `src/lib/alps.ts`, dieselbe Regel wie bei allen Quellen).
+  Bis Okt. 2026 war es nur eine grobe Südtirol-Box mit 6 Stationen.
+- **Abgeschaltete Stationen:** Wer seit über 2 Tagen nichts gemeldet hat,
+  erscheint nicht (`MAX_SILENCE_MS`, gleich lang wie die Aufbewahrung in der
+  Datenbank) — das sind meist abgebaute oder für die Saison abgeschaltete
+  Stationen. Kürzere Pausen (nachts, windstill) zeigen einen grauen Ring.
+- **Prognose nur für Südtirol:** Die Edge Function `fetch-wind-forecasts`
+  fragt OpenWindMap weiterhin nur in Südtirol ab (eigene Südtirol-Box). Die
+  übrigen OpenWindMap-Stationen haben — wie MeteoSchweiz — keine
+  Prognose-Kurve.
 - **Stationscodes:** `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie
   nicht mit den Bozner SCODEs kollidieren.
 - **Stationshöhe aus dem Namen:** Die Pioupiou-API liefert keine
@@ -621,8 +650,15 @@ mit Bern/Zürich/Basel/Genf, Jura) fallen weg.
   eine Kopie; ändert man den Umriss, müssen beide Stellen angepasst und die
   Edge Function im Supabase-Dashboard neu deployt werden.
 - **Betrifft:** GeoSphere Austria (191 von 286 Stationen bleiben),
-  MeteoSchweiz (97 von 151), SLF (207 von 208). Bozen, OpenWindMap (Südtirol),
-  LWD Tirol und Zugspitze liegen sowieso in den Alpen.
+  MeteoSchweiz (97 von 151), SLF (207 von 208) und seit Okt. 2026
+  OpenWindMap (rund 90 von gut 750 weltweit). Bozen, LWD Tirol und Zugspitze
+  liegen sowieso in den Alpen.
+- **West- und Südrand:** Der Umriss ist dort eine gerade Linie, weil es
+  anfangs in Frankreich und Italien keine Stationen gab. Mit OpenWindMap
+  schneidet er den französischen und italienischen Alpenteil ab (Okt. 2026:
+  gut 160 aktive Stationen in den französischen Alpen und 13 am italienischen
+  Alpenrand liegen außerhalb). Erweitern ginge, ist aber eine Entscheidung des
+  Projektbesitzers.
 - **Ausnahme Windanzeiger:** Chasseral und La Dôle (MeteoSchweiz, Jura) bleiben,
   weil sie zu den vom Projektbesitzer gewählten Windanzeiger-Stationen gehören.
 - Alte Messwerte und Prognosen der entfernten Stationen löscht das
@@ -726,9 +762,9 @@ sie neu deployen.
   lang keine Werte, spätestens seit dem 25.10.2026 wieder.
   Umbiegen: `DWD_CDC_BASE_URL`.
 - **Bälmeten** (Paradeltaclub Uri, OpenWindMap-Station 1535, Code
-  `pioupiou-1535`): Ausnahme in `EXTRA_STATIONS` in `src/lib/pioupiou.ts`,
-  weil die Station außerhalb der Südtirol-Bounding-Box liegt. Die Höhe (2414 m)
-  steht dort fest im Code.
+  `pioupiou-1535`): kommt seit Okt. 2026 mit allen OpenWindMap-Stationen im
+  Alpenraum. Die Höhe (2414 m) steht fest in `ALTITUDE_OVERRIDES` in
+  `src/lib/pioupiou.ts`, weil der Stationsname keine enthält.
 
 **Windanzeiger:** Diese Stationen (und die österreichischen GeoSphere-Gipfel)
 sind über ihren Stationscode in `WINDANZEIGER_STATION_CODES`
