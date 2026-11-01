@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Barlow_Semi_Condensed } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { EARLY_WIND_SCRIPT } from "@/lib/earlyWind";
 
 const barlowSemiCondensed = Barlow_Semi_Condensed({
   variable: "--font-barlow-semi-condensed",
@@ -72,6 +73,10 @@ export default function RootLayout({
           früher, vor allem im Mobilfunknetz.
         */}
         <link rel="preconnect" href="https://tile.opentopomap.org" />
+        {/* Winddaten sofort anfordern, noch bevor das JavaScript der Seite und
+            das Kartenprogramm geladen sind; die Karte übernimmt die Antwort
+            (Erklärung in src/lib/earlyWind.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: EARLY_WIND_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">
         {children}
