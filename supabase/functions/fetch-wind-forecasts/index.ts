@@ -50,6 +50,9 @@
 // sind das ~5.200 Aufrufe (52 %); bis Okt. 2026 waren es ~490 Stationen.
 // Das Nachholen gescheiterter Stationen (s. u.) kostet nur bei Fehlern etwas
 // und höchstens RETRY_MAX_ATTEMPTS-mal je Lauf.
+// Dazu kommt eine Grenze von 600 Aufrufen pro MINUTE (und 5.000 pro Stunde).
+// Mehr als MAX_STATIONS_PER_RUN Stationen fragt ein Anstoß deshalb nicht ab;
+// der Rest folgt beim nächsten Anstoß (siehe dort).
 // Der Höhenwind (ICON-D2, s. u.) kostet je Lauf nur 1 Aufruf pro Station
 // (2 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag.
 //
@@ -62,7 +65,8 @@
 // Feld detail) und holt sie bei den nächsten Cron-Anstößen (alle 15 min)
 // nach, höchstens RETRY_MAX_ATTEMPTS-mal. Stationen außerhalb des
 // Modellgebiets ("No data is available") werden nicht nachgeholt — dort
-// kommt auch beim nächsten Mal nichts.
+// kommt auch beim nächsten Mal nichts. Auf demselben Weg kommen die Stationen
+// über MAX_STATIONS_PER_RUN beim nächsten Anstoß dran (Minutengrenze).
 //
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
@@ -108,6 +112,18 @@ const STATUS_NAME = "prognose";
 // So oft werden gescheiterte Stationen eines Laufs höchstens nachgeholt
 // (je Cron-Anstoß einmal, also innerhalb von rund einer Stunde).
 const RETRY_MAX_ATTEMPTS = 4;
+
+// Höchstens so viele Stationen fragt ein Anstoß bei Open-Meteo ab. Grund:
+// Kostenlos sind nur 600 Aufrufe pro Minute erlaubt. Seit alle ~650
+// Stationen der Karte eine Prognose bekommen (Nov. 2026), lag ein Lauf
+// darüber — beim ersten Lauf am 01.11.2026 lehnte Open-Meteo die letzten
+// beiden Blöcke ab (Status 429, "Minutely API request limit exceeded"). Die
+// übrigen Stationen werden wie gescheiterte vorgemerkt und beim nächsten
+// Anstoß (15 min später) geholt, nur eben ohne Fehler. Luft bis 600 für den
+// Höhenwind (2 Aufrufe), für das Halbieren eines Blocks bei "No data is
+// available" (bis ~100 Aufrufe zusätzlich, siehe fetchForecasts) und falls sich
+// andere Nutzer den Absender teilen.
+const MAX_STATIONS_PER_RUN = 450;
 
 // Modellname in der Datenbank (Spalte "model") — kurz und stabil — und der
 // dazu passende Modellname der Open-Meteo-API. Bodenwind für alle Stationen
@@ -457,23 +473,26 @@ async function retryPending(
   const ageMs = Date.now() - Date.parse(status.fetchedAt);
   if (!(ageMs <= MIN_REFETCH_WITHOUT_META_MS)) return null;
 
-  const fetched = await fetchForecasts(status.pending, new Date().toISOString());
+  // Auch hier höchstens MAX_STATIONS_PER_RUN (Minutengrenze von Open-Meteo).
+  const batch = status.pending.slice(0, MAX_STATIONS_PER_RUN);
+  const rest = status.pending.slice(MAX_STATIONS_PER_RUN);
+  const fetched = await fetchForecasts(batch, new Date().toISOString());
   for (const row of fetched.rows) row.model_run = status.modelRun;
   let saveError: string | null = null;
   if (fetched.rows.length > 0) {
     saveError = await saveForecastRows(supabaseUrl, headers, fetched.rows);
   }
   // Konnte nicht gespeichert werden, bleiben alle offen.
-  const stillPending = saveError ? status.pending : fetched.failed;
+  const stillPending = saveError ? status.pending : [...fetched.failed, ...rest];
   const errors = [...fetched.batchErrors, ...(saveError ? [`Speichern: ${saveError}`] : [])];
   await saveForecastStatus(supabaseUrl, headers, {
-    ok: stillPending.length === 0,
+    ok: errors.length === 0,
     valueCount: saveError ? 0 : fetched.rows.length,
     error: errors.length > 0 ? errors.join("; ") : null,
     detail: { ...status, pending: stillPending, attempts: status.attempts + 1 },
   });
   return {
-    stations: status.pending.length,
+    stations: batch.length,
     saved: saveError ? 0 : fetched.rows.length,
     stillPending: stillPending.length,
     attempt: status.attempts + 1,
@@ -816,10 +835,12 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Keine Station in der Stationsliste (wind_stations)" }, 502);
   }
 
-  // 3) Bodenwind (ICON-CH1) batchweise abfragen (siehe fetchForecasts).
+  // 3) Bodenwind (ICON-CH1) batchweise abfragen (siehe fetchForecasts) —
+  //    höchstens MAX_STATIONS_PER_RUN, der Rest folgt beim nächsten Anstoß.
   const fetchedAt = new Date().toISOString();
+  const deferred = stations.slice(MAX_STATIONS_PER_RUN);
   const { rows, skippedNullHours, outsideModel, batchErrors, failed } = await fetchForecasts(
-    stations,
+    stations.slice(0, MAX_STATIONS_PER_RUN),
     fetchedAt,
   );
 
@@ -853,13 +874,14 @@ export async function handleRequest(request: Request): Promise<Response> {
     return json({ error: "Supabase-Upsert schlug fehl", details: saveError }, 502);
   }
 
-  // 5) Zustand speichern — mit den Stationen gescheiterter Blöcke, die bei
-  //    den nächsten Anstößen nachgeholt werden (siehe retryPending).
+  // 5) Zustand speichern — mit den Stationen gescheiterter Blöcke und denen
+  //    über MAX_STATIONS_PER_RUN, die bei den nächsten Anstößen geholt werden
+  //    (siehe retryPending). Letztere sind kein Fehler.
   const statusOk = await saveForecastStatus(supabaseUrl, supabaseHeaders, {
-    ok: failed.length === 0,
+    ok: batchErrors.length === 0,
     valueCount: rows.length,
     error: batchErrors.length > 0 ? batchErrors.join("; ") : null,
-    detail: { modelRun: modelRunIso, fetchedAt, pending: failed, attempts: 0 },
+    detail: { modelRun: modelRunIso, fetchedAt, pending: [...failed, ...deferred], attempts: 0 },
   });
 
   // 6) Aufräumen: Prognosen älter als RETENTION_DAYS Tage löschen.
@@ -892,7 +914,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     outsideFiltered,
     outsideModel,
     batchErrors,
-    pending: failed.length,
+    pending: failed.length + deferred.length,
+    deferred: deferred.length,
     statusOk,
     upperWind,
     cleanupBefore: cutoff,
