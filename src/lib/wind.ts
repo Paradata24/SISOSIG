@@ -264,6 +264,20 @@ export const TIMELINE_SLOT_COUNT =
   HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
 /**
+ * Kurzes Zeitfenster von /api/timeline (Aufruf /api/timeline?hours=8, Punkt
+ * 27 der Code-Durchsicht, Nov. 2026). Die vollen 48 h sind rund 450 KB; die
+ * Seite holt sie nur noch beim Öffnen der Hauptseite. Danach kommen alle
+ * 10 Minuten nur diese letzten Stunden und werden eingefügt
+ * (src/lib/timelineMerge.ts), und der Flugmodus braucht überhaupt nur sie
+ * (für die Messfehler-Erkennung der Live-Werte). Rund 80 KB statt 450 KB.
+ * Warum gerade 8 h: siehe timelineMerge.ts (muss deutlich länger sein als die
+ * längste Messfehler-Regel, 3 h).
+ */
+export const TIMELINE_RECENT_HOURS = 8;
+/** Adresse des kurzen Fensters — überall dieselbe, damit das CDN sie teilt. */
+export const TIMELINE_RECENT_PATH = `/api/timeline?hours=${TIMELINE_RECENT_HOURS}`;
+
+/**
  * Größter Abstand zweier Messungen, über den die Kurven im Verlaufsbalken
  * noch durchgezogen werden: 2,5 Messtakte der Quelle. Bei 10-Minuten-Quellen
  * sind das 25 min (EIN fehlender Wert wird überbrückt, ab ZWEI reißt die
@@ -292,16 +306,14 @@ export function snapToGrid(t: number): number {
 
 /**
  * Die Rasterzeitpunkte des Zeitbalkens: aufsteigend, der LETZTE Eintrag ist
- * "jetzt" (auf das Raster eingerastet), der erste liegt HISTORY_HOURS davor.
- * Hängt nur an der Uhr — der Balken kann also gezeichnet werden, bevor
- * irgendwelche Daten geladen sind.
+ * "jetzt" (auf das Raster eingerastet), der erste liegt `hours` davor
+ * (Voreinstellung HISTORY_HOURS). Hängt nur an der Uhr — der Balken kann also
+ * gezeichnet werden, bevor irgendwelche Daten geladen sind.
  */
-export function buildTimelineSlots(now: number): number[] {
+export function buildTimelineSlots(now: number, hours: number = HISTORY_HOURS): number[] {
   const end = snapToGrid(now);
-  return Array.from(
-    { length: TIMELINE_SLOT_COUNT },
-    (_, i) => end - (TIMELINE_SLOT_COUNT - 1 - i) * GRID_MS,
-  );
+  const count = hours * (60 / TIMELINE_STEP_MINUTES) + 1;
+  return Array.from({ length: count }, (_, i) => end - (count - 1 - i) * GRID_MS);
 }
 
 /** Messwerte EINER Station zu EINEM Rasterzeitpunkt (siehe TimelinePayload). */
@@ -350,6 +362,10 @@ export function decodeSuspect(code: string | undefined): SuspectReason | undefin
 
 /** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten HISTORY_HOURS. */
 export interface TimelinePayload {
+  /**
+   * Abgedeckte Stunden: HISTORY_HOURS (volle Daten) oder, bei
+   * /api/timeline?hours=…, weniger (z. B. TIMELINE_RECENT_HOURS).
+   */
   hours: number;
   stepMinutes: number;
   /** Jüngster Rasterzeitpunkt (= letzter Eintrag in times), Epoch-ms. */

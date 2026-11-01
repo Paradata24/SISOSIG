@@ -125,7 +125,8 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `vercel.json` | Server-Region der Vercel-Funktionen: Dublin (`dub1`), neben der Datenbank |
 | `src/app/api/history/route.ts` | 48 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
-| `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
+| `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken; mit `?hours=8` nur die letzten 8 h (Punkt 27), gerechnet immer mit 3 h Vorlauf |
+| `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
@@ -164,7 +165,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Die Aufbewahrung (`RETENTION_DAYS` in `/api/collect` UND in der Edge
   Function) muss immer länger sein, sonst fehlt links ein Stück.
 - `/api/timeline` liest dafür rund 136.000 Zeilen (~8 MB aus der Datenbank,
-  ~0,6 s; Nov. 2026 gemessen). Die Edge Function fragt weiter nur 12 h
+  ~0,6 s; Nov. 2026 gemessen) — das volle Laden braucht die Seite aber nur
+  noch beim Öffnen, danach genügen die letzten 8 h (Punkt 27, siehe
+  „Zeitbalken = Zeitrad"). Die Edge Function fragt weiter nur 12 h
   Vergangenheit ab (`PAST_HOURS`), ältere Prognose-Stunden bleiben aus
   früheren Läufen gespeichert — kein Mehrverbrauch bei Open-Meteo.
 - Schwung des Zeitrads verdoppelt (`FLING_MAX_SPEED`, höchstens ~6 h je Wisch).
@@ -376,6 +379,22 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     „Jetzt".
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
     und alle 10 min geladen (früher erst beim ersten Anfassen).
+  - **Sparsam laden (Punkt 27, Nov. 2026, auf Wunsch des Projektbesitzers):**
+    Die vollen 48 h (~450 KB) holt nur die Hauptseite beim Öffnen. Danach
+    kommen alle 10 min nur die letzten 8 h (`/api/timeline?hours=8`,
+    `TIMELINE_RECENT_HOURS`, ~80 KB) und werden eingefügt
+    (`mergeRecentTimeline` in `src/lib/timelineMerge.ts`). Der Flugmodus holt
+    überhaupt nur die 8 h (er braucht den Verlauf nur für die
+    Messfehler-Erkennung). Volle 48 h wieder nach einem Start im Flugmodus,
+    sobald die Hauptseite sie braucht, oder wenn das letzte Laden über 4 h her
+    ist (`TIMELINE_MERGE_MAX_GAP_MS`). Das Ergebnis ist **dasselbe wie beim
+    vollen Laden** (Simulation mit 96 Auffrischungen geprüft). Dafür rechnet
+    `/api/timeline` jedes Fenster mit **3 h Vorlauf** (`LEAD_SLOTS`, so lang
+    wie die längste Messfehler-Regel, `LONGEST_RULE_MINUTES`) — nicht
+    entfernen, sonst stimmen Messfehler-Kennzeichen und gehaltene SLF-Werte am
+    Fensteranfang nicht. Wird eine Messfehler-Regel länger, schrumpft der
+    erlaubte Abstand zwischen zwei Ständen (8 h minus Regel); passt er nicht
+    mehr, lädt die Seite von selbst voll.
 - **Farbskala als harte Stufen**, kein weicher Verlauf; die unterste Stufe ist
   hellblau (nicht weiß, sonst unsichtbar auf heller Karte)
 - **Mitwachsende y-Achse im Verlaufsbalken**: untere Grenze immer 0, obere

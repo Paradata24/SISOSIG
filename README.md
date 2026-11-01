@@ -236,7 +236,9 @@ Antwort (siehe oben) steht 6 Stunden lang in `net._http_response`.
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
 letzten 48 Stunden einer Station (für den Verlaufsbalken).
 `/api/timeline` liefert dieselben 48 Stunden für **alle** Stationen
-gemeinsam (für den Zeitbalken unter der Karte, siehe unten).
+gemeinsam (für den Zeitbalken unter der Karte, siehe unten);
+`/api/timeline?hours=8` nur die letzten 8 Stunden (zum Auffrischen und für
+den Flugmodus).
 
 ### Benötigte Zugangsdaten
 
@@ -420,8 +422,21 @@ Funktion selbst braucht ~0,2 s) und liefert ein kompaktes Spaltenformat: eine
 gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund 450 KB
 (komprimiert übertragen, ausgepackt 1,7 MB; Nov. 2026, 48 Stunden, rund 650
 Stationen — bei der 12-h-Anzeige waren es rund 110 KB). Sie werden **gleich
-beim Öffnen der Seite** geholt (für den Farbstrich) und alle 10 Minuten
-aufgefrischt.
+beim Öffnen der Seite** geholt (für den Farbstrich).
+
+**Sparsam auffrischen (Punkt 27, Nov. 2026):** Danach holt die Seite alle
+10 Minuten nur noch die **letzten 8 Stunden** (`/api/timeline?hours=8`,
+rund 80 KB) und fügt sie in den vorhandenen Stand ein
+(`src/lib/timelineMerge.ts`) — statt jedes Mal die ganzen 450 KB. Der
+**Flugmodus** holt überhaupt nur die 8 Stunden; er zeigt keinen Zeitbalken und
+braucht den Verlauf nur für die Messfehler-Erkennung. Das spart pro Stunde
+offener Seite gut 2 MB Datenvolumen, vor allem am Berg bei schwachem Empfang.
+Die vollen 48 Stunden kommen wieder, wenn die Hauptseite sie nach einem Start
+im Flugmodus braucht oder das letzte Laden über 4 Stunden her ist. Das
+eingefügte Ergebnis ist dasselbe wie beim vollen Laden: `/api/timeline`
+rechnet jedes Fenster mit 3 Stunden Vorlauf, damit Messfehler-Kennzeichen und
+gehaltene SLF-Werte auch am Fensteranfang stimmen (geprüft mit einer
+Simulation über 96 Auffrischungen).
 
 **Bei einer bestehenden Datenbank einmalig:** `supabase/zeitbalken-funktion.sql`
 im Supabase SQL-Editor ausführen (legt nur die Funktion an, verändert keine

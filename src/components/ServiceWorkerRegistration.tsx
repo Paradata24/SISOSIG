@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { TIMELINE_RECENT_PATH } from "@/lib/wind";
 
 // Meldet den Hintergrund-Helfer (Service Worker, public/sw.js) an — aber NUR,
 // wenn die Seite als App läuft (vom Home-Bildschirm bzw. als installierte
@@ -41,6 +42,9 @@ export default function ServiceWorkerRegistration() {
             "/",
             "/api/wind",
             "/api/timeline",
+            // Das kurze Fenster (Punkt 27): Damit hat auch ein Start im
+            // Flugmodus ohne Netz einen Verlauf für die Messfehler-Erkennung.
+            TIMELINE_RECENT_PATH,
             ...performance
               .getEntriesByType("resource")
               .map((entry) => entry.name)
