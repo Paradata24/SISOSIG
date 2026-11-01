@@ -119,7 +119,7 @@ const GEOSPHERE_CODE_PREFIX = "geosphere-";
 //   - AROME (GeoSphere Austria, 'arome')
 //   - ICON-D2-Bodenwind (DWD, 'icon_d2') — wurde bis Sept. 2026 mitgesammelt,
 //     aber nie angezeigt. Alte icon_d2-Zeilen löscht das Aufräumen
-//     (RETENTION_DAYS) nach 2 Tagen von selbst.
+//     (RETENTION_DAYS) nach 3 Tagen von selbst.
 const MODEL_DB = "icon_ch1";
 const MODEL_API = "meteoswiss_icon_ch1";
 
@@ -174,9 +174,13 @@ function insideIconCh1(station: Station): boolean {
 // 3-Stunden-Takt des Modells, damit ein Anstoß alle 3 h sicher durchkommt.
 const MIN_REFETCH_WITHOUT_META_MS = 170 * 60 * 1000;
 
-// Rollendes Zeitfenster je Lauf. Die Werte spiegeln HISTORY_HOURS (12) und
+// Rollendes Zeitfenster je Lauf, abgeleitet von HISTORY_HOURS und
 // FUTURE_MARGIN_HOURS (4) aus src/lib/wind.ts — Deno kann von dort nicht
 // importieren, deshalb bei einer Änderung beide Stellen anfassen.
+// PAST_HOURS muss NICHT so lang sein wie HISTORY_HOURS (seit Nov. 2026 48 h):
+// Jeder Lauf überschreibt nur seine letzten 12 h, ältere Stunden bleiben aus
+// früheren Läufen in der Tabelle stehen (bis RETENTION_DAYS). So reicht die
+// Prognosekurve über die ganzen 48 h, ohne mehr bei Open-Meteo abzufragen.
 const PAST_HOURS = 12;
 // Deutlich MEHR als FUTURE_MARGIN_HOURS (4): Neu geholt wird nur noch alle
 // 3 Stunden (bei jedem neuen Modelllauf, s. o.), und Open-Meteo zählt ab der
@@ -186,9 +190,10 @@ const PAST_HOURS = 12;
 // einen ausgefallenen Lauf ab. Kostet nichts extra (gezählt wird erst ab
 // 2 Wochen Zeitraum). /api/forecast schneidet den Überhang wieder ab.
 const FORECAST_HOURS = 12;
-// Aufbewahrung wie bei den Messwerten (/api/collect): 2 Tage reichen für die
-// 12h-Anzeige mit großem Puffer.
-const RETENTION_DAYS = 2;
+// Aufbewahrung wie bei den Messwerten (/api/collect): 3 Tage, also länger als
+// die 48-h-Anzeige (HISTORY_HOURS). Bei 2 Tagen fehlte links bis zu 3 h
+// Prognose (gelöscht wird beim Lauf, der nur alle 3 h kommt).
+const RETENTION_DAYS = 3;
 
 // Stationen pro Open-Meteo-Request. Überschreibbar für Tests, damit sich
 // das Batching auch mit wenigen Mock-Stationen prüfen lässt.

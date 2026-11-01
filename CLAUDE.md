@@ -33,7 +33,7 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 - Aktuell nur ich + wenige Nutzer, aber die Architektur soll
   skalierbar bleiben
 - Phasenplan:
-  1. Südtirol: Live-Wind + 12h-Historie auf Karte (aktuell in Arbeit)
+  1. Südtirol: Live-Wind + 48h-Historie auf Karte (aktuell in Arbeit)
   2. Erweiterung auf weitere Länder/Regionen (Schweiz, Österreich)
   3. Prognosevergleich mehrerer Modelle via Open-Meteo API
 
@@ -65,10 +65,10 @@ Vercel, Cron, Schritt-für-Schritt-Anleitungen) steht in `README.md`.
 ## Begriffe des Projektbesitzers
 - **Hauptseite** = die normale Seite mit Karte und Live-Werten (früher
   „Live-Werte-Seite"), im Gegensatz zum Flugmodus
-- **Verlaufsbalken** = das Panel unten mit dem 12h-Diagramm einer Station
+- **Verlaufsbalken** = das Panel unten mit dem 48h-Diagramm einer Station
   (`src/components/WindHistoryPanel.tsx`)
 - **Zeitbalken** = das Zeitrad unter der Karte, mit dem man die ganze Karte
-  durch die letzten 12 h dreht (`src/components/TimeSlider.tsx`)
+  durch die letzten 48 h dreht (`src/components/TimeSlider.tsx`)
 - **Windanzeiger** = die vom Besitzer ausgewählte Stationsliste im
   Stationsfilter (Südtirol über Namen: `WINDANZEIGER_STATION_NAMES`, alle
   anderen Quellen über Stationscodes: `WINDANZEIGER_STATION_CODES`, beide in
@@ -95,8 +95,8 @@ sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
 und Prognose in Supabase.
 
 **Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
-(12 h für alle Stationen, beim Seitenaufruf + alle 10 min) und `/api/history` + `/api/forecast`
-(12 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
+(48 h für alle Stationen, beim Seitenaufruf + alle 10 min) und `/api/history` + `/api/forecast`
+(48 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
 `/api/collect` alle 5 min (Messwerte) und der Edge Function
 `fetch-wind-forecasts` (Prognosen; holt nur bei einem neuen ICON-CH1-Lauf,
 also alle 3 h, wirklich neue Werte).
@@ -118,9 +118,9 @@ also alle 3 h, wirklich neue Werte).
 | `src/app/api/collect/route.ts` | Schreibt Messwerte aller Quellen nach Supabase (POST, per `CRON_SECRET` geschützt) und pflegt die Stationsliste |
 | `src/lib/stationList.ts` | Stationsliste in der Datenbank (`wind_stations`, Sicht `wind_stations_latest`): schreiben (Sammler) und letzte Werte ausgefallener Quellen lesen (`/api/wind`) |
 | `vercel.json` | Server-Region der Vercel-Funktionen: Dublin (`dub1`), neben der Datenbank |
-| `src/app/api/history/route.ts` | 12 h Messwerte **einer** Station |
+| `src/app/api/history/route.ts` | 48 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
-| `src/app/api/timeline/route.ts` | 12 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
+| `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
@@ -152,6 +152,17 @@ also alle 3 h, wirklich neue Werte).
   Wetterdiensten ging über den Atlantik (gemessen: eine Verlaufsabfrage 7 ms
   in der Datenbank, ~0,3 s mit dem Umweg). Nicht zurückstellen. Die Datei hat
   Vorrang vor der Einstellung im Vercel-Dashboard.
+
+**Angezeigter Zeitraum: 48 h, Aufbewahrung 3 Tage** (Nov. 2026, Wunsch des
+Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
+- `HISTORY_HOURS` in `src/lib/wind.ts` gilt für Verlaufsbalken und Zeitbalken.
+  Die Aufbewahrung (`RETENTION_DAYS` in `/api/collect` UND in der Edge
+  Function) muss immer länger sein, sonst fehlt links ein Stück.
+- `/api/timeline` liest dafür rund 136.000 Zeilen (~8 MB aus der Datenbank,
+  ~0,6 s; Nov. 2026 gemessen). Die Edge Function fragt weiter nur 12 h
+  Vergangenheit ab (`PAST_HOURS`), ältere Prognose-Stunden bleiben aus
+  früheren Läufen gespeichert — kein Mehrverbrauch bei Open-Meteo.
+- Schwung des Zeitrads verdoppelt (`FLING_MAX_SPEED`, höchstens ~6 h je Wisch).
 
 **Datenbeschaffung (Okt. 2026)**
 - **Jede Quelle ist ein Zusatz — auch Bozen.** Karte (`/api/wind`), Sammler
@@ -187,7 +198,7 @@ also alle 3 h, wirklich neue Werte).
   bei einem Ausfall fragt `/api/wind` die Datenbank. Die Stationsliste pflegt
   der Sammler: neue Stationen sofort, Name/Lage/Höhe der bekannten nur zur
   vollen Stunde (`STATION_LIST_REFRESH_MINUTES`, sonst ~700 unveränderte
-  Zeilen je Lauf). Stationen ohne gespeicherten Wert fehlen — nach 2 Tagen
+  Zeilen je Lauf). Stationen ohne gespeicherten Wert fehlen — nach 3 Tagen
   Ausfall (Aufbewahrung) verschwinden sie also doch.
 
 **Darstellung**
@@ -651,7 +662,7 @@ also alle 3 h, wirklich neue Werte).
 - Die Grenzwerte sind an 2 Tagen echter Daten geprüft (keine Fehlalarme).
   **Nicht verschärfen ohne erneute Prüfung an echten Daten.**
 - Berechnet wird für den Verlauf in `/api/timeline` (Feld `q` je Station), für
-  die Live-Werte in `WindMap` (`assessLive`: 12 h Verlauf + aktueller Wert).
+  die Live-Werte in `WindMap` (`assessLive`: 48 h Verlauf + aktueller Wert).
 
 ## Nicht wieder einführen (ohne Rücksprache)
 

@@ -702,7 +702,7 @@ export default function WindMap({
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /**
-   * Die 12 h aller Stationen (/api/timeline, kommt aus WindApp). Hier nur für
+   * Die 48 h aller Stationen (/api/timeline, kommt aus WindApp). Hier nur für
    * die Messfehler-Prüfung der LIVE-Werte gebraucht: "seit 90 min dieselben
    * Werte" lässt sich am einzelnen aktuellen Wert nicht erkennen.
    */

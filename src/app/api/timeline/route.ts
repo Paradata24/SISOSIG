@@ -14,16 +14,18 @@ import {
 import { assessSeries, encodeSuspectFlags } from "@/lib/plausibility";
 
 // Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
-// (aktuell 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
+// (seit Nov. 2026 48, vorher 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
 // für den Zeitbalken unter der Karte (TimeSlider.tsx).
 //
 // Aufruf: /api/timeline  (keine Parameter)
 //
 // Gegenstück zu /api/history, das dasselbe für EINE Station tut. Hier wäre ein
-// Zeilen-JSON (~700 Stationen × 73 Zeitpunkte) mehrere hundert KB groß,
+// Zeilen-JSON (~650 Stationen × 289 Zeitpunkte) mehrere MB groß,
 // deshalb ein kompaktes SPALTEN-Format: eine gemeinsame Zeitliste und pro
 // Station drei gleich lange Zahlenreihen (siehe TimelinePayload in
-// src/lib/wind.ts). Das sind einige Dutzend KB komprimiert.
+// src/lib/wind.ts). Bei 48 h kommen aus der Datenbank rund 8 MB (~136.000
+// Zeilen, ~0,6 s, Nov. 2026 gemessen); an den Browser geht davon nur das
+// Spaltenformat, komprimiert einige hundert KB.
 //
 // Benötigt SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY (bei Vercel unter
 // Settings → Environment Variables). Der Key bleibt auf dem Server.

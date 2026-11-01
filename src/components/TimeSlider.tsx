@@ -52,7 +52,7 @@ const MAX_ANGLE = (MAX_ANGLE_DEG * Math.PI) / 180;
 // So viele Pixel muss der Finger wandern, damit das Rad um einen
 // 10-Minuten-Schritt weiterdreht. Fest statt aus der Radbreite gerechnet: Das
 // Rad liegt in einer Zeile mit Uhrzeit und Knopf und ist schmal; die
-// Fingerstrecke soll trotzdem für 12 Stunden angenehm kurz bleiben.
+// Fingerstrecke für eine Stunde (6 Schritte) soll trotzdem kurz bleiben.
 const DRAG_PX_PER_SLOT = 14;
 // Ab dieser Fingerbewegung (px) gilt eine Berührung als Ziehen, nicht mehr als Antippen.
 const TAP_MAX_MOVE_PX = 6;
@@ -67,9 +67,10 @@ const SNAP_TAU_MS = 110;
 // "ohne Schwung".
 const FLING_MIN_SPEED = 0.004;
 // Obergrenze für den Schwung: Ein sehr schneller Wisch soll das Rad nicht über
-// die ganzen 12 Stunden schleudern. 0,06 Schritte/ms ≙ höchstens rund 3 Stunden
-// Auslauf (0,06 · 320 ms ≈ 19 Schritte).
-const FLING_MAX_SPEED = 0.06;
+// die ganzen 48 Stunden schleudern. 0,12 Schritte/ms ≙ höchstens rund 6 Stunden
+// Auslauf (0,12 · 320 ms ≈ 38 Schritte). Bis Nov. 2026 (12-h-Anzeige) 0,06 ≙
+// 3 h; verdoppelt, damit man die 2 Tage mit wenigen Wischern durchblättert.
+const FLING_MAX_SPEED = 0.12;
 // Aus den letzten Bewegungen der letzten so vielen ms wird die Geschwindigkeit
 // beim Loslassen bestimmt.
 const VELOCITY_WINDOW_MS = 90;
@@ -125,7 +126,7 @@ export function buildStripColors(
 function formatSlotLabel(time: number, now: number): string {
   const date = new Date(time);
   const hhmm = date.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  // Ein 12-Stunden-Fenster reicht regelmäßig über Mitternacht. "23:50" allein
+  // Das 48-Stunden-Fenster reicht immer über Mitternacht. "23:50" allein
   // wäre dann zweideutig, deshalb der Wochentag davor.
   if (new Date(now).toDateString() === date.toDateString()) return hhmm;
   const weekday = date.toLocaleDateString("de-DE", { weekday: "short" });
