@@ -30,13 +30,16 @@ alter table public.wind_stations enable row level security;
 -- 2) Neuester gespeicherter Messwert je Station (für /api/wind). Je Station
 --    genügt ein Griff in die Suchhilfe unique (station_code, measured_at) von
 --    wind_measurements. Stationen ganz ohne gespeicherten Wert (älter als die
---    Aufbewahrung von 2 Tagen) fehlen hier bewusst.
+--    Aufbewahrung von 3 Tagen) fehlen hier bewusst.
 --    security_invoker: Die Sicht gilt mit den Rechten dessen, der fragt — der
 --    öffentliche anon-Key sieht dadurch wie bei den Tabellen nichts.
+--    Die letzte Spalte (updated_at) kam im Nov. 2026 dazu (ein-sammler.sql);
+--    sie steht auch hier, damit beide Skripte in beliebiger Reihenfolge
+--    laufen können.
 create or replace view public.wind_stations_latest
 with (security_invoker = true) as
 select s.station_code, s.source, s.name, s.lat, s.lng, s.altitude,
-       m.measured_at, m.direction, m.speed_kmh, m.gust_kmh
+       m.measured_at, m.direction, m.speed_kmh, m.gust_kmh, s.updated_at
 from public.wind_stations s
 cross join lateral (
   select w.measured_at, w.direction, w.speed_kmh, w.gust_kmh

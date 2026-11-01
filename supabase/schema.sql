@@ -39,10 +39,10 @@ create index if not exists wind_measurements_time_idx
 alter table public.wind_measurements enable row level security;
 
 -- Stationsliste (Name, Lage, Höhe; eingetragen von /api/collect) und der
--- neueste gespeicherte Wert je Station. Damit zeigt /api/wind die Stationen
--- einer gerade ausgefallenen Quelle weiter (src/lib/stationList.ts).
--- Erklärungen in supabase/stationsliste.sql — dort steht dasselbe für
--- bestehende Datenbanken.
+-- neueste gespeicherte Wert je Station. Daraus liest /api/wind die Werte für
+-- die Karte (src/lib/stationList.ts), die Prognose-Funktion ihre Stationen.
+-- Erklärungen in supabase/stationsliste.sql und supabase/ein-sammler.sql —
+-- dort steht dasselbe für bestehende Datenbanken.
 create table if not exists public.wind_stations (
   station_code text primary key,
   source text not null,
@@ -85,7 +85,7 @@ grant execute on function public.wind_timeline(timestamptz) to service_role;
 create or replace view public.wind_stations_latest
 with (security_invoker = true) as
 select s.station_code, s.source, s.name, s.lat, s.lng, s.altitude,
-       m.measured_at, m.direction, m.speed_kmh, m.gust_kmh
+       m.measured_at, m.direction, m.speed_kmh, m.gust_kmh, s.updated_at
 from public.wind_stations s
 cross join lateral (
   select w.measured_at, w.direction, w.speed_kmh, w.gust_kmh
@@ -94,3 +94,47 @@ cross join lateral (
   order by w.measured_at desc
   limit 1
 ) m;
+
+-- Zustand der Datenquellen (vom Sammler) und der Prognose-Funktion.
+-- Erklärungen in supabase/ein-sammler.sql.
+create table if not exists public.wind_status (
+  name text primary key,
+  checked_at timestamptz not null,
+  ok boolean not null,
+  ok_at timestamptz,
+  value_count integer not null default 0,
+  error text,
+  detail jsonb
+);
+alter table public.wind_status enable row level security;
+
+-- Alles, was die Karte braucht, in EINER Antwort (/api/wind).
+-- Erklärungen in supabase/ein-sammler.sql.
+create or replace function public.wind_latest()
+returns json
+language sql
+stable
+set search_path = ''
+as $$
+  select json_build_object(
+    'stations', (
+      select coalesce(json_agg(json_build_array(
+        l.station_code, l.source, l.name, l.lat, l.lng, l.altitude,
+        round(extract(epoch from l.measured_at) * 1000)::bigint,
+        l.direction, l.speed_kmh, l.gust_kmh,
+        round(extract(epoch from l.updated_at) * 1000)::bigint
+      )), '[]'::json)
+      from public.wind_stations_latest l
+    ),
+    'sources', (
+      select coalesce(json_agg(json_build_array(
+        s.name,
+        round(extract(epoch from s.checked_at) * 1000)::bigint,
+        s.ok
+      )), '[]'::json)
+      from public.wind_status s
+    )
+  );
+$$;
+revoke execute on function public.wind_latest() from public, anon, authenticated;
+grant execute on function public.wind_latest() to service_role;

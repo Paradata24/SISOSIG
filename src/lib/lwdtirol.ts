@@ -2,9 +2,8 @@ import { isOutdated, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Ausgewählte Messstationen des Lawinenwarndienstes Tirol (LWD Tirol).
-// Genutzt von /api/wind (Live-Anzeige) und /api/collect (Sammel-Route für die
-// Historie) — nicht aber von der Supabase Edge Function fetch-wind-forecasts
-// (für diese Station gibt es keine Prognose-Kurve, siehe README).
+// Genutzt vom Sammler /api/collect und im Notbetrieb von /api/wind (Liste
+// aller Quellen: src/lib/sources.ts).
 //
 // Datenquelle: Open Government Data "Wetterstationsdaten Tirol" des Landes
 // Tirol, EINE GeoJSON-Datei mit allen ~220 Stationen (rund 180 KB), ohne

@@ -3,10 +3,9 @@ import { isOutdated, METADATA_TIMEOUT_MS, SOURCE_TIMEOUT_MS, type WindStation } 
 
 // Gemeinsame Logik zum Abrufen der IMIS-Stationen des SLF (WSL-Institut für
 // Schnee- und Lawinenforschung, Davos) — dieselben Stationen, die whiterisk.ch
-// anzeigt (z. B. https://whiterisk.ch/de/snow/station/IMIS/ZNZ1). Genutzt von
-// /api/wind (Live-Anzeige) und /api/collect (Sammel-Route für die Historie).
-// Die Edge Function fetch-wind-forecasts läuft unter Deno und hat eine eigene
-// Kopie des Stationsabrufs (siehe dort).
+// anzeigt (z. B. https://whiterisk.ch/de/snow/station/IMIS/ZNZ1). Genutzt vom
+// Sammler /api/collect und im Notbetrieb von /api/wind (Liste aller Quellen:
+// src/lib/sources.ts).
 //
 // Quelle: die offizielle, öffentliche "SLF Measurement API"
 // (https://measurement-api.slf.ch/docs), ohne Anmeldung/Schlüssel.

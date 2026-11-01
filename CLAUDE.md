@@ -94,12 +94,14 @@ OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz), MeteoSchweiz
 sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
 und Prognose in Supabase.
 
-**Ablauf:** Browser → `/api/wind` (Live-Werte, alle 3 min) und `/api/timeline`
+**Ablauf:** Browser → `/api/wind` (aktuelle Werte, alle 3 min) und `/api/timeline`
 (48 h für alle Stationen, beim Seitenaufruf + alle 10 min) und `/api/history` + `/api/forecast`
-(48 h + Prognose einer Station). Gefüttert wird Supabase von zwei Cron-Jobs:
-`/api/collect` alle 5 min (Messwerte) und der Edge Function
-`fetch-wind-forecasts` (Prognosen; holt nur bei einem neuen ICON-CH1-Lauf,
-also alle 3 h, wirklich neue Werte).
+(48 h + Prognose einer Station) — **alle lesen nur aus Supabase** („Ein
+Sammler, eine Wahrheit", Nov. 2026). Gefüttert wird Supabase von zwei Cron-Jobs:
+`/api/collect` alle 5 min (die EINZIGE Stelle, die mit den Wetterdiensten
+spricht: Messwerte, Stationsliste, Zustand der Quellen) und der Edge Function
+`fetch-wind-forecasts` (Prognosen für die Stationen der Stationsliste; holt
+nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 
 | Datei | Zuständig für |
 | --- | --- |
@@ -114,9 +116,12 @@ also alle 3 h, wirklich neue Werte).
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
-| `src/app/api/wind/route.ts` | Live-Werte aller Quellen (jede als Zusatz, mit Zeitlimit), inkl. Caching; meldet Quellen ohne Daten in einer Kopfzeile und zeigt deren Stationen mit dem letzten gespeicherten Wert |
-| `src/app/api/collect/route.ts` | Schreibt Messwerte aller Quellen nach Supabase (POST, per `CRON_SECRET` geschützt) und pflegt die Stationsliste |
-| `src/lib/stationList.ts` | Stationsliste in der Datenbank (`wind_stations`, Sicht `wind_stations_latest`): schreiben (Sammler) und letzte Werte ausgefallener Quellen lesen (`/api/wind`) |
+| `src/lib/sources.ts` | Liste ALLER Quellen (Punkt 17): je Quelle der Abruf für den Sammler und für den Notbetrieb von `/api/wind` — eine neue Quelle ist hier ein Eintrag |
+| `src/app/api/wind/route.ts` | Aktuelle Werte aller Stationen aus der Datenbank (Funktion `wind_latest`), fehlende Quellen in einer Kopfzeile, CDN-Caching; Notbetrieb direkt bei den Quellen, wenn Datenbank oder Sammler ausfallen |
+| `src/app/api/collect/route.ts` | Einzige Stelle, die mit den Wetterdiensten spricht: schreibt Messwerte je Quelle getrennt nach Supabase (POST, per `CRON_SECRET` geschützt), pflegt Stationsliste und Zustand der Quellen |
+| `src/lib/stationList.ts` | Stationsliste in der Datenbank (`wind_stations`, Sicht `wind_stations_latest`): schreiben (Sammler) und alle aktuellen Werte für die Karte lesen (`fetchLatestFromDatabase`) |
+| `src/lib/sourceStatus.ts` | Zustand jeder Quelle (Tabelle `wind_status`): schreiben (Sammler), daraus fehlende Quellen und einen Sammler-Ausfall erkennen (`/api/wind`) |
+| `src/lib/earlyWind.ts` | Winddaten schon beim Öffnen der Seite anfordern (Punkt 8): kleine Zeile im `<head>` von `layout.tsx`, `WindMap` übernimmt die Antwort |
 | `vercel.json` | Server-Region der Vercel-Funktionen: Dublin (`dub1`), neben der Datenbank |
 | `src/app/api/history/route.ts` | 48 h Messwerte **einer** Station |
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
@@ -134,7 +139,7 @@ also alle 3 h, wirklich neue Werte).
 | `public/sw.js` + `src/components/ServiceWorkerRegistration.tsx` | Hintergrund-Helfer der Web-App (Start ohne Netz, gespeicherte Windwerte und Kartenstücke) — nur in der App angemeldet |
 | `src/components/WindHistoryPanel.tsx` | Verlaufsbalken (Diagramm, Werte-Quadrate, Prognose) |
 | `src/components/TimeSlider.tsx` | Zeitbalken (Zeitrad mit Schwung, Farbstrich des Kartenausschnitts, „Aktuell"-Knopf) |
-| `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen |
+| `supabase/functions/fetch-wind-forecasts/` | Edge Function (Deno!), holt Open-Meteo-Prognosen für alle Stationen der Stationsliste, holt gescheiterte Stationen beim nächsten Anstoß nach |
 | `supabase/*.sql` | Tabellen-Schemas, Cron (`collect-cron.sql`, `forecast-cron.sql`), einmalige Migrations-/Aufräumskripte |
 
 ## Feste Entscheidungen (nicht ohne Rücksprache ändern)
@@ -164,15 +169,44 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   früheren Läufen gespeichert — kein Mehrverbrauch bei Open-Meteo.
 - Schwung des Zeitrads verdoppelt (`FLING_MAX_SPEED`, höchstens ~6 h je Wisch).
 
+**Ein Sammler, eine Wahrheit (Punkt 14, Nov. 2026, vom Projektbesitzer beauftragt)**
+- **Nur der Sammler (`/api/collect`) spricht mit den Wetterdiensten.** Er
+  speichert Messwerte, Stationsliste (`wind_stations`) und den Zustand jeder
+  Quelle (`wind_status`, `src/lib/sourceStatus.ts`). Die Karte (`/api/wind`)
+  liest alles in EINER Anfrage aus der Datenbank (Funktion `wind_latest`,
+  `supabase/ein-sammler.sql`, ~20 ms in der Datenbank), die Prognose-Funktion
+  nimmt ihre Stationen aus `wind_stations`. Karte, Zeitbalken und
+  Verlaufsbalken zeigen dadurch immer denselben Stand.
+- **Bewusst in Kauf genommen:** Ein neuer Messwert erscheint im Schnitt 2–3
+  Minuten später als vorher, höchstens 5 (bis zum nächsten Sammel-Lauf). Wer
+  das verkürzen will, müsste den Sammel-Takt erhöhen — nicht `/api/wind`
+  wieder selbst bei den Diensten fragen lassen.
+- **Notbetrieb:** Antwortet die Datenbank nicht (`LIVE_DATABASE_TIMEOUT_MS`
+  5 s), ist sie leer oder hat der Sammler seit 15 min nichts eingetragen
+  (`COLLECTOR_SILENT_AFTER_MS`), holt `/api/wind` die Werte wie früher direkt
+  bei den Quellen (Kopfzeile `x-sisosig-notbetrieb`). Nicht entfernen — sonst
+  bliebe die Karte bei einem Ausfall von Supabase oder des Cron-Jobs grau.
+- **Stationen, die ihre Quelle nicht mehr führt,** verschwinden nach rund 2 h
+  (`STATION_DROPPED_AFTER_MS` in `src/lib/stationList.ts`: Eintrag deutlich
+  älter als der jüngste ihrer Quelle). Fällt eine ganze Quelle aus, bleiben
+  ihre Stationen dagegen stehen (alle gleich alt).
+- **Eine neue Quelle** ist ein Eintrag in `WIND_SOURCES` (`src/lib/sources.ts`,
+  Punkt 17) plus die Angaben je Quelle in `src/lib/wind.ts` (`SOURCE_INFO`,
+  `STALE_AFTER_MINUTES` usw. — TypeScript meldet fehlende). Karte und
+  Prognose-Funktion brauchen nichts.
+
 **Datenbeschaffung (Okt. 2026)**
-- **Jede Quelle ist ein Zusatz — auch Bozen.** Karte (`/api/wind`), Sammler
-  (`/api/collect`) und Prognose-Funktion fragen alle Quellen gleichzeitig ab;
-  scheitert eine, laufen die übrigen weiter (vorher war bei einem Ausfall des
-  Bozner Dienstes alles leer). Quellen ohne Daten meldet `/api/wind` in der
-  Kopfzeile `MISSING_SOURCES_HEADER`; die Karte zeigt dann den Hinweis
-  „MeteoSchweiz liefert gerade keine Daten" (Hauptseite oben mittig, gelb; im
-  Flugmodus als gelbe Zeile in der Statuszeile, damit oben keine Tasten
-  verdeckt werden).
+- **Jede Quelle ist ein Zusatz — auch Bozen.** Der Sammler fragt alle Quellen
+  gleichzeitig ab und speichert jede für sich (Punkt 13, Nov. 2026; vorher ein
+  gemeinsamer Schreibvorgang); scheitert eine, laufen die übrigen weiter
+  (vorher war bei einem Ausfall des Bozner Dienstes alles leer). Eine Quelle
+  ohne eine einzige Station (Fehler, Zeitlimit, leere Antwort) oder mit
+  gescheitertem Speichern trägt er in `wind_status` als gescheitert ein;
+  `/api/wind` meldet sie in der Kopfzeile `MISSING_SOURCES_HEADER`, und die
+  Karte zeigt dann den Hinweis „MeteoSchweiz liefert gerade keine Daten"
+  (Hauptseite oben mittig, gelb; im Flugmodus als gelbe Zeile in der
+  Statuszeile, damit oben keine Tasten verdeckt werden). Stationen ohne neue
+  Werte werden nur grau, ohne Hinweis.
 - **Grau (ausgefallen) schon nach einer halben Stunde** (Wunsch des
   Projektbesitzers, Okt. 2026; vorher 2 h): `STALE_AFTER_MINUTES` in
   `src/lib/wind.ts`. Grundregel 30 min; Quellen, die schon im Normalbetrieb
@@ -190,16 +224,15 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   der Sammler nimmt von beiden die letzten 3 h.
 - **Ausgefallene Quelle: Stationen bleiben stehen** (Punkt 10 der
   Code-Durchsicht, Okt. 2026; vorher verschwanden sie samt Zeitbalken und
-  Verlaufsbalken). Liefert eine Quelle gar nichts, holt `/api/wind` ihre
-  Stationen mit dem letzten gespeicherten Wert aus der Datenbank
-  (`src/lib/stationList.ts`: Tabelle `wind_stations` + Sicht
-  `wind_stations_latest`, `supabase/stationsliste.sql`); nach der Grau-Grenze
-  werden sie grau wie bei einem Sensorausfall, der gelbe Hinweis bleibt. Nur
-  bei einem Ausfall fragt `/api/wind` die Datenbank. Die Stationsliste pflegt
-  der Sammler: neue Stationen sofort, Name/Lage/Höhe der bekannten nur zur
-  vollen Stunde (`STATION_LIST_REFRESH_MINUTES`, sonst ~700 unveränderte
-  Zeilen je Lauf). Stationen ohne gespeicherten Wert fehlen — nach 3 Tagen
-  Ausfall (Aufbewahrung) verschwinden sie also doch.
+  Verlaufsbalken). Seit Punkt 14 ergibt sich das von selbst: `/api/wind` zeigt
+  immer den letzten gespeicherten Wert jeder Station (Tabelle `wind_stations`
+  + Sicht `wind_stations_latest`, `supabase/stationsliste.sql`); nach der
+  Grau-Grenze werden sie grau wie bei einem Sensorausfall, der gelbe Hinweis
+  bleibt. Die Stationsliste pflegt der Sammler: neue Stationen sofort,
+  Name/Lage/Höhe der bekannten nur zur vollen Stunde
+  (`STATION_LIST_REFRESH_MINUTES`, sonst ~700 unveränderte Zeilen je Lauf).
+  Stationen ohne gespeicherten Wert fehlen — nach 3 Tagen Ausfall
+  (Aufbewahrung) verschwinden sie also doch.
 
 **Darstellung**
 - **Filter und Kartenausschnitt werden gemerkt** (Punkt 20 der
@@ -362,7 +395,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   nach, der Zeitbalken alle 10 min. **Aber keine lange „Nachfrist" (stale-while-revalidate)
   in `/api/wind`:** Bis Okt. 2026 hingen die Live-Werte dadurch bis zu ~10 min
   hinter der Datenbank (Kopfzeile „Stand 15:40", Verlaufsbalken schon mit
-  15:50). Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der
+  15:50). Seit Punkt 14 (Nov. 2026) liest `/api/wind` ohnehin aus der
+  Datenbank; die folgenden Regeln gelten jetzt für den Sammler und den
+  Notbetrieb. Die Bozner `/sensors` werden deshalb ohne Daten-Cache geholt; der
   60-s-CDN-Speicher der Antwort bleibt (Begründung oben in der Route). Aus
   demselben Grund holen die übrigen Quellen ihre Messwerte nicht mehr über
   den Next.js-Daten-Cache (`next: { revalidate }`), sondern über
@@ -377,7 +412,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Datenbank).
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
-  `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen".
+  `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen". Seit Punkt 14
+  ist das zugleich der Takt, in dem neue Werte auf die Karte kommen.
 - **Einzelne Messlücken werden im Verlaufsbalken überbrückt**
   (`measurementGapMs` in `src/lib/wind.ts`, 2,5 Messtakte = 25 min, beim SLF
   75 min): Der Bozner Dienst überspringt gelegentlich einen Zeitpunkt bei allen
@@ -599,6 +635,19 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Metadaten-Datei nicht lesbar (passiert beim ersten echten Lauf), greift eine
   Zeitregel: höchstens alle 170 min (`MIN_REFETCH_WITHOUT_META_MS`). Diese
   Rückfallregel nicht entfernen — ohne sie fragt jeder Cron-Anstoß alles ab.
+- **Gescheiterte Stationen werden nachgeholt** (Punkt 13, Nov. 2026):
+  Scheitert beim neuen Lauf ein Teil der Blöcke, merkt sich die Edge Function
+  deren Stationen (`wind_status`, Zeile `prognose`, Feld `detail`) und holt sie
+  bei den nächsten Cron-Anstößen nach, höchstens `RETRY_MAX_ATTEMPTS` (4)
+  Mal — vorher warteten sie bis zum nächsten Lauf (3 h). Nur die offenen
+  Stationen werden abgefragt; „No data is available" (außerhalb des
+  Modellgebiets) wird nicht nachgeholt.
+- **Stationen der Prognose = Stationsliste des Sammlers** (Punkt 14, Nov.
+  2026): `wind_stations`, nur Einträge der letzten 2 Tage
+  (`STATION_LIST_MAX_AGE_MS`), seitenweise gelesen (Supabase gibt höchstens
+  1000 Zeilen je Anfrage). Damit haben alle Stationen der Karte eine
+  Prognose-Kurve, auch MeteoSchweiz, LWD Tirol, DWD und OpenWindMap außerhalb
+  Südtirols (vorher nur Bozen, Südtiroler OpenWindMap, SLF, GeoSphere).
 - **Ostrand von ICON-CH1: 16,64° Länge** (`ICON_CH1_MAX_LNG` in der Edge
   Function). Die 10 GeoSphere-Stationen östlich davon (Burgenland,
   Weinviertel) liefern bei Open-Meteo "No data is available" — und eine
@@ -608,9 +657,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
 
 **Windanzeiger-Quellen (Sept. 2026)**
 - Die neuen Quellen (MeteoSchweiz, LWD Tirol, DWD, Bälmeten und seit Okt.
-  2026 alle OpenWindMap-Stationen außerhalb Südtirols) haben **keine
-  Prognose-Kurve** — die Edge Function kennt sie nicht (Details in
-  `README.md`).
+  2026 alle OpenWindMap-Stationen außerhalb Südtirols) hatten bis Okt. 2026
+  **keine Prognose-Kurve**; seit Punkt 14 (Nov. 2026) bekommen sie eine, weil
+  die Edge Function die Stationsliste des Sammlers nimmt.
 - Der Windanzeiger wählt sie über **Stationscodes** aus, nicht über Namen
   (Fehltreffer, z. B. SLF „Titlisboden" ↔ MeteoSchweiz „Titlis"). Robiei ist
   bewusst nicht dabei: MeteoSchweiz-Kürzel `ROB` = Poschiavo/Robbia im Tal.
@@ -623,8 +672,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
 
 **Nur Stationen in den Alpen (Okt. 2026)**
 - Gilt für ALLE Quellen: Angezeigt, gesammelt und prognostiziert werden nur
-  Stationen im Alpenraum (`isInAlps()` / `ALPS_POLYGON` in `src/lib/alps.ts`,
-  Kopie in der Edge Function). Wunsch des Projektbesitzers: Entscheidend ist
+  Stationen im Alpenraum (`isInAlps()` / `ALPS_POLYGON` in `src/lib/alps.ts`;
+  die Edge Function braucht seit Punkt 14 keine Kopie mehr, sie nimmt die
+  schon gefilterte Stationsliste des Sammlers). Wunsch des Projektbesitzers: Entscheidend ist
   der **Ort (Alpen ja/nein), nicht die Meereshöhe** — Talstationen in den
   Alpen (Innsbruck, Chur, Sion, Bozen, Klagenfurt, Graz …) bleiben bewusst
   drin; Flachland und Mittelgebirge außerhalb der Alpen (Wien, Burgenland,
@@ -632,14 +682,14 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   fallen weg, auch wenn sie höher liegen. Nicht auf eine Höhengrenze
   umbauen und nicht auf „alle Stationen" zurückbauen.
 - Angewendet in `geosphere.ts`, `meteoswiss.ts`, `slf.ts`, `pioupiou.ts`
-  (Anzeige und Sammeln) und in der Edge Function (Prognose, auf die ganze
-  Stationsliste). Bozen, LWD Tirol und Zugspitze liegen ohnehin komplett in
+  (beim Abruf durch den Sammler; Karte und Prognose nehmen, was er
+  gespeichert hat). Bozen, LWD Tirol und Zugspitze liegen ohnehin komplett in
   den Alpen.
 - **OpenWindMap im ganzen Umriss** (Punkt 26, Okt. 2026, Wunsch des
   Projektbesitzers; vorher nur eine Südtirol-Box mit 6 Stationen, jetzt rund
   90). Stationen, die seit über 2 Tagen nichts gemeldet haben, erscheinen
-  nicht (`MAX_SILENCE_MS`). Prognosen gibt es für OpenWindMap weiterhin nur
-  in Südtirol (Südtirol-Box in der Edge Function). **Offen:** Der gerade
+  nicht (`MAX_SILENCE_MS`). Prognosen gibt es seit Punkt 14 für alle (vorher
+  nur in Südtirol). **Offen:** Der gerade
   West-/Südrand des Umrisses schneidet die französischen und italienischen
   Alpen ab (dort gut 170 weitere aktive OpenWindMap-Stationen) — Erweiterung
   nur auf Wunsch des Projektbesitzers.
@@ -697,15 +747,19 @@ Projektbesitzers entfernt:
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  von Zeitfenster-Konstanten, des SLF-Stationsabrufs und der
-  GeoSphere-Adresse, dazu eine eigene Südtirol-Box für die
-  OpenWindMap-Prognosen (die Karte zeigt OpenWindMap im ganzen Alpenraum).
-  Wird `HISTORY_HOURS` /
-  `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in `src/lib/wind.ts` oder
-  Adresse/Codepräfix in `src/lib/slf.ts` bzw. `src/lib/geosphere.ts` oder der
-  Alpenraum-Umriss `ALPS_POLYGON` in `src/lib/alps.ts` geändert, muss die
-  Edge Function mitgezogen werden (und danach im Supabase-Dashboard neu
-  deployt).
+  der Zeitfenster-Konstanten und von `UPPER_WIND_STATIONS` (mit Koordinaten).
+  Wird `HISTORY_HOURS` / `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in
+  `src/lib/wind.ts` geändert, muss die Edge Function mitgezogen werden (und
+  danach im Supabase-Dashboard neu deployt). Die früheren Kopien von
+  Quell-Adressen, SLF-/GeoSphere-Abruf, Südtirol-Box und Alpen-Umriss sind
+  seit Punkt 14 (Nov. 2026) weg — die Funktion liest die Stationsliste aus
+  der Datenbank.
+- **Edge Function prüfen ohne Deno:** In der Entwicklungsumgebung gibt es kein
+  Deno. Typprüfung mit `tsc` und einer kleinen Ersatz-Deklaration für `Deno`
+  (`env.get`, `serve`); Probeläufe mit Node (`--experimental-strip-types`),
+  einem Ersatz-`Deno` und nachgebauten Antworten für Supabase und Open-Meteo
+  (`handleRequest` ist dafür exportiert). So im Nov. 2026 für das Nachholen
+  gescheiterter Stationen gemacht.
 - **GeoSphere erlaubt nur 240 Anfragen pro Stunde** (je Absender). Deshalb
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
@@ -729,28 +783,31 @@ Projektbesitzers entfernt:
 - **Bestehende Datenbanken** brauchen die einmaligen SQL-Skripte in
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte, seit
   Okt. 2026 `datenbank-aufraeumen.sql`, `collect-cron-tresor.sql`,
-  `stationsliste.sql` und `zeitbalken-funktion.sql`) — bei
+  `stationsliste.sql` und `zeitbalken-funktion.sql`, seit Nov. 2026
+  `ein-sammler.sql`) — bei
   einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
-  bzw. `collect-cron.sql`.
+  bzw. `collect-cron.sql`. In der Datenbank des Projekts sind alle ausgeführt.
 - **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`
   steht bei jedem Lauf „succeeded“, auch wenn `/api/collect` scheitert (pg_net
   arbeitet asynchron). Die echte Antwort steht in `net._http_response`, aber
   nur 6 Stunden lang. `/api/collect` nennt darin je Quelle die Zahl der Werte
-  und die gescheiterten Quellen.
-- **Adresse des Bozner Dienstes steht zweifach** (`src/lib/bolzano.ts`, Edge
-  Function) — seit Sept. 2026 `geoservices.buergernetz.bz.it`, die alte
-  `daten.buergernetz.bz.it` liefert nur noch 404. Bei einem Umzug beide
-  ändern; die Edge Function muss danach im Supabase-Dashboard neu deployt
-  werden. Ebenso **LWD Tirol**: seit Okt. 2026 `wiski.tirol.gv.at` (die alte
-  Adresse `lawine.tirol.gv.at/data/…` leitet nur noch um).
+  und die gescheiterten Quellen. Dauerhaft steht der letzte Zustand jeder
+  Quelle und der Prognose-Funktion seit Nov. 2026 in der Tabelle `wind_status`
+  (`ok`, `ok_at` = seit wann es zuletzt geklappt hat, `error`).
+- **Adresse des Bozner Dienstes** (`src/lib/bolzano.ts`; bis Nov. 2026 stand
+  sie zusätzlich in der Edge Function) — seit Sept. 2026
+  `geoservices.buergernetz.bz.it`, die alte `daten.buergernetz.bz.it` liefert
+  nur noch 404. Ebenso **LWD Tirol**: seit Okt. 2026 `wiski.tirol.gv.at` (die
+  alte Adresse `lawine.tirol.gv.at/data/…` leitet nur noch um).
 - **Open-Meteo-Kontingent:** kostenlos 10.000 Aufrufe am Tag. Gezählt wird
   je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
-  Anfrage kosten erst ab 10 Reihen extra. Stand Okt. 2026: ~490 Stationen
-  (nur Alpenraum) × 8 Modellläufe ≈ 3.900 am Tag, plus 16 für den
-  Höhenwind (2 Stationen × 8). Wird die
+  Anfrage kosten erst ab 10 Reihen extra. Stand Nov. 2026: ~650 Stationen
+  (alle Stationen der Karte, seit Punkt 14) × 8 Modellläufe ≈ 5.200 am Tag,
+  plus 16 für den Höhenwind (2 Stationen × 8); das Nachholen gescheiterter
+  Stationen kostet nur bei Fehlern etwas. Wird die
   Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
-  entfernt, wären es stündlich ≈ 14.000 — über der Grenze.
+  entfernt, wären es stündlich ≈ 15.600 — über der Grenze.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
   `api.pioupiou.fr`, `dataset.api.hub.geosphere.at`, den Kartenkacheln und Supabase sind in
   manchen Entwicklungsumgebungen blockiert. Kartendienste lassen sich dort

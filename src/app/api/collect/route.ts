@@ -1,23 +1,22 @@
 import { NextResponse } from "next/server";
-import { fetchBolzanoForCollect } from "@/lib/bolzano";
-import { fetchOpenWindMapStations } from "@/lib/pioupiou";
-import { fetchGeoSphereStations } from "@/lib/geosphere";
-import { fetchMeteoSwissStations } from "@/lib/meteoswiss";
-import { fetchLwdTirolStations } from "@/lib/lwdtirol";
-import { fetchDwdReadingsSince, fetchDwdStations } from "@/lib/dwd";
-import { fetchSlfReadingsSince, fetchSlfStations } from "@/lib/slf";
+import { SOURCE_IDS, WIND_SOURCES, type MeasurementRow, type SourceId } from "@/lib/sources";
 import { saveStationList } from "@/lib/stationList";
+import { saveSourceStatus, type SourceOutcome } from "@/lib/sourceStatus";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 
-// Sammel-Route: ruft alle Wetterdienste ab (dieselben Quellen wie /api/wind,
+// Sammel-Route: ruft alle Wetterdienste ab (Liste in src/lib/sources.ts,
 // Logik je Quelle in src/lib/) und schreibt die Windwerte in die
 // Supabase-Tabelle wind_measurements. Ersetzt den früheren
 // GitHub-Actions-Workflow und wird stattdessen von Supabase Cron per POST
 // angestoßen.
 //
-// Nebenbei pflegt sie die Stationsliste (Tabelle wind_stations: Name, Lage,
-// Höhe, Okt. 2026). Aus ihr zeigt /api/wind die Stationen einer gerade
-// ausgefallenen Quelle mit ihrem letzten Wert weiter (src/lib/stationList.ts).
+// EIN SAMMLER, EINE WAHRHEIT (Nov. 2026, Punkt 14 der Code-Durchsicht): Diese
+// Route ist die EINZIGE Stelle, die mit den Wetterdiensten spricht. Die Karte
+// (/api/wind) liest die Werte aus der Datenbank, die Prognose-Funktion die
+// Stationsliste. Deshalb speichert der Sammler neben den Messwerten auch
+//  - die Stationsliste (Tabelle wind_stations: Name, Lage, Höhe; Okt. 2026)
+//  - den Zustand jeder Quelle (Tabelle wind_status, src/lib/sourceStatus.ts):
+//    Daraus zeigt die Karte den Hinweis "… liefert gerade keine Daten".
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -39,8 +38,11 @@ import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 // (SOURCE_TIMEOUT_MS in src/lib/wind.ts). Scheitert eine, werden die übrigen
 // trotzdem gespeichert — seit Okt. 2026 auch dann, wenn der Bozner Dienst
 // ausfällt (vorher brach der ganze Lauf ab, und es entstand eine Lücke bei
-// ALLEN Quellen). Die Antwort nennt je Quelle die Zahl der Werte und die
-// gescheiterten Quellen.
+// ALLEN Quellen). Seit Nov. 2026 (Punkt 13) speichert auch jede Quelle für
+// sich: Vorher gingen alle Werte in einem gemeinsamen Schreibvorgang, und ein
+// einziger Wert, den die Datenbank ablehnt, hätte den ganzen Lauf verworfen.
+// Die Antwort nennt je Quelle die Zahl der Werte und die gescheiterten Quellen
+// samt Grund.
 //
 // Aufruf nur mit gültigem Token:
 //   POST /api/collect
@@ -83,111 +85,92 @@ const STATION_LIST_REFRESH_MINUTES = 5;
 // Next.js die Route eventuell zur Build-Zeit vorberechnen.
 export const dynamic = "force-dynamic";
 
-interface MeasurementRow {
-  station_code: string;
-  measured_at: string;
-  direction: number | null;
-  speed_kmh: number | null;
-  gust_kmh: number | null;
-  source: WindStation["source"];
-}
-
-// Ein Messwert in unseren Einheiten (gemeinsame Form von BolzanoReading,
-// SlfReading und DwdReading).
-interface Reading {
-  stationCode: string;
-  measuredAt: string;
-  direction: number | null;
-  speedKmh: number | null;
-  gustKmh: number | null;
-}
-
-// Was eine Quelle liefert: die Messwerte für wind_measurements und ihre
-// Stationen (Name, Lage, Höhe) für die Stationsliste.
-interface SourceResult {
-  rows: MeasurementRow[];
+// Ergebnis eines Laufs für eine Quelle: Zustand (für wind_status) und ihre
+// Stationen (für die Stationsliste).
+interface SourceRun extends SourceOutcome {
   stations: WindStation[];
 }
 
-function fromReadings(readings: Reading[], source: WindStation["source"]): MeasurementRow[] {
-  return readings.map((r) => ({
-    station_code: r.stationCode,
-    measured_at: r.measuredAt,
-    direction: r.direction,
-    speed_kmh: r.speedKmh,
-    gust_kmh: r.gustKmh,
-    source,
-  }));
-}
-
-// Quellen, die nur ihren neuesten Wert liefern (Live-Format der Karte): Ihre
-// Stationen sind zugleich die Einträge der Stationsliste.
-function fromStations(stations: WindStation[]): SourceResult {
-  const rows: MeasurementRow[] = [];
-  for (const s of stations) {
-    if (!s.timestamp || Number.isNaN(Date.parse(s.timestamp))) continue;
-    if (s.direction === null && s.speedKmh === null) continue; // kein Messwert
-    rows.push({
-      station_code: s.stationCode,
-      measured_at: s.timestamp,
-      direction: s.direction,
-      speed_kmh: s.speedKmh,
-      gust_kmh: s.gustKmh,
-      source: s.source,
-    });
+// Werte in die Datenbank schreiben. Upsert über (station_code, measured_at):
+// Doppelte werden bei jungen Werten aktualisiert ("merge-duplicates"), bei
+// älteren übersprungen ("ignore-duplicates"). Gibt null zurück, wenn alles
+// geklappt hat, sonst die Fehlermeldung.
+async function upsertMeasurements(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  rows: MeasurementRow[],
+  resolution: "merge-duplicates" | "ignore-duplicates",
+): Promise<string | null> {
+  if (rows.length === 0) return null;
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_measurements?on_conflict=station_code,measured_at`,
+      {
+        method: "POST",
+        headers: { ...headers, Prefer: `resolution=${resolution},return=minimal` },
+        body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      },
+    );
+    return res.ok ? null : `Status ${res.status}: ${await res.text()}`;
+  } catch (err) {
+    return String(err);
   }
-  return { rows, stations };
 }
 
-// SLF und DWD: Messwerte und Stationen kommen aus zwei Funktionen, die sich
-// den Abruf teilen (Zwischenspeicher in slf.ts bzw. cachedFresh in dwd.ts).
-// Die Stationsliste ist nur ein Zusatz — scheitert sie, werden die Messwerte
-// trotzdem gespeichert.
-async function withStations(
-  readings: Promise<MeasurementRow[]>,
-  stations: Promise<WindStation[]>,
-): Promise<SourceResult> {
-  const [rows, list] = await Promise.all([
-    readings,
-    stations.catch((err) => {
-      console.error("Stationen für die Stationsliste nicht abrufbar:", err);
-      return [];
-    }),
-  ]);
-  return { rows, stations: list };
-}
+// Eine Quelle abrufen und ihre Werte speichern — unabhängig von den anderen:
+// Weder ein Abruf- noch ein Speicherfehler betrifft eine andere Quelle.
+async function collectSource(
+  source: SourceId,
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  now: number,
+): Promise<SourceRun> {
+  let rows: MeasurementRow[];
+  let stations: WindStation[];
+  try {
+    ({ rows, stations } = await WIND_SOURCES[source].collect(now - HISTORY_WINDOW_MS));
+  } catch (err) {
+    console.error(`Quelle ${source} nicht abrufbar:`, err);
+    return { source, values: 0, error: `Abruf: ${String(err)}`, stations: [] };
+  }
 
-// Alle Quellen, je mit ihrer Umwandlung in Datenbankzeilen. Dieselben Quellen
-// wie in /api/wind — eine neue Quelle braucht an beiden Stellen einen Eintrag.
-const SOURCES: Array<[WindStation["source"], () => Promise<SourceResult>]> = [
-  [
-    "bolzano",
-    async () => {
-      const { readings, stations } = await fetchBolzanoForCollect();
-      return { rows: fromReadings(readings, "bolzano"), stations };
-    },
-  ],
-  ["openwindmap", async () => fromStations(await fetchOpenWindMapStations())],
-  ["geosphere", async () => fromStations(await fetchGeoSphereStations())],
-  ["meteoswiss", async () => fromStations(await fetchMeteoSwissStations())],
-  ["lwdtirol", async () => fromStations(await fetchLwdTirolStations())],
-  [
-    "dwd",
-    () =>
-      withStations(
-        fetchDwdReadingsSince(Date.now() - HISTORY_WINDOW_MS).then((r) => fromReadings(r, "dwd")),
-        fetchDwdStations(),
-      ),
-  ],
-  [
-    "slf",
-    () =>
-      withStations(
-        fetchSlfReadingsSince(Date.now() - HISTORY_WINDOW_MS).then((r) => fromReadings(r, "slf")),
-        fetchSlfStations(),
-      ),
-  ],
-];
+  // Zeilen aufteilen: jung = überschreiben, älter als OVERWRITE_WINDOW_MS =
+  // nur ergänzen. Längst ausgefallene Stationen (letzter Wert älter als die
+  // Aufbewahrung, z. B. ein seit Tagen toter Sensor) würden nach dem Speichern
+  // sofort wieder gelöscht — gar nicht erst schreiben.
+  const recentRows: MeasurementRow[] = [];
+  const olderRows: MeasurementRow[] = [];
+  for (const row of rows) {
+    const t = Date.parse(row.measured_at);
+    if (Number.isNaN(t) || t < now - RETENTION_MS) continue;
+    (t >= now - OVERWRITE_WINDOW_MS ? recentRows : olderRows).push(row);
+  }
+  const values = recentRows.length + olderRows.length;
+  if (values === 0) {
+    // Ohne eine einzige Station gilt die Quelle als ausgefallen (z. B.
+    // veröffentlicht MeteoSchweiz zeitweise eine Datei ohne Windwerte) — wie
+    // früher in /api/wind. Liefert sie Stationen, nur eben ohne neue Werte
+    // (z. B. lauter gestörte Sensoren), ist das kein Ausfall der Quelle: Die
+    // Stationen werden auf der Karte grau, ohne gelben Hinweis.
+    return {
+      source,
+      values: 0,
+      error: stations.length === 0 ? "Keine Stationen erhalten" : null,
+      stations,
+    };
+  }
+
+  const writeErrors = [
+    await upsertMeasurements(supabaseUrl, headers, recentRows, "merge-duplicates"),
+    await upsertMeasurements(supabaseUrl, headers, olderRows, "ignore-duplicates"),
+  ].filter((e): e is string => e !== null);
+  if (writeErrors.length > 0) {
+    console.error(`Quelle ${source}: Speichern schlug fehl:`, writeErrors.join("; "));
+    return { source, values, error: `Speichern: ${writeErrors.join("; ")}`, stations };
+  }
+  return { source, values, error: null, stations };
+}
 
 export async function POST(request: Request) {
   // 1) Zugriffsschutz: nur mit korrektem Bearer-Token ausführen.
@@ -218,92 +201,58 @@ export async function POST(request: Request) {
     "Content-Type": "application/json",
   };
 
-  // 2) Alle Quellen gleichzeitig abrufen. Eine gescheiterte Quelle liefert
-  //    keine Zeilen, die übrigen werden trotzdem gespeichert.
-  const results = await Promise.all(
-    SOURCES.map(async ([source, load]) => {
-      try {
-        return { source, ...(await load()), error: null };
-      } catch (err) {
-        console.error(`Quelle ${source} nicht abrufbar:`, err);
-        return { source, rows: [] as MeasurementRow[], stations: [] as WindStation[], error: String(err) };
-      }
-    }),
-  );
-
-  // 3) Zeilen aufteilen: jung = überschreiben, älter als OVERWRITE_WINDOW_MS =
-  //    nur ergänzen. Längst ausgefallene Stationen (letzter Wert älter als die
-  //    Aufbewahrung, z. B. ein seit Tagen toter Sensor) würden nach dem
-  //    Speichern sofort wieder gelöscht — gar nicht erst schreiben.
+  // 2) Alle Quellen gleichzeitig abrufen, jede speichert für sich (siehe
+  //    collectSource). Eine gescheiterte Quelle hält die übrigen nicht auf.
   const now = Date.now();
-  const recentRows: MeasurementRow[] = [];
-  const olderRows: MeasurementRow[] = [];
-  for (const { rows } of results) {
-    for (const row of rows) {
-      const t = Date.parse(row.measured_at);
-      if (Number.isNaN(t) || t < now - RETENTION_MS) continue;
-      (t >= now - OVERWRITE_WINDOW_MS ? recentRows : olderRows).push(row);
-    }
+  const runs = await Promise.all(
+    SOURCE_IDS.map((source) => collectSource(source, supabaseUrl, supabaseHeaders, now)),
+  );
+  const perSource = Object.fromEntries(runs.map((r) => [r.source, r.values]));
+  const errors = Object.fromEntries(
+    runs.filter((r) => r.error !== null).map((r) => [r.source, r.error]),
+  );
+  const failedSources = Object.keys(errors);
+  const saved = runs.reduce((sum, r) => sum + (r.error === null ? r.values : 0), 0);
+
+  // 3) Zustand jeder Quelle eintragen — gerade auch dann, wenn etwas
+  //    gescheitert ist: Daraus zeigt die Karte "… liefert gerade keine Daten",
+  //    und /api/wind erkennt daran, dass der Sammler läuft.
+  const statusError = await saveSourceStatus(
+    supabaseUrl,
+    supabaseHeaders,
+    runs,
+    new Date(now).toISOString(),
+  );
+  if (statusError) {
+    console.error(`WARNUNG: Zustand der Quellen nicht gespeichert: ${statusError}`);
   }
 
-  const perSource = Object.fromEntries(results.map((r) => [r.source, r.rows.length]));
-  const failedSources = results.filter((r) => r.error !== null).map((r) => r.source);
-
-  if (recentRows.length + olderRows.length === 0) {
+  if (saved === 0) {
     return NextResponse.json(
-      { error: "Keine Windmesswerte erhalten", sources: perSource, failedSources },
+      {
+        error: "Keine Windmesswerte gespeichert",
+        sources: perSource,
+        failedSources,
+        errors,
+        sourceStatusOk: statusError === null,
+      },
       { status: 502 },
     );
   }
 
-  // 4) Speichern. Upsert über (station_code, measured_at): Doppelte werden
-  //    bei jungen Werten aktualisiert ("merge-duplicates"), bei älteren
-  //    übersprungen ("ignore-duplicates"). Gibt null zurück, wenn alles
-  //    geklappt hat, sonst die Fehlermeldung.
-  const upsert = async (
-    rows: MeasurementRow[],
-    resolution: "merge-duplicates" | "ignore-duplicates",
-  ): Promise<string | null> => {
-    if (rows.length === 0) return null;
-    try {
-      const res = await fetch(
-        `${supabaseUrl}/rest/v1/wind_measurements?on_conflict=station_code,measured_at`,
-        {
-          method: "POST",
-          headers: { ...supabaseHeaders, Prefer: `resolution=${resolution},return=minimal` },
-          body: JSON.stringify(rows),
-          signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
-        },
-      );
-      return res.ok ? null : `Status ${res.status}: ${await res.text()}`;
-    } catch (err) {
-      return String(err);
-    }
-  };
-  const insertErrors = [
-    await upsert(recentRows, "merge-duplicates"),
-    await upsert(olderRows, "ignore-duplicates"),
-  ].filter((e): e is string => e !== null);
-  if (insertErrors.length > 0) {
-    return NextResponse.json(
-      { error: "Supabase-Insert schlug fehl", details: insertErrors, sources: perSource },
-      { status: 502 },
-    );
-  }
-
-  // 5) Stationsliste pflegen (siehe STATION_LIST_REFRESH_MINUTES). Unkritisch —
+  // 4) Stationsliste pflegen (siehe STATION_LIST_REFRESH_MINUTES). Unkritisch —
   //    ein Fehler wird nur protokolliert und in der Antwort gemeldet.
   const stationListError = await saveStationList(
     supabaseUrl,
     supabaseHeaders,
-    results.flatMap((r) => r.stations),
+    runs.flatMap((r) => r.stations),
     new Date(now).getUTCMinutes() < STATION_LIST_REFRESH_MINUTES,
   );
   if (stationListError) {
     console.error(`WARNUNG: Stationsliste nicht gespeichert: ${stationListError}`);
   }
 
-  // 6) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
+  // 5) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
   const cutoff = new Date(now - RETENTION_MS).toISOString();
   let deleted = true;
   try {
@@ -329,10 +278,12 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    saved: recentRows.length + olderRows.length,
+    saved,
     sources: perSource,
     failedSources,
+    errors,
     stationListOk: stationListError === null,
+    sourceStatusOk: statusError === null,
     cleanupBefore: cutoff,
     cleanupOk: deleted,
   });

@@ -12,10 +12,9 @@
 // die Zugspitze liegen ohnehin komplett in den Alpen und brauchen den Test
 // nicht.
 //
-// ACHTUNG: Die Edge Function fetch-wind-forecasts hat eine Kopie dieses
-// Vielecks (Deno kann nicht aus src/ importieren) — bei Änderungen beide
-// anfassen, sonst gibt es Prognosen für Stationen, die gar nicht angezeigt
-// werden (oder umgekehrt).
+// Die Edge Function fetch-wind-forecasts hatte bis Nov. 2026 eine Kopie
+// dieses Vielecks; seitdem nimmt sie die Stationsliste des Sammlers, die
+// schon hier gefiltert ist — eine Änderung wirkt also überall.
 //
 // Der Umriss ist grob (Alpenhauptkamm samt Voralpen und Talböden), am
 // 04.10.2026 gegen alle Stationen von GeoSphere (286), MeteoSchweiz (151) und

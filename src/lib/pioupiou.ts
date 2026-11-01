@@ -3,9 +3,8 @@ import { isOutdated, SOURCE_TIMEOUT_MS, type WindStation } from "./wind";
 import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der OpenWindMap-Stationen (Pioupiou-Netzwerk)
-// im Alpenraum. Genutzt von /api/wind (Live-Anzeige) und /api/collect
-// (Sammel-Route für die Historie) — nicht aber von der Supabase Edge Function
-// fetch-wind-forecasts, die läuft unter Deno und hat eine eigene Kopie.
+// im Alpenraum. Genutzt vom Sammler /api/collect und im Notbetrieb von
+// /api/wind (Liste aller Quellen: src/lib/sources.ts).
 //
 // Endpunkt: https://api.pioupiou.fr/v1/live/all liefert ALLE Stationen
 // weltweit ohne Regionsfilter. Behalten werden die im Alpenraum (isInAlps,
@@ -14,9 +13,8 @@ import { cachedFresh } from "./freshCache";
 // statt rund 90); auf Wunsch des Projektbesitzers erweitert (Punkt 26 der
 // Code-Durchsicht).
 //
-// Prognosen: Die Edge Function fragt OpenWindMap weiterhin nur für Südtirol
-// ab (ihre eigene Südtirol-Box). Die übrigen OpenWindMap-Stationen haben
-// deshalb — wie MeteoSchweiz — keine Prognose-Kurve.
+// Prognosen: Seit Nov. 2026 für alle angezeigten Stationen (die Edge Function
+// nimmt die Stationsliste des Sammlers); vorher nur für Südtirol.
 //
 // Lizenz: Die Daten stehen unter der kostenlosen OpenWindMap-Community-
 // Lizenz, die einen sichtbaren Credit mit Link verlangt. Die frühere Fußzeile

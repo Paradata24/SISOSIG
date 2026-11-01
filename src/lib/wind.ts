@@ -102,9 +102,9 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
 
 /**
  * Kopfzeile der Antwort von /api/wind mit den Quellen, die gerade keine
- * einzige Station liefern (Fehler, Zeitlimit oder leere Antwort), z. B.
- * "meteoswiss,lwdtirol". WindMap zeigt daraus den Hinweis "… liefert gerade
- * keine Daten".
+ * einzige Station liefern (Fehler, Zeitlimit oder leere Antwort; seit Nov. 2026
+ * so vom Sammler in wind_status eingetragen), z. B. "meteoswiss,lwdtirol".
+ * WindMap zeigt daraus den Hinweis "… liefert gerade keine Daten".
  */
 export const MISSING_SOURCES_HEADER = "x-sisosig-ohne-daten";
 
@@ -190,6 +190,12 @@ export const SOURCE_TIMEOUT_MS = 8_000;
 export const METADATA_TIMEOUT_MS = 15_000;
 /** Abfragen an die Supabase-Datenbank. */
 export const DATABASE_TIMEOUT_MS = 15_000;
+/**
+ * Lesen der aktuellen Werte für die Karte (/api/wind, seit Punkt 14 aus der
+ * Datenbank). Normal dauert das ~0,1 s; kürzer als DATABASE_TIMEOUT_MS, weil
+ * danach noch Zeit für den Notbetrieb (direkt bei den Quellen) bleiben muss.
+ */
+export const LIVE_DATABASE_TIMEOUT_MS = 5_000;
 
 /**
  * Zeitfenster des Verlaufsbalkens: Die Zeitachse läuft fest von

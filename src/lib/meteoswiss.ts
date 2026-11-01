@@ -11,10 +11,9 @@ import { cachedFresh } from "./freshCache";
 // Gemeinsame Logik zum Abrufen der automatischen Messstationen von MeteoSchweiz
 // (Bundesamt für Meteorologie und Klimatologie, Netz "SwissMetNet"/SMN, rund
 // 150 Stationen mit Windmessung, darunter alle Gipfel- und Passstationen wie
-// Säntis, Pilatus oder Jungfraujoch). Genutzt von /api/wind (Live-Anzeige) und
-// /api/collect (Sammel-Route für die Historie) — nicht aber von der Supabase
-// Edge Function fetch-wind-forecasts: Für diese Stationen gibt es (noch) keine
-// Prognose-Kurve, siehe README.
+// Säntis, Pilatus oder Jungfraujoch). Genutzt vom Sammler /api/collect und
+// im Notbetrieb von /api/wind (Liste aller Quellen: src/lib/sources.ts).
+// Prognose-Kurven gibt es für diese Stationen seit Nov. 2026.
 //
 // Datenquelle: Open Government Data von MeteoSchweiz, ohne Anmeldung/Schlüssel.
 // Zwei Dateien je Abruf, beide über data.geo.admin.ch:

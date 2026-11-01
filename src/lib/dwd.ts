@@ -4,9 +4,8 @@ import { cachedFresh } from "./freshCache";
 
 // Ausgewählte Messstationen des Deutschen Wetterdienstes (DWD) — derzeit nur
 // die Zugspitze (Föhnindikator für Tirol, Wunsch des Projektbesitzers).
-// Genutzt von /api/wind (Live-Anzeige) und /api/collect (Sammel-Route für die
-// Historie) — nicht aber von der Supabase Edge Function fetch-wind-forecasts
-// (für diese Station gibt es keine Prognose-Kurve, siehe README).
+// Genutzt vom Sammler /api/collect und im Notbetrieb von /api/wind (Liste
+// aller Quellen: src/lib/sources.ts).
 //
 // Datenquelle: DWD Open Data (https://opendata.dwd.de), ohne Anmeldung.
 // Je Station zwei kleine ZIP-Dateien mit ALLEN 10-Minuten-Werten des

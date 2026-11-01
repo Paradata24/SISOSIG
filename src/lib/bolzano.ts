@@ -2,10 +2,11 @@ import { isOutdated, METADATA_TIMEOUT_MS, SOURCE_TIMEOUT_MS, type WindStation } 
 
 // Gemeinsame Logik zum Abrufen der Stationen des Bozner Wetterdienstes
 // (Open-Data-Webservice der Provinz Bozen für Wetter-/Pegelstationen).
-// Genutzt von /api/wind (Live-Anzeige) und /api/collect (Sammel-Route für die
-// Historie). Bis Okt. 2026 stand diese Logik in beiden Routen doppelt; seitdem
-// ist Bozen eine Quelle wie alle anderen: Fällt der Dienst aus, zeigen Karte
-// und Sammler die übrigen Quellen trotzdem (vorher war dann alles leer).
+// Genutzt vom Sammler /api/collect und im Notbetrieb von /api/wind (Liste
+// aller Quellen: src/lib/sources.ts). Bis Okt. 2026 stand diese Logik in
+// beiden Routen doppelt; seitdem ist Bozen eine Quelle wie alle anderen:
+// Fällt der Dienst aus, zeigen Karte und Sammler die übrigen Quellen trotzdem
+// (vorher war dann alles leer).
 //
 // Datensatz: https://data.civis.bz.it/de/dataset/misure-meteo-e-idrografiche
 // Zwei Anfragen genügen für alle Stationen: /sensors liefert die aktuellen
@@ -14,9 +15,8 @@ import { isOutdated, METADATA_TIMEOUT_MS, SOURCE_TIMEOUT_MS, type WindStation } 
 // ADRESSE: Seit Sept. 2026 läuft der Dienst unter geoservices.buergernetz.bz.it.
 // Die frühere Adresse (daten.buergernetz.bz.it) antwortet nur noch mit 404
 // ("Questo endpoint è stato spostato") — die Karte zeigte dann keine Stationen
-// mehr. Die aktuelle Adresse steht auf der Datensatz-Seite oben. Sie steht
-// zweifach im Projekt: hier und in der Edge Function
-// supabase/functions/fetch-wind-forecasts/index.ts — beide mitziehen.
+// mehr. Die aktuelle Adresse steht auf der Datensatz-Seite oben. Bis Nov. 2026
+// stand sie zusätzlich in der Edge Function; seitdem nur noch hier.
 //
 // Der Dienst liefert unter /sensors immer nur den NEUESTEN Wert je Sensor,
 // rund 10 min nach der Messung (Folgen für den Sammel-Takt: siehe

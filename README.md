@@ -29,12 +29,25 @@ Edge Function):
 - `/sensors` liefert die aktuellen Messwerte aller Stationen.
 - `/stations` liefert Name und Koordinaten der Stationen.
 
-Die Next.js-Route `src/app/api/wind/route.ts` ruft über
-`src/lib/bolzano.ts` beide Endpunkte ab (insgesamt nur 2 Anfragen pro
-Aktualisierung) und gibt alle Stationen mit Windsensoren und Koordinaten als
-JSON-Liste zurück: Richtung, Mittelwind und Böe (umgerechnet in km/h) sowie
-ein `stale`-Flag für Stationen, deren Messwerte fehlen oder zu alt sind —
-diese erscheinen auf der Karte als grauer Ring statt als Windpfeil.
+**Ein Sammler, eine Wahrheit (seit Nov. 2026):** Mit den Wetterdiensten
+spricht nur noch der Sammler `src/app/api/collect/route.ts` (alle 5 Minuten,
+siehe „Wind-Historie" unten; Liste aller Quellen in `src/lib/sources.ts`). Er
+speichert Messwerte, Stationsliste und den Zustand jeder Quelle in Supabase.
+Die Karte holt ihre Werte über `src/app/api/wind/route.ts` aus der
+Datenbank — in einer einzigen Anfrage (Funktion `wind_latest`, ~0,1 s). Karte,
+Zeitbalken und Verlaufsbalken zeigen dadurch immer denselben Stand. Preis:
+Ein neuer Messwert erscheint im Schnitt 2–3 Minuten später als vorher (höchstens
+5), weil er erst beim nächsten Sammel-Lauf ankommt.
+
+`/api/wind` gibt alle Stationen als JSON-Liste zurück: Richtung, Mittelwind
+und Böe (in km/h) sowie ein `stale`-Flag für Stationen, deren Messwerte
+fehlen oder zu alt sind — diese erscheinen auf der Karte als grauer Ring
+statt als Windpfeil.
+
+**Notbetrieb:** Antwortet die Datenbank nicht (5 s Zeitlimit) oder hat der
+Sammler seit 15 Minuten nichts eingetragen, holt `/api/wind` die Werte wie
+früher selbst bei allen Quellen. Die Karte bleibt so auch dann benutzbar; zur
+Fehlersuche steht dann in der Antwort die Kopfzeile `x-sisosig-notbetrieb`.
 
 **Wann eine Station grau wird (seit Okt. 2026):** grundsätzlich, wenn ihr
 neuester Wert älter als **30 Minuten** ist (vorher 2 Stunden). Quellen, die
@@ -43,17 +56,19 @@ mehr Zeit, sonst würden sie vor jedem neuen Wert kurz grau: Bozen 35,
 MeteoSchweiz 40, LWD Tirol 50, SLF 55 und DWD (Zugspitze) 75 Minuten.
 Einstellbar an einer Stelle: `STALE_AFTER_MINUTES` in `src/lib/wind.ts`.
 
-**Wenn eine Quelle ausfällt:** Alle Quellen (auch Bozen) werden gleichzeitig
-abgefragt, jede mit Zeitlimit (8 s). Scheitert eine oder liefert sie keine
-einzige Station, zeigt die Karte die übrigen trotzdem und oben den gelben
-Hinweis „… liefert gerade keine Daten" (im Flugmodus in der Statuszeile).
-Bis Okt. 2026 war bei einem Ausfall des Bozner Dienstes die ganze Karte leer.
+**Wenn eine Quelle ausfällt:** Der Sammler fragt alle Quellen (auch Bozen)
+gleichzeitig ab, jede mit Zeitlimit (8 s), und trägt je Quelle ein, ob es
+geklappt hat (Tabelle `wind_status`). Scheitert eine oder liefert sie keine
+einzige Station, bleiben ihre Stationen mit dem letzten Wert stehen (nach der
+Grau-Grenze grau), und oben erscheint der gelbe Hinweis „… liefert gerade
+keine Daten" (im Flugmodus in der Statuszeile). Bis Okt. 2026 war bei einem
+Ausfall des Bozner Dienstes die ganze Karte leer.
 
 Bestimmte Stationen lassen sich über `/api/wind?station=<SCODE1>,<SCODE2>`
 filtern. Die Stationscodes findet man in der Antwort von
 `/services/meteo/v1/stations`.
 
-Zusätzlich holt `/api/wind` über `src/lib/pioupiou.ts` die Stationen des
+Zusätzlich kommen über `src/lib/pioupiou.ts` die Stationen des
 **OpenWindMap/Pioupiou-Netzwerks** im Alpenraum dazu (Endpunkt
 `https://api.pioupiou.fr/v1/live/all`, gefiltert über die Alpen-Regel, da
 die API keinen Regionsfilter kennt) und zeigt sie
@@ -70,26 +85,24 @@ SLF** dazu (dieselben wie auf whiterisk.ch, Codes `slf-<CODE>`, z. B.
 
 ### Zwischenspeicherung (Caching)
 
-Die Stationen messen nur alle 5–10 Minuten. Deshalb fragt nicht jeder
-Seitenaufruf die fremden Dienste neu ab, sondern `/api/wind` nutzt drei
-Cache-Ebenen (alle in `src/app/api/wind/route.ts` bzw.
-`src/lib/pioupiou.ts` konfiguriert):
+Die Stationen messen nur alle 5–10 Minuten, und die Karte liest seit Nov. 2026
+ohnehin nur noch aus der Datenbank. Die **fertige JSON-Antwort** von
+`/api/wind` wird über den `Cache-Control`-Header (`s-maxage=60`) 60 Sekunden
+vom Vercel-CDN geteilt: Rufen mehrere Besucher die Seite gleichzeitig auf,
+bekommen alle dieselbe Antwort, ohne dass der Server die Daten mehrfach
+zusammenbaut. Fehlerantworten werden bewusst **nicht** gecacht, damit sich
+ein kurzer Ausfall nicht festsetzt.
 
-| Was wird gecacht?                            | Wie lange? | Warum?                                       |
-| -------------------------------------------- | ---------- | -------------------------------------------- |
-| Messwerte Bozen (`/sensors`)                 | 60 Sekunden | Neue Messungen kommen eh nur alle 5–10 min   |
-| Messwerte OpenWindMap/Pioupiou (`/live/all`) | 60 Sekunden | dito                                         |
-| Stationsmetadaten Bozen (`/stations`)        | 6 Stunden   | Name/Koordinaten/Höhe ändern sich praktisch nie |
-| Messwerte SLF (`/imis/measurements`)         | 2 Minuten (eigener Speicher, siehe `src/lib/slf.ts`) | Neue Werte nur alle 30 min; Antwort ist zu groß für den Next.js-Cache |
-| Stationsliste SLF (`/imis/stations`)         | 6 Stunden   | wie bei Bozen                                |
+Die einzelnen Quellen (in `src/lib/`) halten ihre Messwerte zusätzlich kurz
+im Speicher (1–2 Minuten, `src/lib/freshCache.ts`; Stationslisten 6 Stunden).
+Das braucht heute vor allem der Notbetrieb von `/api/wind`; der Sammler läuft
+nur alle 5 Minuten und bekommt so immer frische Werte.
 
-Zusätzlich wird die **fertige JSON-Antwort** von `/api/wind` über den
-`Cache-Control`-Header (`s-maxage=60`) 60 Sekunden vom Vercel-CDN
-geteilt: Rufen mehrere Besucher die Seite gleichzeitig auf, bekommen
-alle dieselbe Antwort, ohne dass der Server die Daten mehrfach
-zusammenbaut. Fehlerantworten (z. B. wenn der Bozner Dienst nicht
-erreichbar ist) werden bewusst **nicht** gecacht, damit sich ein kurzer
-Ausfall nicht festsetzt.
+**Früher anfordern (Punkt 8, Nov. 2026):** Die Seite startet die Anfrage
+`/api/wind` schon beim Öffnen, mit einer kleinen Zeile im `<head>`
+(`src/lib/earlyWind.ts`), statt erst, wenn das Kartenprogramm geladen ist.
+Gemessen bei gedrosseltem Handy-Netz: Die Anfrage startet nach ~0,4 s statt
+nach ~2 s, die Pfeile stehen 0,2–0,5 s früher.
 
 Nach demselben Muster arbeiten auch die beiden Verlaufsbalken-Routen:
 `/api/history` wird 60 Sekunden vom CDN geteilt (neue Messwerte kommen nur
@@ -99,11 +112,6 @@ alle 3 Stunden neu geholt). Klickt man auf der Karte zwischen zwei Stationen hin
 und her, kommt die Antwort dadurch direkt aus dem Zwischenspeicher statt
 jedes Mal aus der Datenbank.
 
-Die fremden Dienste, die `/api/wind` braucht, werden außerdem
-**gleichzeitig** abgefragt statt nacheinander: muss die Route wirklich einmal
-laufen (Cache-Miss), dauert sie damit nur so lange wie der langsamste
-einzelne Abruf — höchstens aber 8 Sekunden (Zeitlimit, siehe oben).
-
 **Server-Standort:** Die Server-Teile der Seite (alle `/api/…`-Routen) laufen
 seit Okt. 2026 in **Dublin**, im selben Rechenzentrum wie die Datenbank
 (`vercel.json`, `"regions": ["dub1"]`; diese Datei hat Vorrang vor der
@@ -112,8 +120,10 @@ Washington/USA, und jede Abfrage ging über den Atlantik.
 
 Praktische Folgen:
 
-- Angezeigte Werte können bis zu ~1–2 Minuten „alt" sein — bei
-  Messintervallen von 5–10 Minuten ist das ohne Bedeutung.
+- Ein neuer Messwert ist nach dem Erscheinen beim Wetterdienst spätestens
+  nach ~6 Minuten auf der Karte (bis zu 5 Minuten bis zum nächsten
+  Sammel-Lauf, bis zu 1 Minute CDN) — bei Messintervallen von 10 Minuten
+  vertretbar.
 - Die Karte fragt im Hintergrund alle **3 Minuten** neue Werte ab
   (`POLL_INTERVAL_MS` in `src/components/WindMap.tsx`) und im Hintergrund
   laufender Tabs gar nicht. Kehrt man zur Seite zurück, wird sofort
@@ -131,13 +141,13 @@ Praktische Folgen:
 ### Wie die Daten gesammelt werden
 
 Die Sammel-Route `src/app/api/collect/route.ts` (Aufruf per **POST** unter
-`/api/collect`) fragt denselben Wetterdienst wie `/api/wind` ab — sowohl den
-Bozner Wetterdienst als auch die Südtiroler OpenWindMap/Pioupiou-Stationen
-(siehe oben) — und schreibt die aktuellen Windwerte aller Stationen in die
-Supabase-Tabelle `wind_measurements` (Schema: `supabase/schema.sql`,
-einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
-`source` die Herkunft (`bolzano` oder `openwindmap`), damit sich das später
-auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
+`/api/collect`) fragt alle Quellen ab (Liste in `src/lib/sources.ts`, eine
+neue Quelle ist dort ein einziger Eintrag) und schreibt die aktuellen
+Windwerte aller Stationen in die Supabase-Tabelle `wind_measurements`
+(Schema: `supabase/schema.sql`, einmalig im Supabase SQL-Editor ausführen).
+Sie ist seit Nov. 2026 die **einzige** Stelle, die mit den Wetterdiensten
+spricht (siehe „Ein Sammler, eine Wahrheit" oben). Jede Zeile trägt in der
+Spalte `source` die Herkunft (`bolzano`, `openwindmap`, `slf`, …). Bereits vorhandene
 Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
 `measured_at`), und Einträge älter als 3 Tage werden bei jedem Lauf
 gelöscht (die Anzeige braucht 48 Stunden, der Rest ist Puffer).
@@ -177,31 +187,47 @@ Sicht `wind_stations_latest` (neuester gespeicherter Wert je Station) an;
 gelöscht oder verändert wird nichts. Die Liste füllt der Sammler beim
 nächsten Lauf. Wozu: Liefert eine Quelle gar nichts, zeigt die Karte deren
 Stationen mit dem letzten gespeicherten Wert weiter (nach der Grau-Grenze
-grau), statt sie auszublenden (`src/lib/stationList.ts`).
+grau), statt sie auszublenden (`src/lib/stationList.ts`). Aus derselben Liste
+nimmt die Prognose-Funktion seit Nov. 2026 ihre Stationen.
+
+**Ein Sammler, eine Wahrheit (Nov. 2026), ebenfalls einmalig bei einer
+bestehenden Datenbank:** `supabase/ein-sammler.sql` auf dieselbe Weise
+ausführen (in der Datenbank des Projekts schon geschehen). Es legt die
+Tabelle `wind_status` (Zustand jeder Quelle und der Prognose-Funktion) und
+die Funktion `wind_latest` (alle aktuellen Werte für die Karte in einer
+Antwort) an und ergänzt die Sicht `wind_stations_latest` um eine Spalte;
+gelöscht oder verändert wird nichts. Fehlt es, läuft die Karte im Notbetrieb
+(siehe oben), und der Sammler meldet `"sourceStatusOk": false`.
 
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
 wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
 mitschicken.
 
-Alle Quellen werden gleichzeitig abgefragt, jede mit Zeitlimit; scheitert
-eine (seit Okt. 2026 auch der Bozner Dienst), werden die übrigen trotzdem
-gespeichert. SLF und DWD liefern ihren Verlauf mit — von ihnen speichert jeder
+Alle Quellen werden gleichzeitig abgefragt, jede mit Zeitlimit, und jede
+speichert für sich (seit Nov. 2026; vorher ein gemeinsamer Schreibvorgang, den
+ein einziger abgelehnter Wert ganz verworfen hätte). Scheitert eine (seit
+Okt. 2026 auch der Bozner Dienst), werden die übrigen trotzdem gespeichert.
+SLF und DWD liefern ihren Verlauf mit — von ihnen speichert jeder
 Lauf die letzten 3 Stunden, sodass sich Lücken von selbst füllen. Werte, die
 älter als eine Stunde sind, werden dabei nur noch ergänzt, nicht neu
-geschrieben.
+geschrieben. Nach jedem Lauf trägt der Sammler den Zustand jeder Quelle in
+`wind_status` ein (geklappt, Zahl der Werte, Fehlermeldung, seit wann es
+zuletzt geklappt hat).
 
 **Antwort der Route:**
 
 - **Erfolg:** Status `200` mit JSON, z. B.
-  `{ "ok": true, "saved": 1558, "sources": { "bolzano": 82, "slf": 1176, … },
-  "failedSources": [], "stationListOk": true, "cleanupBefore": "…", "cleanupOk": true }`
-  (`saved` = Anzahl übermittelter Werte, `sources` = Werte je Quelle,
-  `failedSources` = Quellen, die diesmal gescheitert sind, `stationListOk` =
-  Stationsliste gespeichert).
+  `{ "ok": true, "saved": 1661, "sources": { "bolzano": 82, "slf": 1196, … },
+  "failedSources": ["lwdtirol"], "errors": { "lwdtirol": "Keine Stationen erhalten" },
+  "stationListOk": true, "sourceStatusOk": true, "cleanupBefore": "…", "cleanupOk": true }`
+  (`saved` = Anzahl gespeicherter Werte, `sources` = Werte je Quelle,
+  `failedSources`/`errors` = Quellen, die diesmal gescheitert sind, mit Grund,
+  `stationListOk` = Stationsliste gespeichert, `sourceStatusOk` = Zustand der
+  Quellen gespeichert).
 - **Falsches/fehlendes Token:** Status `401` (`{ "error": "Nicht autorisiert" }`).
 - **Fehlende Server-Variablen:** Status `500`.
-- **Keine einzige Quelle lieferte Werte / Speichern scheiterte:** Status `502`.
+- **Keine einzige Quelle konnte gespeichert werden:** Status `502`.
 
 Achtung: Im Protokoll der Zeitplan-Jobs (`cron.job_run_details`) steht bei
 jedem Lauf „succeeded" — das heißt nur „Anfrage abgeschickt". Die echte
@@ -219,8 +245,8 @@ Niemals in den Code schreiben! Alle als **Environment Variables in Vercel**
 
 | Variable | Wert | Wofür |
 | --- | --- | --- |
-| `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect`, `/api/history` und `/api/timeline` |
+| `SUPABASE_URL` | Project URL des Supabase-Projekts | `/api/collect`, `/api/wind`, `/api/history`, `/api/forecast` und `/api/timeline` |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role Key des Supabase-Projekts | `/api/collect`, `/api/wind`, `/api/history`, `/api/forecast` und `/api/timeline` |
 | `CRON_SECRET` | selbst gewähltes, langes Geheimnis | schützt `/api/collect` vor fremden Aufrufen |
 
 Der Wert von `CRON_SECRET` in Vercel wird **ohne** `Bearer ` eingetragen; im
@@ -391,10 +417,11 @@ und z. B. sehen, wie der Föhn durchbricht.
 48 Stunden in **einem** Schritt über die Datenbank-Funktion `wind_timeline`
 (seit Okt. 2026; vorher seitenweise in gut 30 Paketen, zusammen gut 2 s — die
 Funktion selbst braucht ~0,2 s) und liefert ein kompaktes Spaltenformat: eine
-gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund 110 KB
-(komprimiert übertragen, ausgepackt knapp 400 KB; Okt. 2026, gut 560
-Stationen). Sie werden **gleich beim Öffnen der Seite** geholt (für den
-Farbstrich) und alle 10 Minuten aufgefrischt.
+gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund 450 KB
+(komprimiert übertragen, ausgepackt 1,7 MB; Nov. 2026, 48 Stunden, rund 650
+Stationen — bei der 12-h-Anzeige waren es rund 110 KB). Sie werden **gleich
+beim Öffnen der Seite** geholt (für den Farbstrich) und alle 10 Minuten
+aufgefrischt.
 
 **Bei einer bestehenden Datenbank einmalig:** `supabase/zeitbalken-funktion.sql`
 im Supabase SQL-Editor ausführen (legt nur die Funktion an, verändert keine
@@ -409,16 +436,18 @@ ausführen", und der Zeitbalken bleibt leer.
 Die Supabase Edge Function `fetch-wind-forecasts`
 (Code: `supabase/functions/fetch-wind-forecasts/index.ts`) holt
 Windprognosen des Modells **ICON-CH1** (MeteoSwiss) von
-[Open-Meteo](https://open-meteo.com) für alle Stationen, die auch auf der
-Karte erscheinen — Bozen, Südtiroler OpenWindMap/Pioupiou-Stationen,
-SLF (Schweiz) und GeoSphere (Österreich), jeweils nur im Alpenraum; die Stationslisten sind in
-der Edge Function dupliziert, weil Deno nichts aus `src/lib` importieren
-kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
-`supabase/forecast-schema.sql`). Details:
+[Open-Meteo](https://open-meteo.com) für **alle Stationen der Karte** und
+schreibt sie in die Tabelle `wind_forecasts` (Schema:
+`supabase/forecast-schema.sql`). Die Stationen nimmt sie seit Nov. 2026 aus
+der Stationsliste in der Datenbank (`wind_stations`, gepflegt vom Sammler) —
+vorher fragte sie selbst bei Bozen, OpenWindMap (nur Südtirol), SLF und
+GeoSphere nach und hatte dafür Kopien von deren Adressen und vom
+Alpen-Umriss. Seitdem haben auch MeteoSchweiz, LWD Tirol, DWD und alle
+OpenWindMap-Stationen eine Prognose-Kurve, und eine neue Quelle braucht in
+der Edge Function nichts. Details:
 
 - **Bodenwind nur aus ICON-CH1** (`model = 'icon_ch1'`). Der ICON-D2-Bodenwind
-  wurde bis Sept. 2026 mitgesammelt, aber nie angezeigt, und ist entfernt;
-  alte `icon_d2`-Zeilen laufen nach 2 Tagen von selbst ab.
+  wurde bis Sept. 2026 mitgesammelt, aber nie angezeigt, und ist entfernt.
 - **Höhenwind (ICON-D2)** nur für Rittnerhorn und Leiterspitz
   (`model = 'icon_d2_upper'`, im Verlaufsbalken blau gestrichelt): Wind der
   freien Atmosphäre auf der nächsthöheren Druckfläche über der Station
@@ -447,10 +476,16 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   österreichischen Stationen östlich davon (u. a. Neusiedl am See,
   Podersdorf, Andau, Hohenau) bekommen keine Prognose; sie werden vorab
   aussortiert, weil Open-Meteo sonst die ganze Anfrage ablehnt.
+- **Gescheiterte Stationen nachholen (Nov. 2026):** Scheitert beim Abruf
+  eines neuen Laufs ein Teil der Blöcke, merkt sich die Funktion deren
+  Stationen (Tabelle `wind_status`, Zeile `prognose`) und holt sie bei den
+  nächsten Cron-Anstößen nach — höchstens 4-mal, also innerhalb von rund
+  einer Stunde. Vorher warteten sie bis zum nächsten Lauf (3 h). In der
+  Antwort steht das unter `"retry"`.
 - **Kontingent:** Open-Meteo erlaubt kostenlos 10.000 Aufrufe pro Tag,
-  gezählt je Station. ~490 Stationen × 8 Läufe ≈ **3.900 am Tag**, dazu 16
-  für den Höhenwind (Okt. 2026; bis Sept. 2026 wurde stündlich abgefragt,
-  damals ~7.400 am Tag).
+  gezählt je Station. ~650 Stationen × 8 Läufe ≈ **5.200 am Tag**, dazu 16
+  für den Höhenwind (Nov. 2026; im Okt. 2026 ~490 Stationen ≈ 3.900, bis
+  Sept. 2026 wurde stündlich abgefragt, damals ~7.400 am Tag).
 - Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Die Vergangenheit im
   48-h-Verlaufsbalken kommt aus früheren Läufen, die bis zu 3 Tage gespeichert
   bleiben. Angezeigt werden nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
@@ -459,7 +494,7 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   Grad, Prognosezeiten als UTC (`timestamptz`).
 - Upsert über `station_code` + `model` + `forecast_time` — wiederholte
   Abrufe überschreiben dieselben Stunden, statt Duplikate anzulegen.
-  Prognosen älter als 2 Tage werden bei jedem Lauf gelöscht.
+  Prognosen älter als 3 Tage werden bei jedem Lauf gelöscht.
 - Stationen am/außerhalb des Modellrands liefern `null` und werden
   übersprungen (in der Antwort als `skippedNullHours` gezählt): dort werden
   einfach keine Zeilen gespeichert, im Diagramm fehlt dann die Linie — sie
@@ -477,7 +512,7 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
 > (`model = 'arome'`, im Verlaufsbalken gelb). Sie ist auf Wunsch wieder
 > entfernt worden: Sie wird weder abgefragt noch gespeichert noch angezeigt.
 > Bestehende Datenbanken haben eventuell noch alte `arome`-Zeilen; die stören
-> nicht (sie laufen nach 2 Tagen von selbst ab). Wer sofort aufräumen möchte,
+> nicht (sie laufen nach 3 Tagen von selbst ab). Wer sofort aufräumen möchte,
 > führt einmalig den Inhalt von `supabase/remove-arome-forecasts.sql` im
 > **SQL Editor** aus.
 
@@ -565,9 +600,10 @@ Zwei Ursachen, die hier bereits aufgetreten sind:
   neuer ICON-CH1-Lauf spätestens 15 statt 60 Minuten nach Erscheinen auf der
   Seite, ohne zusätzliches Open-Meteo-Kontingent.
 
-Für lokale Tests ohne echte Dienste lassen sich beide Quellen per
-Umgebungsvariable auf einen Mock-Server umbiegen (`WIND_API_BASE_URL`,
-`OPEN_METEO_BASE_URL`).
+Für lokale Tests ohne echte Dienste lässt sich Open-Meteo per
+Umgebungsvariable auf einen Mock-Server umbiegen (`OPEN_METEO_BASE_URL`,
+`OPEN_METEO_META_URL`); die Stationsliste kommt aus der Datenbank
+(`SUPABASE_URL`).
 
 ## OpenWindMap/Pioupiou-Stationen
 
@@ -575,8 +611,8 @@ Zusätzlich zu den Bozner Stationen zeigt die Karte die Stationen des
 **OpenWindMap/Pioupiou-Netzwerks** im Alpenraum (batteriebetriebene, private
 Windsensoren, vor allem an Startplätzen für Gleitschirmflieger; Okt. 2026
 rund 90 Stationen in Südtirol, der Schweiz, Österreich, Bayern und am
-Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt von
-`/api/wind` und `/api/collect`).
+Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt vom
+Sammler `/api/collect` und im Notbetrieb von `/api/wind`).
 
 - **Endpunkt:** `https://api.pioupiou.fr/v1/live/all` liefert ALLE
   Stationen weltweit ohne Regionsfilter. Behalten werden die im Alpenraum
@@ -585,10 +621,8 @@ Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt von
 - **Abgeschaltete Stationen:** Wer seit über 2 Tagen nichts gemeldet hat,
   erscheint nicht (`MAX_SILENCE_MS`, gleich lang wie die 48-h-Anzeige) — das sind meist abgebaute oder für die Saison abgeschaltete
   Stationen. Kürzere Pausen (nachts, windstill) zeigen einen grauen Ring.
-- **Prognose nur für Südtirol:** Die Edge Function `fetch-wind-forecasts`
-  fragt OpenWindMap weiterhin nur in Südtirol ab (eigene Südtirol-Box). Die
-  übrigen OpenWindMap-Stationen haben — wie MeteoSchweiz — keine
-  Prognose-Kurve.
+- **Prognose:** seit Nov. 2026 für alle angezeigten OpenWindMap-Stationen
+  (vorher nur in Südtirol).
 - **Stationscodes:** `pioupiou-<ID>` (z. B. `pioupiou-413`), damit sie
   nicht mit den Bozner SCODEs kollidieren.
 - **Stationshöhe aus dem Namen:** Die Pioupiou-API liefert keine
@@ -616,14 +650,14 @@ Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt von
   Quellen: fehlt Richtung/Geschwindigkeit oder ist die letzte Messung älter
   als 30 Minuten, erscheint die Station als grauer Ring statt als Windpfeil.
 - **Ausfallsicher:** Schlägt der Abruf fehl (Dienst nicht erreichbar),
-  zeigen `/api/wind`, `/api/collect` und die Prognose-Edge-Function
-  trotzdem weiterhin die übrigen Stationen — die OpenWindMap-Stationen
-  fallen für diesen einen Durchlauf einfach weg, statt alles zu blockieren.
+  speichert der Sammler die übrigen Quellen trotzdem; die
+  OpenWindMap-Stationen bleiben mit ihrem letzten Wert auf der Karte (nach der
+  Grau-Grenze grau), statt alles zu blockieren.
 - **Herkunft:** In `wind_measurements` markiert die Spalte `source`
   (`bolzano`/`openwindmap`), woher eine Zeile stammt. Im Verlaufsbalken
   steht unten außerdem ein direkter „Quelle:"-Link zur jeweiligen Station.
 - **Mock-Server für lokale Tests:** `PIOUPIOU_API_BASE_URL` überschreibt
-  den Endpunkt, analog zu `WIND_API_BASE_URL`/`OPEN_METEO_BASE_URL`.
+  den Endpunkt, analog zu `WIND_API_BASE_URL` (Bozen).
 
 **Pflicht-Lizenzhinweis (offener Punkt):** Die OpenWindMap-Daten stehen
 unter der kostenlosen Community-Lizenz, die einen sichtbaren Credit mit
@@ -646,9 +680,9 @@ außerhalb der Alpen (Wien, Burgenland, Mühl-/Waldviertel, Schweizer Mittelland
 mit Bern/Zürich/Basel/Genf, Jura) fallen weg.
 
 - **Regel:** `isInAlps(lat, lon)` in `src/lib/alps.ts` — ein grober Umriss der
-  Alpen. In der Edge Function `fetch-wind-forecasts` steht aus Deno-Gründen
-  eine Kopie; ändert man den Umriss, müssen beide Stellen angepasst und die
-  Edge Function im Supabase-Dashboard neu deployt werden.
+  Alpen. Die Edge Function `fetch-wind-forecasts` braucht seit Nov. 2026 keine
+  eigene Kopie mehr: Sie nimmt die Stationsliste des Sammlers, die schon
+  gefiltert ist.
 - **Betrifft:** GeoSphere Austria (191 von 286 Stationen bleiben),
   MeteoSchweiz (97 von 151), SLF (207 von 208) und seit Okt. 2026
   OpenWindMap (rund 90 von gut 750 weltweit). Bozen, LWD Tirol und Zugspitze
@@ -662,7 +696,7 @@ mit Bern/Zürich/Basel/Genf, Jura) fallen weg.
 - **Ausnahme Windanzeiger:** Chasseral und La Dôle (MeteoSchweiz, Jura) bleiben,
   weil sie zu den vom Projektbesitzer gewählten Windanzeiger-Stationen gehören.
 - Alte Messwerte und Prognosen der entfernten Stationen löscht das
-  Aufräumen nach 2 Tagen von selbst.
+  Aufräumen nach 3 Tagen von selbst.
 
 ## GeoSphere-Austria-Stationen (früher ZAMG)
 
@@ -670,9 +704,8 @@ Zusätzlich zeigt die Karte die **österreichischen Wetterstationen mit
 Windmessung im Alpenraum** von GeoSphere Austria (Messnetz TAWES,
 10-Minuten-Werte), rund 190 Stück. Stationen im Flachland (Wien, Burgenland,
 Weinviertel, Donauraum, Mühl-/Waldviertel) fehlen bewusst — siehe Abschnitt
-„Nur Stationen in den Alpen" weiter oben. Code: `src/lib/geosphere.ts` (genutzt von `/api/wind` und
-`/api/collect`), in der Edge Function `fetch-wind-forecasts` aus
-Deno-Gründen separat dupliziert.
+„Nur Stationen in den Alpen" weiter oben. Code: `src/lib/geosphere.ts`
+(genutzt vom Sammler `/api/collect` und im Notbetrieb von `/api/wind`).
 
 - **Endpunkt:** `https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min`
   (offen, kein API-Schlüssel). `/metadata` liefert alle Stationen
@@ -698,9 +731,8 @@ Deno-Gründen separat dupliziert.
 Seit Sept. 2026 zeigt die Karte auch die rund 200 automatischen
 **IMIS-Stationen** des WSL-Instituts für Schnee- und Lawinenforschung SLF
 (Schweiz und Liechtenstein) — dieselben Stationen wie auf
-[whiterisk.ch](https://whiterisk.ch). Code: `src/lib/slf.ts` (genutzt von
-`/api/wind` und `/api/collect`), in der Edge Function
-`fetch-wind-forecasts` wieder aus Deno-Gründen separat dupliziert.
+[whiterisk.ch](https://whiterisk.ch). Code: `src/lib/slf.ts` (genutzt vom
+Sammler `/api/collect` und im Notbetrieb von `/api/wind`).
 
 - **Quelle:** die offizielle, öffentliche
   [SLF Measurement API](https://measurement-api.slf.ch/docs), ohne
@@ -728,11 +760,10 @@ Seit Sept. 2026 zeigt die Karte auch die rund 200 automatischen
 
 Seit Sept. 2026 (Wunsch des Projektbesitzers, für den Filter „Windanzeiger")
 kommen vier weitere Quellen dazu. Alle laufen wie die übrigen additiv: Fällt
-eine aus, zeigt die Karte die anderen weiter. Für ALLE diese Stationen gibt es
-**keine Prognose-Kurve** (die Edge Function `fetch-wind-forecasts` kennt sie
-nicht; das ist kein Fehler, siehe auch die Ost-Stationen von GeoSphere). Wer
-sie nachrüsten will, muss die Stationslisten in der Edge Function ergänzen und
-sie neu deployen.
+eine aus, zeigt die Karte die anderen weiter. Eine **Prognose-Kurve** haben sie
+erst seit Nov. 2026 (vorher kannte die Edge Function `fetch-wind-forecasts` sie
+nicht); seitdem nimmt die Funktion alle Stationen aus der Stationsliste des
+Sammlers.
 
 - **MeteoSchweiz** (`src/lib/meteoswiss.ts`, Codes `meteoswiss-<Kürzel>`, z. B.
   `meteoswiss-SAE` = Säntis): **alle** ~150 SwissMetNet-Stationen mit Wind.
