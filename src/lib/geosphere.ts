@@ -4,10 +4,8 @@ import { cachedFresh } from "./freshCache";
 
 // Gemeinsame Logik zum Abrufen der österreichischen Wetterstationen von
 // GeoSphere Austria (früher ZAMG), Messnetz TAWES (teilautomatische
-// Wetterstationen, 10-Minuten-Werte). Genutzt von /api/wind (Live-Anzeige)
-// und /api/collect (Sammel-Route für die Historie) — nicht aber von der
-// Supabase Edge Function fetch-wind-forecasts, die läuft unter Deno und
-// dupliziert diese Logik dort.
+// Wetterstationen, 10-Minuten-Werte). Genutzt vom Sammler /api/collect und
+// im Notbetrieb von /api/wind (Liste aller Quellen: src/lib/sources.ts).
 //
 // Datenquelle: GeoSphere Austria Data Hub, https://data.hub.geosphere.at
 // (Datensatz "tawes-v1-10min"). Offene Schnittstelle ohne API-Schlüssel.
@@ -54,9 +52,9 @@ const CODE_PREFIX = "geosphere-";
 // --- Caching / Anfrage-Grenze ---
 // GeoSphere erlaubt pro Absender höchstens 5 Anfragen je Sekunde und 240 je
 // Stunde. Deshalb werden die Messwerte 120 s (statt 60 s wie bei
-// Pioupiou) zwischengespeichert: /api/wind fragt so höchstens
-// 30-mal pro Stunde, /api/collect 12-mal, die Edge Function 1-mal — mit viel
-// Luft nach oben. Neue Werte gibt es ohnehin nur alle 10 Minuten.
+// Pioupiou) zwischengespeichert. Seit Nov. 2026 fragt ohnehin nur noch der
+// Sammler (12-mal pro Stunde), im Notbetrieb zusätzlich /api/wind (höchstens
+// 30-mal) — mit viel Luft nach oben. Neue Werte gibt es nur alle 10 Minuten.
 // Seit Okt. 2026 über cachedFresh (src/lib/freshCache.ts) statt den
 // Next.js-Daten-Cache: gleiche 120 s, aber nach Ablauf wird sofort frisch
 // geholt statt zuerst der alte Stand ausgeliefert.

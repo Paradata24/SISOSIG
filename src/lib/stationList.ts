@@ -1,24 +1,34 @@
-import { DATABASE_TIMEOUT_MS, isOutdated, type WindStation } from "./wind";
+import {
+  DATABASE_TIMEOUT_MS,
+  LIVE_DATABASE_TIMEOUT_MS,
+  isOutdated,
+  type WindStation,
+} from "./wind";
+import { SOURCE_IDS, type SourceId } from "./sources";
+import type { SourceStatusRow } from "./sourceStatus";
 
-// Stationsliste in der Datenbank (Okt. 2026, Punkt 10 der Code-Durchsicht):
-// Name, Lage und Höhe jeder Station in der Supabase-Tabelle wind_stations
+// Stationsliste und aktuelle Werte in der Datenbank.
+//
+// Stationsliste (Okt. 2026, Punkt 10 der Code-Durchsicht): Name, Lage und
+// Höhe jeder Station in der Supabase-Tabelle wind_stations
 // (supabase/stationsliste.sql), eingetragen vom Sammler (/api/collect).
 //
-// Wozu: Liefert eine Quelle gar nichts (Ausfall, Zeitlimit, leere Datei),
-// zeigt /api/wind ihre Stationen trotzdem — mit dem letzten gespeicherten
-// Messwert, der nach der Grau-Grenze (STALE_AFTER_MINUTES in wind.ts) grau
-// wird, genau wie bei einem Sensorausfall. Vorher verschwanden sie von der
-// Karte und damit auch aus Zeitbalken und Verlaufsbalken (beide hängen an den
-// Stationen der Karte); der Hinweis "… liefert gerade keine Daten" bleibt.
+// Seit Nov. 2026 (Punkt 14, "Ein Sammler, eine Wahrheit") liest die Karte
+// (/api/wind) ihre Werte nur noch hier: je Station der neueste gespeicherte
+// Messwert (Sicht wind_stations_latest) plus der Zustand der Quellen
+// (Tabelle wind_status, src/lib/sourceStatus.ts) — beides in EINER Anfrage
+// über die Datenbank-Funktion wind_latest (supabase/ein-sammler.sql). Karte,
+// Zeitbalken und Verlaufsbalken zeigen dadurch immer denselben Stand.
+// Vorher fragte /api/wind bei jedem Abruf alle Wetterdienste selbst und nahm
+// die Datenbank nur, wenn eine Quelle ausgefallen war.
 //
-// Den neuesten Wert je Station liefert die Sicht wind_stations_latest: eine
-// Zeile der Stationsliste plus die jüngste Zeile aus wind_measurements.
-// Stationen ohne gespeicherten Wert fehlen dort. Weil wind_measurements nur
-// 3 Tage aufbewahrt wird (/api/collect), verschwinden die Stationen einer
-// tagelang ausgefallenen Quelle nach 3 Tagen also doch von der Karte. Ebenso
-// taucht eine Station, die eine Quelle nicht mehr führt, spätestens nach
-// 3 Tagen auch hier nicht mehr auf (ihre Zeile in wind_stations bleibt, stört
-// aber nicht).
+// Liefert eine Quelle gerade nichts, bleiben ihre Stationen deshalb von
+// selbst mit dem letzten Wert stehen und werden nach der Grau-Grenze
+// (STALE_AFTER_MINUTES in wind.ts) grau, wie bei einem Sensorausfall. Weil
+// wind_measurements nur 3 Tage aufbewahrt wird (/api/collect), verschwinden
+// die Stationen einer tagelang ausgefallenen Quelle nach 3 Tagen doch.
+// Stationen, die ihre Quelle nicht mehr führt, fallen nach rund 2 Stunden
+// weg (STATION_DROPPED_AFTER_MS).
 
 /** Eine Zeile der Tabelle wind_stations. */
 interface StationListRow {
@@ -31,19 +41,36 @@ interface StationListRow {
   updated_at: string;
 }
 
-/** Eine Zeile der Sicht wind_stations_latest. */
-interface LatestRow {
-  station_code: string;
-  source: WindStation["source"];
-  name: string;
-  lat: number;
-  lng: number;
-  altitude: number | null;
-  measured_at: string;
-  direction: number | null;
-  speed_kmh: number | null;
-  gust_kmh: number | null;
-}
+/**
+ * Eine Station aus wind_latest() (Feld "stations"): Code, Quelle, Name,
+ * Breite, Länge, Höhe, Messzeit (ms), Richtung, Mittelwind, Böe, zuletzt in
+ * der Stationsliste aufgefrischt (ms).
+ */
+type LatestStationRow = [
+  string,
+  string,
+  string,
+  number,
+  number,
+  number | null,
+  number,
+  number | null,
+  number | null,
+  number | null,
+  number,
+];
+
+/**
+ * Stationen, die ihre Quelle nicht mehr führt (abgebaut, umbenannt, bei
+ * OpenWindMap seit 2 Tagen stumm), stehen weiter in wind_stations. Erkannt
+ * werden sie daran, dass der Sammler sie nicht mehr auffrischt: Alle
+ * gelieferten Stationen einer Quelle frischt er einmal pro Stunde auf. Liegt
+ * eine so weit hinter der jüngsten ihrer Quelle, zeigt die Karte sie nicht
+ * mehr. Gemessen an der Quelle selbst statt an der Uhr: Scheitert das
+ * Auffrischen einmal ganz, liegen alle gleich weit zurück, und es
+ * verschwindet nichts.
+ */
+const STATION_DROPPED_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Stationen in die Stationsliste schreiben (für /api/collect). Neue Stationen
@@ -88,62 +115,81 @@ export async function saveStationList(
   }
 }
 
+/** Was die Karte aus der Datenbank bekommt. */
+export interface LatestFromDatabase {
+  /** Alle Stationen mit ihrem neuesten Wert, im Format der Karte. */
+  stations: WindStation[];
+  /** Zustand der Quellen laut Sammler (siehe src/lib/sourceStatus.ts). */
+  sources: SourceStatusRow[];
+}
+
 /**
- * Die Stationen der angegebenen (gerade ausgefallenen) Quellen mit ihrem
- * letzten gespeicherten Messwert, im Live-Format der Karte (für /api/wind).
- * Grau werden sie nach derselben Regel wie live. Bei jedem Fehler (Datenbank
- * nicht erreichbar, Tabelle noch nicht angelegt) eine leere Liste — die Karte
- * zeigt dann wie früher nur die übrigen Quellen.
- *
- * Supabase liefert höchstens 1000 Zeilen je Anfrage ("Max rows"). Das reicht
- * auch, wenn alle Quellen zugleich ausfallen (Okt. 2026: gut 700 Stationen).
+ * Aktuelle Werte aller Stationen und den Zustand der Quellen aus der
+ * Datenbank lesen (für /api/wind). null bei jedem Fehler (Datenbank nicht
+ * erreichbar, Zeitlimit, Funktion noch nicht angelegt) — /api/wind fragt
+ * dann im Notbetrieb direkt bei den Quellen.
  */
-export async function fetchLastKnownStations(
-  sources: WindStation["source"][],
-): Promise<WindStation[]> {
+export async function fetchLatestFromDatabase(): Promise<LatestFromDatabase | null> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (sources.length === 0 || !supabaseUrl || !serviceKey) return [];
+  if (!supabaseUrl || !serviceKey) return null;
 
-  const query =
-    `${supabaseUrl}/rest/v1/wind_stations_latest` +
-    `?source=in.(${sources.join(",")})` +
-    `&select=station_code,source,name,lat,lng,altitude,measured_at,direction,speed_kmh,gust_kmh`;
   // Das Zeitlimit gilt auch für das Lesen der Antwort — deshalb steht
   // res.json() mit im try.
-  let rows: LatestRow[];
+  let body: { stations?: LatestStationRow[]; sources?: SourceStatusRow[] };
   try {
-    const res = await fetch(query, {
-      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+    const res = await fetch(`${supabaseUrl}/rest/v1/rpc/wind_latest`, {
+      method: "POST",
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
       cache: "no-store",
-      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(LIVE_DATABASE_TIMEOUT_MS),
     });
     if (!res.ok) {
-      console.error(`Stationsliste: Supabase antwortete mit Status ${res.status}`);
-      return [];
+      console.error(`wind_latest: Supabase antwortete mit Status ${res.status}`);
+      return null;
     }
-    rows = (await res.json()) as LatestRow[];
+    body = await res.json();
   } catch (err) {
-    console.error("Stationsliste nicht abrufbar:", err);
-    return [];
+    console.error("wind_latest nicht abrufbar:", err);
+    return null;
+  }
+  const rows = Array.isArray(body?.stations) ? body.stations : [];
+  const sources = Array.isArray(body?.sources) ? body.sources : [];
+
+  // Jüngstes Auffrischen je Quelle (siehe STATION_DROPPED_AFTER_MS).
+  const newestRefresh = new Map<string, number>();
+  for (const row of rows) {
+    newestRefresh.set(row[1], Math.max(newestRefresh.get(row[1]) ?? 0, row[10]));
   }
 
+  // Nur Quellen, die es im Code (noch) gibt — eine entfernte Quelle hätte
+  // sonst noch bis zu 3 Tage Stationen ohne Quellenangabe auf der Karte.
+  const known = new Set<string>(SOURCE_IDS);
   const now = Date.now();
-  return rows.map((r) => ({
-    stationCode: r.station_code,
-    stationName: r.name,
-    lat: r.lat,
-    lng: r.lng,
-    altitude: r.altitude,
-    direction: r.direction,
-    speedKmh: r.speed_kmh,
-    gustKmh: r.gust_kmh,
-    timestamp: r.measured_at,
-    // Gleiche Regel wie bei den Live-Werten der Quellen (z. B. bolzano.ts).
-    stale:
-      r.direction === null ||
-      r.speed_kmh === null ||
-      isOutdated(r.source, Date.parse(r.measured_at), now),
-    source: r.source,
-  }));
+  const stations: WindStation[] = [];
+  for (const [code, sourceName, name, lat, lng, altitude, measuredMs, direction, speedKmh, gustKmh, refreshedMs] of rows) {
+    if (!known.has(sourceName)) continue;
+    if (refreshedMs < (newestRefresh.get(sourceName) ?? 0) - STATION_DROPPED_AFTER_MS) continue;
+    const source = sourceName as SourceId;
+    stations.push({
+      stationCode: code,
+      stationName: name,
+      lat,
+      lng,
+      altitude,
+      direction,
+      speedKmh,
+      gustKmh,
+      timestamp: new Date(measuredMs).toISOString(),
+      // Gleiche Regel wie bei den Live-Werten der Quellen (z. B. bolzano.ts).
+      stale: direction === null || speedKmh === null || isOutdated(source, measuredMs, now),
+      source,
+    });
+  }
+  return { stations, sources };
 }

@@ -47,6 +47,14 @@ const FROZEN_MIN_SPEED_KMH = 3;
 // weht (typisch: vereiste Windfahne). Richtung schwankt selbst bei
 // gleichmäßigem Föhn um einige Grad — 3 h auf das Grad genau ist auffällig.
 const VANE_MIN_MINUTES = 180;
+
+/**
+ * Die längste Zeitspanne, die eine Regel zurückschaut (Minuten). Wer nur
+ * einen Ausschnitt des Verlaufs prüft, braucht mindestens so viel Vorlauf,
+ * damit das Ergebnis dasselbe ist wie über den ganzen Verlauf
+ * (src/lib/timelineMerge.ts).
+ */
+export const LONGEST_RULE_MINUTES = Math.max(FROZEN_MIN_MINUTES, VANE_MIN_MINUTES);
 const VANE_MIN_VALUES = 6;
 const VANE_MIN_SPEED_KMH = 5;
 // Nur für Quellen, die die Richtung fein (auf 1°) liefern. Pioupiou meldet nur

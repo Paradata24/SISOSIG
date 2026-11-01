@@ -1,10 +1,17 @@
 // Supabase Edge Function "fetch-wind-forecasts": holt die Windprognose des
-// Modells ICON-CH1 (MeteoSwiss) von Open-Meteo für alle Wetterstationen mit
-// Windsensoren (Bozner Wetterdienst, Südtiroler OpenWindMap/Pioupiou-
-// Stationen, die Schweizer IMIS-Stationen des SLF und die GeoSphere-Stationen;
-// alle nur im Alpenraum) und
-// schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
+// Modells ICON-CH1 (MeteoSwiss) von Open-Meteo für alle Stationen der Karte
+// und schreibt sie per Upsert in die Supabase-Tabelle wind_forecasts
 // (Schema: supabase/forecast-schema.sql).
+//
+// Welche Stationen: die Stationsliste in der Datenbank (Tabelle
+// wind_stations), die der Sammler (/api/collect) pflegt — seit Nov. 2026
+// (Punkt 14 der Code-Durchsicht, "Ein Sammler, eine Wahrheit"). Vorher fragte
+// diese Funktion selbst beim Bozner Dienst, bei OpenWindMap (nur Südtirol),
+// beim SLF und bei GeoSphere nach und hatte dafür Kopien von deren Adressen
+// und vom Alpen-Umriss; MeteoSchweiz, LWD Tirol, DWD und OpenWindMap
+// außerhalb Südtirols bekamen gar keine Prognose. Jetzt bekommt jede Station
+// der Karte eine (soweit sie im Modellgebiet liegt), und eine neue Quelle
+// braucht hier nichts mehr.
 //
 // Warum eine Edge Function und kein reiner SQL-Cron-Job: pg_net arbeitet
 // asynchron (die Antwort läge erst nach dem Cron-Lauf vor) und das Parsen
@@ -38,29 +45,34 @@
 // Open-Meteo zählt kostenlos 10.000 "Aufrufe" pro Tag. Laut Quellcode von
 // Open-Meteo (calculateQueryWeight) kostet jeder Standort einer Anfrage
 // mindestens 1 Aufruf, mehr erst ab 10 Werte-Reihen oder 2 Wochen Zeitraum —
-// wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~430
-// Stationen (nur Alpenraum) und 8 Modellläufen am Tag sind das ~3.400
-// Aufrufe (34 %).
+// wir fragen 3 Reihen über 1 Tag ab, also genau 1 je Station. Bei ~650
+// Stationen (alle Stationen der Karte, Nov. 2026) und 8 Modellläufen am Tag
+// sind das ~5.200 Aufrufe (52 %); bis Okt. 2026 waren es ~490 Stationen.
+// Das Nachholen gescheiterter Stationen (s. u.) kostet nur bei Fehlern etwas
+// und höchstens RETRY_MAX_ATTEMPTS-mal je Lauf.
 // Der Höhenwind (ICON-D2, s. u.) kostet je Lauf nur 1 Aufruf pro Station
 // (2 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag.
+//
+// --- GESCHEITERTE STATIONEN NACHHOLEN (Nov. 2026, Punkt 13) ---
+// Scheitert beim Abruf eines neuen Laufs ein Teil der Blöcke (Zeitlimit,
+// Fehler bei Open-Meteo), werden die übrigen gespeichert — und weil damit ein
+// Abruf nach dem neuen Lauf in der Tabelle steht, galt der Lauf als erledigt:
+// Die betroffenen Stationen warteten bis zum nächsten Lauf (3 h). Jetzt merkt
+// sich die Funktion diese Stationen (Tabelle wind_status, Zeile "prognose",
+// Feld detail) und holt sie bei den nächsten Cron-Anstößen (alle 15 min)
+// nach, höchstens RETRY_MAX_ATTEMPTS-mal. Stationen außerhalb des
+// Modellgebiets ("No data is available") werden nicht nachgeholt — dort
+// kommt auch beim nächsten Mal nichts.
 //
 // Ablauf pro Aufruf:
 //   1. Zugriffsschutz: nur POST mit "Authorization: Bearer <service_role Key>"
 //      (gleiches Muster wie CRON_SECRET bei /api/collect).
-//   2. Stationsliste ableiten (alle vier Listen gleichzeitig, jede "additiv":
-//      scheitert eine, gibt es eben für deren Stationen diesmal keine neue
-//      Prognose — seit Okt. 2026 gilt das auch für Bozen, vorher brach dann
-//      der ganze Lauf ab): Bozner Wetterdienst — exakt dieselbe Logik wie
-//      /api/wind: nur Stationen mit Windsensoren UND Koordinaten,
-//      deterministisch nach Stationscode sortiert — plus Südtiroler
-//      OpenWindMap/Pioupiou-Stationen (Bounding-Box-Filter) — plus die
-//      SLF-IMIS-Stationen (Schweiz; ICON-CH1 deckt die ganze Schweiz ab) —
-//      plus GeoSphere Austria.
-//      Achtung: Fällt eine Liste genau beim Abruf eines neuen Laufs aus,
-//      bekommen ihre Stationen erst mit dem nächsten Lauf (3 h) eine neue
-//      Prognose; die gespeicherte reicht 12 h, die Kurve bleibt also da.
-//   (davor: Höhenwind ICON-D2 mit eigener Laufprüfung, siehe
-//   refreshUpperWind; dann Prüfung, ob es einen neuen ICON-CH1-Lauf gibt)
+//   (danach: Höhenwind ICON-D2 mit eigener Laufprüfung, siehe
+//   refreshUpperWind; dann Prüfung, ob es einen neuen ICON-CH1-Lauf gibt —
+//   wenn nicht, nur gescheiterte Stationen nachholen, siehe retryPending)
+//   2. Stationsliste aus der Datenbank (wind_stations, nur Stationen, die der
+//      Sammler in den letzten STATION_LIST_MAX_AGE_MS gesehen hat), nach
+//      Stationscode sortiert, damit die Blöcke über Läufe hinweg stabil sind.
 //   3. Bodenwind in Batches (je 50 Stationen, Koordinaten komma-getrennt)
 //      abfragen — nur ICON-CH1 (meteoswiss_icon_ch1, in der Datenbank
 //      'icon_ch1'). Letzte 12 h + kommende 12 h, Einheit km/h (wie in
@@ -70,47 +82,32 @@
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
-//   5. Prognosen älter als 3 Tage löschen (wie bei wind_measurements).
+//   5. Zustand speichern (wind_status "prognose": Ergebnis, Fehler und die
+//      Stationen zum Nachholen).
+//   6. Prognosen älter als 3 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
 // Supabase automatisch in jede Edge Function injiziert — es müssen keine
-// eigenen Secrets gesetzt werden. WIND_API_BASE_URL / OPEN_METEO_BASE_URL
+// eigenen Secrets gesetzt werden. OPEN_METEO_BASE_URL / OPEN_METEO_META_URL
 // sind optionale Overrides für Tests mit einem lokalen Mock-Server.
-
-// Adresse des Bozner Dienstes — identisch zu src/app/api/wind/route.ts (dort
-// steht, warum sie im Sept. 2026 geändert wurde). Nach einer Änderung hier die
-// Funktion im Supabase-Dashboard neu deployen, sonst läuft die alte Adresse
-// weiter.
-const WIND_API_BASE =
-  Deno.env.get("WIND_API_BASE_URL") ??
-  "https://geoservices.buergernetz.bz.it/services/meteo/v1";
 
 const OPEN_METEO_BASE =
   Deno.env.get("OPEN_METEO_BASE_URL") ?? "https://api.open-meteo.com";
 
-const PIOUPIOU_API_BASE =
-  Deno.env.get("PIOUPIOU_API_BASE_URL") ?? "https://api.pioupiou.fr/v1";
+// Stationen, die der Sammler so lange nicht mehr eingetragen hat (er frischt
+// alle gelieferten Stationen einmal pro Stunde auf), führt ihre Quelle nicht
+// mehr — sie bekommen keine Prognose mehr. Gleiche Dauer wie MAX_SILENCE_MS
+// für OpenWindMap in src/lib/pioupiou.ts.
+const STATION_LIST_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
+// Supabase gibt höchstens 1000 Zeilen je Anfrage heraus ("Max rows") — die
+// Stationsliste wird deshalb seitenweise gelesen.
+const STATION_LIST_PAGE_SIZE = 1000;
 
-// Grobe Bounding Box Südtirol: Prognosen gibt es nur für die Südtiroler
-// OpenWindMap-Stationen. Die Karte zeigt seit Okt. 2026 alle im Alpenraum
-// (src/lib/pioupiou.ts); die übrigen haben — wie MeteoSchweiz — keine
-// Prognose-Kurve.
-const SOUTH_TYROL_BBOX = { latMin: 46.2, latMax: 47.1, lngMin: 10.3, lngMax: 12.5 };
-const PIOUPIOU_CODE_PREFIX = "pioupiou-";
-
-// SLF-IMIS-Stationen — Adresse und Codepräfix identisch zu src/lib/slf.ts
-// (auch hier dupliziert, weil Deno nicht aus src/lib importieren kann).
-const SLF_API_BASE =
-  Deno.env.get("SLF_API_BASE_URL") ?? "https://measurement-api.slf.ch/public/api";
-const SLF_CODE_PREFIX = "slf-";
-
-// GeoSphere Austria (früher ZAMG), Messnetz TAWES — identisch zu
-// src/lib/geosphere.ts (dort für /api/wind und /api/collect). Es werden nur
-// die Metadaten gebraucht (Koordinaten aller Stationen), keine Messwerte.
-const GEOSPHERE_API_BASE =
-  Deno.env.get("GEOSPHERE_API_BASE_URL") ??
-  "https://dataset.api.hub.geosphere.at/v1/station/current/tawes-v1-10min";
-const GEOSPHERE_CODE_PREFIX = "geosphere-";
+// Name der Zeile in wind_status (siehe "GESCHEITERTE STATIONEN NACHHOLEN").
+const STATUS_NAME = "prognose";
+// So oft werden gescheiterte Stationen eines Laufs höchstens nachgeholt
+// (je Cron-Anstoß einmal, also innerhalb von rund einer Stunde).
+const RETRY_MAX_ATTEMPTS = 4;
 
 // Modellname in der Datenbank (Spalte "model") — kurz und stabil — und der
 // dazu passende Modellname der Open-Meteo-API. Bodenwind für alle Stationen
@@ -202,21 +199,9 @@ const BATCH_SIZE = Number(Deno.env.get("FORECAST_BATCH_SIZE") ?? "50");
 // Zeitlimits (Okt. 2026; vorher ohne): Hängt ein Dienst, bricht die Funktion
 // diesen Abruf ab, statt zu warten, bis Supabase sie an ihrer Laufzeitgrenze
 // beendet (dann ginge auch alles schon Geholte verloren).
-const LIST_TIMEOUT_MS = 15_000; // Stationslisten der Quellen
 const META_TIMEOUT_MS = 10_000; // Laufzeit-Datei (meta.json) von Open-Meteo
 const OPEN_METEO_TIMEOUT_MS = 30_000; // ein Block von bis zu 50 Stationen
-const DATABASE_TIMEOUT_MS = 60_000; // Supabase (Speichern von ~14.000 Zeilen)
-
-interface SensorReading {
-  SCODE: string;
-  DESC_D: string;
-}
-
-interface StationMeta {
-  SCODE: string;
-  LAT?: number;
-  LONG?: number;
-}
+const DATABASE_TIMEOUT_MS = 60_000; // Supabase (Speichern von ~16.000 Zeilen)
 
 interface Station {
   code: string;
@@ -262,232 +247,238 @@ function hourlySeries(
   return undefined;
 }
 
-// Windsensor-Erkennung per deutscher Beschreibung — identisch zu
-// /api/wind und /api/collect (die TYPE-Codes sind nirgends dokumentiert).
-const isWindSensor = (desc: string) =>
-  /windrichtung|windgeschwindigkeit|böe/i.test(desc);
-
-// Manche OGC/CKAN-Endpunkte liefern Stationen als flache Liste, andere als
-// GeoJSON-FeatureCollection — gleiche Normalisierung wie in /api/wind.
-function normalizeStations(raw: unknown): StationMeta[] {
-  if (Array.isArray(raw)) return raw as StationMeta[];
-
-  if (raw && typeof raw === "object" && Array.isArray((raw as { features?: unknown }).features)) {
-    const features = (raw as { features: Array<Record<string, unknown>> }).features;
-    return features.map((f) => {
-      const props = (f.properties ?? {}) as Record<string, unknown>;
-      const coords = (f.geometry as { coordinates?: [number, number] } | undefined)
-        ?.coordinates;
-      return {
-        SCODE: String(props.SCODE ?? ""),
-        LAT: (props.LAT as number | undefined) ?? coords?.[1],
-        LONG: (props.LONG as number | undefined) ?? coords?.[0],
-      };
-    });
-  }
-
-  return [];
-}
-
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-// Stationen mit Windsensoren und Koordinaten aus dem Bozner Wetterdienst
-// ableiten — dieselben zwei Anfragen (/sensors + /stations) wie /api/wind.
-async function loadStations(): Promise<Station[]> {
-  const sensorsRes = await fetch(`${WIND_API_BASE}/sensors`, {
-    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-  });
-  if (!sensorsRes.ok) {
-    throw new Error(`Wetterdienst /sensors antwortete mit Status ${sensorsRes.status}`);
-  }
-  const sensors: SensorReading[] = await sensorsRes.json();
-
-  const stationsRes = await fetch(`${WIND_API_BASE}/stations`, {
-    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-  });
-  if (!stationsRes.ok) {
-    throw new Error(`Wetterdienst /stations antwortete mit Status ${stationsRes.status}`);
-  }
-  const metaByCode = new Map(
-    normalizeStations(await stationsRes.json()).map((s) => [s.SCODE, s]),
-  );
-
-  const windCodes = new Set<string>();
-  for (const s of sensors) {
-    if (isWindSensor(s.DESC_D)) windCodes.add(s.SCODE);
-  }
-
+// Stationsliste aus der Datenbank (Tabelle wind_stations, gepflegt vom
+// Sammler /api/collect): alle Stationen der Karte, die der Sammler in den
+// letzten STATION_LIST_MAX_AGE_MS gesehen hat. Nach Code sortiert, damit die
+// Blöcke über Läufe hinweg gleich bleiben.
+async function loadStationList(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+): Promise<Station[]> {
+  const since = new Date(Date.now() - STATION_LIST_MAX_AGE_MS).toISOString();
   const stations: Station[] = [];
-  for (const code of windCodes) {
-    const meta = metaByCode.get(code);
-    // Ohne Koordinaten keine Prognose-Abfrage möglich — Station überspringen
-    // (gleiche Regel wie auf der Karte).
-    if (typeof meta?.LAT !== "number" || typeof meta?.LONG !== "number") continue;
-    stations.push({ code, lat: meta.LAT, lng: meta.LONG });
-  }
-
-  // Deterministische Reihenfolge, damit Batches über Läufe hinweg stabil sind.
-  stations.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
-  return stations;
-}
-
-// Antwortform einer Pioupiou-Station (nur die für die Prognose nötigen
-// Felder — dieselbe Quelle wie /api/wind und /api/collect).
-interface PioupiouStation {
-  id: number;
-  location?: { latitude?: number; longitude?: number; success?: boolean };
-}
-
-// Südtiroler Pioupiou-Stationen laden (Bounding-Box-Filter, siehe oben).
-// Läuft unabhängig von loadStations() — ein Fehler hier lässt die Bozner
-// Prognosen trotzdem weiterlaufen (siehe try/catch beim Aufruf).
-async function loadOpenWindMapStations(): Promise<Station[]> {
-  const res = await fetch(`${PIOUPIOU_API_BASE}/live/all`, {
-    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`OpenWindMap antwortete mit Status ${res.status}`);
-  }
-  const body: unknown = await res.json();
-  const raw: PioupiouStation[] = Array.isArray(body)
-    ? (body as PioupiouStation[])
-    : ((body as { data?: PioupiouStation[] })?.data ?? []);
-
-  const stations: Station[] = [];
-  for (const s of raw) {
-    const loc = s.location;
-    if (
-      !loc?.success ||
-      typeof loc.latitude !== "number" ||
-      typeof loc.longitude !== "number"
-    ) {
-      continue;
+  for (let offset = 0; ; offset += STATION_LIST_PAGE_SIZE) {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_stations?select=station_code,lat,lng` +
+        `&updated_at=gte.${encodeURIComponent(since)}` +
+        `&order=station_code&limit=${STATION_LIST_PAGE_SIZE}&offset=${offset}`,
+      { headers, signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
+    );
+    if (!res.ok) {
+      throw new Error(`Stationsliste: Supabase antwortete mit Status ${res.status}`);
     }
-    if (
-      loc.latitude < SOUTH_TYROL_BBOX.latMin ||
-      loc.latitude > SOUTH_TYROL_BBOX.latMax ||
-      loc.longitude < SOUTH_TYROL_BBOX.lngMin ||
-      loc.longitude > SOUTH_TYROL_BBOX.lngMax
-    ) {
-      continue;
+    const page = (await res.json()) as Array<{ station_code: string; lat: number; lng: number }>;
+    for (const s of page) {
+      if (typeof s.lat !== "number" || typeof s.lng !== "number") continue;
+      stations.push({ code: s.station_code, lat: s.lat, lng: s.lng });
     }
-    stations.push({ code: `${PIOUPIOU_CODE_PREFIX}${s.id}`, lat: loc.latitude, lng: loc.longitude });
+    if (page.length < STATION_LIST_PAGE_SIZE) break;
   }
   return stations;
 }
 
-// Antwortform einer SLF-Station (nur die für die Prognose nötigen Felder).
-interface SlfStationMeta {
-  code: string;
-  lat?: number;
-  lon?: number;
+// Ergebnis eines Prognose-Abrufs für eine Liste von Stationen.
+interface ForecastFetch {
+  rows: ForecastRow[];
+  skippedNullHours: number;
+  /** Stationen, für die Open-Meteo "No data is available" meldet. */
+  outsideModel: string[];
+  batchErrors: string[];
+  /** Stationen in gescheiterten Blöcken — werden später nachgeholt. */
+  failed: Station[];
 }
 
-// Alle aktiven SLF-IMIS-Stationen laden. Die Stationsliste sagt nicht, welche
-// Station Wind misst; die wenigen ohne Windsensor bekommen einfach eine
-// Prognose, die nie angezeigt wird (sie erscheinen nicht auf der Karte).
-async function loadSlfStations(): Promise<Station[]> {
-  const res = await fetch(`${SLF_API_BASE}/imis/stations`, {
-    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
-  });
-  if (!res.ok) {
-    throw new Error(`SLF-Stationsliste antwortete mit Status ${res.status}`);
-  }
-  const body: unknown = await res.json();
-  const raw = Array.isArray(body) ? (body as SlfStationMeta[]) : [];
-  const stations: Station[] = [];
-  for (const s of raw) {
-    if (typeof s.lat !== "number" || typeof s.lon !== "number") continue;
-    stations.push({ code: `${SLF_CODE_PREFIX}${s.code}`, lat: s.lat, lng: s.lon });
-  }
-  stations.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
-  return stations;
-}
-
-// Alle aktiven GeoSphere-Austria-Stationen laden. Ebenfalls additiv, siehe
-// try/catch beim Aufruf.
+// Alle Stationen in Blöcken zu BATCH_SIZE abfragen. Ein gescheiterter Block
+// bricht nicht den ganzen Lauf ab — die übrigen Stationen werden trotzdem
+// gespeichert, der Fehler wird geloggt, gemeldet und die Stationen des Blocks
+// zum Nachholen vorgemerkt (failed).
 //
-// Bis Sept. 2026 waren es nur die 13 grenznahen Stationen (Südtirol-Box),
-// dann ganz Österreich; der Alpenraum-Filter (siehe isInAlps unten) schneidet
-// jetzt das Flachland wieder weg. Die Metadaten sagen nicht, welche Station
-// Wind misst; das Dutzend ohne Windsensor bekommt eine Prognose, die nie
-// angezeigt wird (wie beim SLF).
-interface GeoSphereStationMeta {
-  id: string;
-  lat?: number;
-  lon?: number;
-  is_active?: boolean;
-}
+// Ein Block wird bei "No data is available" halbiert und erneut versucht:
+// Open-Meteo lehnt die GANZE Anfrage ab, sobald auch nur EINE Station
+// außerhalb des ICON-CH1-Gebiets liegt — am 29.09.2026 fielen so 4 von 6
+// GeoSphere-Blöcken (200 Stationen) komplett aus. Durch das Halbieren bleiben
+// am Ende nur die wirklich betroffenen Stationen ohne Prognose (in der
+// Antwort unter "outsideModel"). Kosten: gezählt wird je Station, die
+// zusätzlichen kleinen Anfragen fallen kaum ins Gewicht. Die bekannten
+// Außen-Stationen filtert ohnehin schon insideIconCh1() vorab heraus, das
+// Halbieren ist das Sicherheitsnetz.
+async function fetchForecasts(stations: Station[], fetchedAt: string): Promise<ForecastFetch> {
+  const result: ForecastFetch = {
+    rows: [],
+    skippedNullHours: 0,
+    outsideModel: [],
+    batchErrors: [],
+    failed: [],
+  };
 
-// Alpenraum-Filter für ALLE Quellen (Wunsch des Projektbesitzers, Okt. 2026:
-// nur Stationen dort, wo Berge sind; entscheidend ist der Ort, nicht die
-// Höhe — Talstationen in den Alpen bleiben). Kopie von ALPS_POLYGON /
-// isInAlps() aus src/lib/alps.ts (Erklärung zum Umriss dort) — bei
-// Änderungen beide anfassen. Wird einmal auf die fertige Stationsliste
-// angewendet (siehe unten, neben insideIconCh1), damit nur Stationen
-// abgefragt werden, die auch auf der Karte erscheinen.
-const ALPS_POLYGON: Array<[number, number]> = [
-  [6.7, 45.85],
-  [6.7, 46.5],
-  [7.0, 46.6],
-  [7.1, 46.7],
-  [7.4, 46.82],
-  [7.65, 46.88],
-  [7.85, 47.0],
-  [8.05, 47.05],
-  [8.3, 47.1],
-  [8.62, 47.15],
-  [9.1, 47.3],
-  [9.6, 47.4],
-  [9.6, 47.75],
-  [12.0, 47.75],
-  [13.2, 48.0],
-  [13.8, 48.0],
-  [14.2, 47.95],
-  [14.9, 48.0],
-  [15.6, 48.05],
-  [15.9, 48.0],
-  [16.06, 47.9],
-  [16.06, 47.45],
-  [15.75, 47.3],
-  [15.55, 47.0],
-  [15.35, 46.6],
-  [15.3, 46.3],
-  [15.3, 45.9],
-  [8.8, 45.9],
-  [8.8, 45.85],
-];
-
-function isInAlps(lat: number, lon: number): boolean {
-  let inside = false;
-  for (let i = 0, j = ALPS_POLYGON.length - 1; i < ALPS_POLYGON.length; j = i++) {
-    const [xi, yi] = ALPS_POLYGON[i];
-    const [xj, yj] = ALPS_POLYGON[j];
-    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
+  async function fetchWithSplit(batch: Station[]): Promise<void> {
+    try {
+      const fetched = await fetchForecastBatch(batch, fetchedAt);
+      result.rows.push(...fetched.rows);
+      result.skippedNullHours += fetched.skippedNullHours;
+    } catch (err) {
+      const message = (err as Error).message;
+      if (/No data is available/i.test(message)) {
+        if (batch.length === 1) {
+          result.outsideModel.push(batch[0].code);
+          return;
+        }
+        const half = Math.ceil(batch.length / 2);
+        await fetchWithSplit(batch.slice(0, half));
+        await fetchWithSplit(batch.slice(half));
+        return;
+      }
+      const full = `Batch ab Station ${batch[0].code}: ${message}`;
+      console.error(full);
+      result.batchErrors.push(full);
+      result.failed.push(...batch);
     }
   }
-  return inside;
+
+  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
+    await fetchWithSplit(stations.slice(i, i + BATCH_SIZE));
+  }
+  if (result.outsideModel.length > 0) {
+    console.error(
+      `Außerhalb des ICON-CH1-Gebiets (${result.outsideModel.length}):`,
+      result.outsideModel.join(","),
+    );
+  }
+  return result;
 }
 
-async function loadGeoSphereStations(): Promise<Station[]> {
-  const res = await fetch(`${GEOSPHERE_API_BASE}/metadata`, {
-    signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+// Upsert: vorhandene (station_code, model, forecast_time)-Kombinationen
+// werden aktualisiert statt doppelt angelegt. Gibt null zurück, wenn alles
+// geklappt hat, sonst die Fehlermeldung.
+async function saveForecastRows(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  rows: ForecastRow[],
+): Promise<string | null> {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
+      {
+        method: "POST",
+        headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      },
+    );
+    return res.ok ? null : `Status ${res.status}: ${await res.text()}`;
+  } catch (err) {
+    return (err as Error).message;
+  }
+}
+
+// Zusatzangaben der Zeile "prognose" in wind_status (Feld detail): woraus
+// die gerade gespeicherte Prognose stammt und welche Stationen noch fehlen.
+interface ForecastStatusDetail {
+  /** Startzeit des Modelllaufs (ISO), null wenn unbekannt. */
+  modelRun: string | null;
+  /** Zeitpunkt des Abrufs des Laufs (ISO). */
+  fetchedAt: string;
+  /** Stationen, deren Abruf gescheitert ist (zum Nachholen). */
+  pending: Station[];
+  /** Wie oft schon nachgeholt wurde. */
+  attempts: number;
+}
+
+async function loadForecastStatus(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+): Promise<ForecastStatusDetail | null> {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/wind_status?name=eq.${STATUS_NAME}&select=detail`,
+      { headers, signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
+    );
+    if (!res.ok) return null;
+    const rows = (await res.json()) as Array<{ detail?: ForecastStatusDetail | null }>;
+    const detail = rows[0]?.detail;
+    return detail && Array.isArray(detail.pending) ? detail : null;
+  } catch {
+    return null;
+  }
+}
+
+// Zustand eintragen (Tabelle wind_status, supabase/ein-sammler.sql). ok_at
+// nur bei Erfolg mitschicken: Bei einer einzelnen Zeile ändert Supabase nur
+// die mitgeschickten Spalten, ok_at bleibt bei einem Fehler also stehen
+// (seit wann es hakt). Ein Fehler hier betrifft nur das Nachholen und wird
+// nur protokolliert.
+async function saveForecastStatus(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  status: { ok: boolean; valueCount: number; error: string | null; detail: ForecastStatusDetail },
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const row: Record<string, unknown> = {
+    name: STATUS_NAME,
+    checked_at: now,
+    ok: status.ok,
+    value_count: status.valueCount,
+    error: status.error?.slice(0, 500) ?? null,
+    detail: status.detail,
+  };
+  if (status.ok) row.ok_at = now;
+  try {
+    const res = await fetch(`${supabaseUrl}/rest/v1/wind_status?on_conflict=name`, {
+      method: "POST",
+      headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify(row),
+      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+    });
+    if (!res.ok) console.error(`Zustand nicht gespeichert (Status ${res.status}): ${await res.text()}`);
+    return res.ok;
+  } catch (err) {
+    console.error("Zustand nicht gespeichert:", err);
+    return false;
+  }
+}
+
+// Gescheiterte Stationen des aktuellen Laufs nachholen (siehe "GESCHEITERTE
+// STATIONEN NACHHOLEN" oben). Nur solange der Lauf noch der aktuelle ist
+// (jünger als MIN_REFETCH_WITHOUT_META_MS — danach kommt ohnehin ein neuer)
+// und höchstens RETRY_MAX_ATTEMPTS-mal. Gibt die Angaben für die Antwort
+// zurück, oder null, wenn nichts nachzuholen war.
+async function retryPending(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+): Promise<Record<string, unknown> | null> {
+  const status = await loadForecastStatus(supabaseUrl, headers);
+  if (!status || status.pending.length === 0) return null;
+  if (status.attempts >= RETRY_MAX_ATTEMPTS) return null;
+  // So geschrieben, dass auch eine unlesbare Zeit (NaN) zum Abbruch führt.
+  const ageMs = Date.now() - Date.parse(status.fetchedAt);
+  if (!(ageMs <= MIN_REFETCH_WITHOUT_META_MS)) return null;
+
+  const fetched = await fetchForecasts(status.pending, new Date().toISOString());
+  for (const row of fetched.rows) row.model_run = status.modelRun;
+  let saveError: string | null = null;
+  if (fetched.rows.length > 0) {
+    saveError = await saveForecastRows(supabaseUrl, headers, fetched.rows);
+  }
+  // Konnte nicht gespeichert werden, bleiben alle offen.
+  const stillPending = saveError ? status.pending : fetched.failed;
+  const errors = [...fetched.batchErrors, ...(saveError ? [`Speichern: ${saveError}`] : [])];
+  await saveForecastStatus(supabaseUrl, headers, {
+    ok: stillPending.length === 0,
+    valueCount: saveError ? 0 : fetched.rows.length,
+    error: errors.length > 0 ? errors.join("; ") : null,
+    detail: { ...status, pending: stillPending, attempts: status.attempts + 1 },
   });
-  if (!res.ok) {
-    throw new Error(`GeoSphere-Metadaten antworteten mit Status ${res.status}`);
-  }
-  const body = (await res.json()) as { stations?: GeoSphereStationMeta[] };
-  const stations: Station[] = [];
-  for (const s of body.stations ?? []) {
-    if (s.is_active === false || typeof s.lat !== "number" || typeof s.lon !== "number") {
-      continue;
-    }
-    stations.push({ code: `${GEOSPHERE_CODE_PREFIX}${s.id}`, lat: s.lat, lng: s.lon });
-  }
-  return stations;
+  return {
+    stations: status.pending.length,
+    saved: saveError ? 0 : fetched.rows.length,
+    stillPending: stillPending.length,
+    attempt: status.attempts + 1,
+    errors,
+  };
 }
 
 // Einen Batch Stationen bei Open-Meteo abfragen und zu Tabellenzeilen
@@ -791,6 +782,8 @@ export async function handleRequest(request: Request): Promise<Response> {
         ? lastFetchedMs >= modelRun.availableMs
         : Date.now() - lastFetchedMs < MIN_REFETCH_WITHOUT_META_MS;
       if (upToDate) {
+        // Kein neuer Lauf: höchstens gescheiterte Stationen nachholen.
+        const retry = await retryPending(supabaseUrl, supabaseHeaders);
         return json({
           ok: true,
           skipped: true,
@@ -799,96 +792,36 @@ export async function handleRequest(request: Request): Promise<Response> {
             : "Metadaten nicht lesbar, letzter Abruf jünger als 170 min",
           modelRun: modelRun?.runIso ?? null,
           lastFetched: new Date(lastFetchedMs).toISOString(),
+          retry,
           upperWind,
         });
       }
     }
   }
 
-  // 2) Stationsliste ableiten: alle vier Listen gleichzeitig, jede additiv —
-  //    ein Fehler bricht den Lauf nicht ab, es gibt dann eben für diese
-  //    Stationen diesmal keine neue Prognose (seit Okt. 2026 auch für Bozen,
-  //    siehe Ablauf oben). Die gescheiterten Listen stehen in der Antwort.
-  const stationSources: Array<[string, () => Promise<Station[]>]> = [
-    ["Bozen", loadStations],
-    ["OpenWindMap", loadOpenWindMapStations],
-    ["SLF", loadSlfStations],
-    ["GeoSphere", loadGeoSphereStations],
-  ];
-  const stationListErrors: string[] = [];
-  const stationLists = await Promise.all(
-    stationSources.map(async ([label, load]) => {
-      try {
-        return await load();
-      } catch (err) {
-        console.error(`${label}-Stationsliste nicht abrufbar:`, err);
-        stationListErrors.push(`${label}: ${(err as Error).message}`);
-        return [];
-      }
-    }),
-  );
-  let stations = stationLists.flat();
-  // Stationen außerhalb der Alpen (siehe isInAlps) und außerhalb des
-  // Modellgebiets (siehe ICON_CH1_MAX_LNG) gar nicht erst abfragen.
+  // 2) Stationsliste aus der Datenbank (siehe loadStationList). Stationen
+  //    außerhalb des Modellgebiets (siehe ICON_CH1_MAX_LNG) gar nicht erst
+  //    abfragen.
+  let stations: Station[];
+  try {
+    stations = await loadStationList(supabaseUrl, supabaseHeaders);
+  } catch (err) {
+    console.error("Stationsliste nicht lesbar:", err);
+    return json({ error: `Stationsliste nicht lesbar: ${(err as Error).message}` }, 502);
+  }
   const beforeFilter = stations.length;
-  stations = stations.filter((s) => insideIconCh1(s) && isInAlps(s.lat, s.lng));
+  stations = stations.filter(insideIconCh1);
   const outsideFiltered = beforeFilter - stations.length;
   if (stations.length === 0) {
-    return json(
-      { error: "Keine Station mit Windsensoren und Koordinaten gefunden", stationListErrors },
-      502,
-    );
+    return json({ error: "Keine Station in der Stationsliste (wind_stations)" }, 502);
   }
 
-  // 3) Bodenwind (ICON-CH1) batchweise abfragen. Ein fehlgeschlagener
-  //    Batch bricht nicht den ganzen Lauf ab — die übrigen Stationen werden
-  //    trotzdem gespeichert, der Fehler wird geloggt und in der Antwort
-  //    gemeldet.
+  // 3) Bodenwind (ICON-CH1) batchweise abfragen (siehe fetchForecasts).
   const fetchedAt = new Date().toISOString();
-  const rows: ForecastRow[] = [];
-  let skippedNullHours = 0;
-  const batchErrors: string[] = [];
-
-  const outsideModel: string[] = [];
-
-  // Ein Block wird im Fehlerfall halbiert und erneut versucht: Open-Meteo
-  // lehnt die GANZE Anfrage ab ("No data is available for this location"),
-  // sobald auch nur EINE Station außerhalb des ICON-CH1-Gebiets liegt — am
-  // 29.09.2026 fielen so 4 von 6 GeoSphere-Blöcken (200 Stationen) komplett
-  // aus. Durch das Halbieren bleiben am Ende nur die wirklich betroffenen
-  // Stationen ohne Prognose (in der Antwort unter "outsideModel"). Kosten:
-  // gezählt wird je Station, die zusätzlichen kleinen Anfragen fallen kaum
-  // ins Gewicht. Die bekannten Außen-Stationen filtert ohnehin schon
-  // insideIconCh1() vorab heraus, das Halbieren ist das Sicherheitsnetz.
-  async function fetchWithSplit(batch: Station[]): Promise<void> {
-    try {
-      const result = await fetchForecastBatch(batch, fetchedAt);
-      rows.push(...result.rows);
-      skippedNullHours += result.skippedNullHours;
-    } catch (err) {
-      const message = (err as Error).message;
-      if (/No data is available/i.test(message)) {
-        if (batch.length === 1) {
-          outsideModel.push(batch[0].code);
-          return;
-        }
-        const half = Math.ceil(batch.length / 2);
-        await fetchWithSplit(batch.slice(0, half));
-        await fetchWithSplit(batch.slice(half));
-        return;
-      }
-      const full = `Batch ab Station ${batch[0].code}: ${message}`;
-      console.error(full);
-      batchErrors.push(full);
-    }
-  }
-
-  for (let i = 0; i < stations.length; i += BATCH_SIZE) {
-    await fetchWithSplit(stations.slice(i, i + BATCH_SIZE));
-  }
-  if (outsideModel.length > 0) {
-    console.error(`Außerhalb des ICON-CH1-Gebiets (${outsideModel.length}):`, outsideModel.join(","));
-  }
+  const { rows, skippedNullHours, outsideModel, batchErrors, failed } = await fetchForecasts(
+    stations,
+    fetchedAt,
+  );
 
   // Laufzeit an alle Zeilen hängen. Die Metadaten wurden oben VOR dem Abruf
   // gelesen; gleich danach geholte Werte stammen aus genau diesem Lauf (ein
@@ -898,42 +831,38 @@ export async function handleRequest(request: Request): Promise<Response> {
   const modelRunIso = modelRun?.runIso ?? null;
   for (const row of rows) row.model_run = modelRunIso;
 
+  // Zustand für den Fall eines Fehlers. Nachzuholen gibt es dann nichts: Ohne
+  // gespeicherte Zeile gilt der Lauf nicht als abgerufen, beim nächsten
+  // Anstoß wird ohnehin alles neu geholt.
+  const failedStatus = (error: string) => ({
+    ok: false,
+    valueCount: 0,
+    error,
+    detail: { modelRun: modelRunIso, fetchedAt, pending: [], attempts: 0 },
+  });
+
   if (rows.length === 0) {
-    return json(
-      { error: "Keine Prognosewerte erhalten", batchErrors },
-      502,
-    );
+    await saveForecastStatus(supabaseUrl, supabaseHeaders, failedStatus("Keine Prognosewerte erhalten"));
+    return json({ error: "Keine Prognosewerte erhalten", batchErrors }, 502);
   }
 
-  // 4) Upsert: vorhandene (station_code, model, forecast_time)-Kombinationen
-  //    werden aktualisiert statt doppelt angelegt.
-  try {
-    const insertRes = await fetch(
-      `${supabaseUrl}/rest/v1/wind_forecasts?on_conflict=station_code,model,forecast_time`,
-      {
-        method: "POST",
-        headers: {
-          ...supabaseHeaders,
-          Prefer: "resolution=merge-duplicates,return=minimal",
-        },
-        body: JSON.stringify(rows),
-        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
-      },
-    );
-    if (!insertRes.ok) {
-      return json(
-        {
-          error: `Supabase-Upsert schlug fehl (Status ${insertRes.status})`,
-          details: await insertRes.text(),
-        },
-        502,
-      );
-    }
-  } catch (err) {
-    return json({ error: `Supabase-Upsert schlug fehl: ${(err as Error).message}` }, 502);
+  // 4) Speichern (Upsert, siehe saveForecastRows).
+  const saveError = await saveForecastRows(supabaseUrl, supabaseHeaders, rows);
+  if (saveError) {
+    await saveForecastStatus(supabaseUrl, supabaseHeaders, failedStatus(`Speichern: ${saveError}`));
+    return json({ error: "Supabase-Upsert schlug fehl", details: saveError }, 502);
   }
 
-  // 5) Aufräumen: Prognosen älter als RETENTION_DAYS Tage löschen.
+  // 5) Zustand speichern — mit den Stationen gescheiterter Blöcke, die bei
+  //    den nächsten Anstößen nachgeholt werden (siehe retryPending).
+  const statusOk = await saveForecastStatus(supabaseUrl, supabaseHeaders, {
+    ok: failed.length === 0,
+    valueCount: rows.length,
+    error: batchErrors.length > 0 ? batchErrors.join("; ") : null,
+    detail: { modelRun: modelRunIso, fetchedAt, pending: failed, attempts: 0 },
+  });
+
+  // 6) Aufräumen: Prognosen älter als RETENTION_DAYS Tage löschen.
   const cutoff = new Date(
     Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000,
   ).toISOString();
@@ -963,7 +892,8 @@ export async function handleRequest(request: Request): Promise<Response> {
     outsideFiltered,
     outsideModel,
     batchErrors,
-    stationListErrors,
+    pending: failed.length,
+    statusOk,
     upperWind,
     cleanupBefore: cutoff,
     cleanupOk,

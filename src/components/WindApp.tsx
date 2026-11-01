@@ -14,13 +14,16 @@ import {
   buildTimelineFrame,
   buildTimelineSlots,
   GRID_MS,
+  HISTORY_HOURS,
   CABLE_SOURCE,
   KK7_SOURCE,
   MAP_SOURCES,
   STATION_FILTER_ORDER,
+  TIMELINE_RECENT_PATH,
   type StationFilter,
   type TimelinePayload,
 } from "@/lib/wind";
+import { mergeRecentTimeline, TIMELINE_MERGE_MAX_GAP_MS } from "@/lib/timelineMerge";
 import WindMapLoader from "@/components/WindMapLoader";
 import StationFilterPicker from "@/components/StationFilterPicker";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
@@ -35,6 +38,18 @@ const FILTER_STORAGE_KEY = "sisosig-filter-v1";
 // geht nur um den Unterschied Server (false) / Browser (true).
 function subscribeNothing() {
   return () => {};
+}
+
+// Zeitbalken-Daten: die vollen 48 h oder nur die letzten Stunden (Punkt 27,
+// siehe ensureTimeline unten und src/lib/timelineMerge.ts).
+const TIMELINE_FULL_URL = "/api/timeline";
+const TIMELINE_RECENT_URL = TIMELINE_RECENT_PATH;
+
+async function loadTimeline(url: string): Promise<TimelinePayload> {
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? `Status ${res.status}`);
+  return data as TimelinePayload;
 }
 
 function readStoredFilter(): StationFilter | null {
@@ -153,6 +168,9 @@ export default function WindApp() {
   // noch der alte — die Daten würden mehrfach geladen.
   const timelineLoading = useRef(false);
   const timelineFetchedAt = useRef(0);
+  // Der aktuelle Stand noch einmal als ref: ensureTimeline fügt neue Stunden
+  // in ihn ein und darf dafür keinen veralteten state-Wert erwischen.
+  const timelineRef = useRef<TimelinePayload | null>(null);
 
   // Die Slot-Liste alle 60 s nachziehen, damit "jetzt" auch bei einem lange
   // offenen Tab wirklich jetzt ist. Neu gesetzt wird nur, wenn sich der
@@ -189,24 +207,42 @@ export default function WindApp() {
   // Datenmenge zu sparen). Nachgeladen wird nur, wenn der Datenstand älter
   // als ein Rasterschritt ist; /api/timeline ist außerdem 60 s zwischen-
   // gespeichert.
+  //
+  // SPARSAM (Punkt 27, Nov. 2026): Die vollen 48 h (~450 KB) holt nur die
+  // Hauptseite beim Öffnen. Zum Auffrischen kommen nur die letzten 8 h
+  // (~80 KB) und werden eingefügt (mergeRecentTimeline, Ergebnis genau wie
+  // beim vollen Laden). Der Flugmodus holt überhaupt nur die 8 h — er zeigt
+  // keinen Zeitbalken und braucht den Verlauf nur für die Messfehler-Erkennung
+  // der Live-Werte. Volle 48 h gibt es wieder, wenn die Hauptseite sie braucht
+  // (nach einem Start im Flugmodus) oder das letzte Laden länger als
+  // TIMELINE_MERGE_MAX_GAP_MS her ist (z. B. nach Stunden im Hintergrund).
+  //
   // Als Promise-Kette statt async/await geschrieben: So ist auch für die
   // Lint-Regel erkennbar, dass alle setState-Aufrufe erst nach der Antwort
   // passieren (sonst meldet sie den Aufruf im Effekt unten fälschlich).
-  const ensureTimeline = useCallback(() => {
+  const ensureTimeline = useCallback((flight: boolean) => {
     if (timelineLoading.current) return;
+    const current = timelineRef.current;
+    const age = timelineFetchedAt.current ? Date.now() - timelineFetchedAt.current : Infinity;
+    // Die Hauptseite braucht die ganzen 48 h (Farbstrich, Zurückblättern).
+    const needFull = !flight && (!current || current.hours < HISTORY_HOURS);
     // Bereits geholt und noch keinen Rasterschritt alt: nichts zu tun.
-    if (timelineFetchedAt.current && Date.now() - timelineFetchedAt.current <= GRID_MS) {
-      return;
-    }
+    if (!needFull && age <= GRID_MS) return;
+    const canMerge = current !== null && age <= TIMELINE_MERGE_MAX_GAP_MS;
+    const recentOnly = flight || (!needFull && canMerge);
+
     timelineLoading.current = true;
-    fetch("/api/timeline")
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          setTimelineStatus("error");
-          return;
+    loadTimeline(recentOnly ? TIMELINE_RECENT_URL : TIMELINE_FULL_URL)
+      .then(async (payload) => {
+        let next: TimelinePayload | null = payload;
+        if (recentOnly && current && canMerge) {
+          next = mergeRecentTimeline(current, payload);
+          // Ließ sich nicht einfügen (Lücke zwischen den Ständen): im
+          // Flugmodus genügen die 8 h, die Hauptseite holt dann doch alles.
+          if (!next) next = flight ? payload : await loadTimeline(TIMELINE_FULL_URL);
         }
-        setTimeline(data as TimelinePayload);
+        timelineRef.current = next;
+        setTimeline(next);
         setTimelineStatus("ready");
         timelineFetchedAt.current = Date.now();
       })
@@ -219,11 +255,15 @@ export default function WindApp() {
       });
   }, []);
 
-  // Beim Start und bei jedem neuen Rasterschritt (Slot-Liste rückt weiter)
-  // die Verlaufsdaten holen bzw. auffrischen.
+  // Beim Start, bei jedem neuen Rasterschritt (Slot-Liste rückt weiter) und
+  // beim Wechsel in den bzw. aus dem Flugmodus die Verlaufsdaten holen bzw.
+  // auffrischen. Beim allerersten Aufruf steht ein Start über "?flug" noch
+  // nicht im Zustand (der wird erst im nächsten Bild gesetzt, siehe oben) —
+  // deshalb zusätzlich die Adresse prüfen, sonst kämen dafür einmal unnötig
+  // die vollen 48 h.
   useEffect(() => {
-    ensureTimeline();
-  }, [slots, ensureTimeline]);
+    ensureTimeline(flightMode || new URLSearchParams(window.location.search).has("flug"));
+  }, [slots, flightMode, ensureTimeline]);
 
   // Titel- und Zeitbalken liegen auf der Hauptseite halb durchsichtig ÜBER der
   // Karte (Wunsch des Projektbesitzers, Okt. 2026): Die Karte füllt dafür den

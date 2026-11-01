@@ -11,13 +11,19 @@ import {
   type TimelinePayload,
   type TimelineSeries,
 } from "@/lib/wind";
-import { assessSeries, encodeSuspectFlags } from "@/lib/plausibility";
+import { assessSeries, encodeSuspectFlags, LONGEST_RULE_MINUTES } from "@/lib/plausibility";
 
 // Liefert die Messwerte ALLER Stationen der letzten HISTORY_HOURS Stunden
 // (seit Nov. 2026 48, vorher 12) aus der Supabase-Tabelle wind_measurements — die Datengrundlage
 // für den Zeitbalken unter der Karte (TimeSlider.tsx).
 //
-// Aufruf: /api/timeline  (keine Parameter)
+// Aufruf: /api/timeline           die vollen HISTORY_HOURS (48 h)
+//         /api/timeline?hours=8   nur die letzten 8 h (TIMELINE_RECENT_HOURS)
+// Die kurze Form (Punkt 27, Nov. 2026) holt die Seite nach dem ersten Laden
+// alle 10 Minuten und fügt sie in den vorhandenen Stand ein
+// (src/lib/timelineMerge.ts); der Flugmodus braucht nur sie. Erlaubt ist jede
+// ganze Zahl von 1 bis HISTORY_HOURS — die Seite benutzt aber immer dieselbe,
+// damit sich alle Besucher die Antwort im CDN teilen.
 //
 // Gegenstück zu /api/history, das dasselbe für EINE Station tut. Hier wäre ein
 // Zeilen-JSON (~650 Stationen × 289 Zeitpunkte) mehrere MB groß,
@@ -55,12 +61,26 @@ const RESPONSE_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=300"
 // Mittelwind, Böe, Quelle].
 type TimelineRow = [string, number, number | null, number | null, number | null, string | null];
 
+// Vorlauf der Berechnung in Rasterpunkten: so weit, wie die längste
+// Messfehler-Regel zurückschaut (3 h = 18 Punkte). Deckt auch das Halten der
+// SLF-Werte (20 min) ab. Kostet rund 6 % mehr gelesene Zeilen.
+const LEAD_SLOTS = Math.ceil(LONGEST_RULE_MINUTES / TIMELINE_STEP_MINUTES);
+
 /** Auf ganze Zahlen runden — kürzeres JSON, und die Karte rundet ohnehin. */
 function round0(value: number | null): number | null {
   return value === null ? null : Math.round(value);
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const hoursParam = new URL(request.url).searchParams.get("hours");
+  const hours = hoursParam === null ? HISTORY_HOURS : Number(hoursParam);
+  if (!Number.isInteger(hours) || hours < 1 || hours > HISTORY_HOURS) {
+    return NextResponse.json(
+      { error: `hours muss eine ganze Zahl von 1 bis ${HISTORY_HOURS} sein` },
+      { status: 400 },
+    );
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -74,8 +94,20 @@ export async function GET() {
     );
   }
 
-  const times = buildTimelineSlots(Date.now());
-  const start = times[0];
+  // Ausgeliefert werden die Rasterpunkte `times`. Gerechnet wird aber über
+  // `calcTimes` = LEAD_SLOTS Rasterpunkte (3 h) davor plus `times` (Nov. 2026,
+  // Punkt 27): Das Halten der SLF-Werte und die Messfehler-Regeln schauen bis
+  // zu 3 h zurück. Ohne diesen Vorlauf fehlte am Anfang des Fensters z. B. ein
+  // SLF-Wert von kurz davor, und ein langer eingefrorener Abschnitt war am
+  // Anfang nicht markiert. So ist jeder ausgelieferte Punkt richtig, egal wo das
+  // Fenster beginnt — die Voraussetzung dafür, dass die Seite das kurze
+  // Fenster in ihren Stand einfügen kann (src/lib/timelineMerge.ts).
+  const times = buildTimelineSlots(Date.now(), hours);
+  const calcTimes = [
+    ...Array.from({ length: LEAD_SLOTS }, (_, i) => times[0] - (LEAD_SLOTS - i) * GRID_MS),
+    ...times,
+  ];
+  const start = calcTimes[0];
   // Einen halben Rasterschritt Vorlauf, damit eine Messung, die knapp VOR dem
   // ersten Rasterpunkt liegt und auf diesen gehört (z. B. 02:27 → 02:30), nicht
   // wegfällt.
@@ -111,31 +143,31 @@ export async function GET() {
     return NextResponse.json({ error: "Supabase ist nicht erreichbar" }, { status: 502 });
   }
 
-  // Zeilen in die Spalten einsortieren. Pro Station und Rasterpunkt bleibt
-  // genau ein Wert übrig — dieselbe Vorrangregel wie im Verlaufsbalken
-  // (snapPointsToGrid): Messungen mit Werten schlagen leere, danach entscheidet
-  // der kleinere Abstand zum Rasterpunkt.
-  const stations: Record<string, TimelineSeries> = {};
+  // Zeilen in die Spalten einsortieren (über calcTimes, samt Vorlauf). Pro
+  // Station und Rasterpunkt bleibt genau ein Wert übrig — dieselbe Vorrangregel
+  // wie im Verlaufsbalken (snapPointsToGrid): Messungen mit Werten schlagen
+  // leere, danach entscheidet der kleinere Abstand zum Rasterpunkt.
+  const calc: Record<string, TimelineSeries> = {};
   const distances = new Map<string, number[]>();
   const sourceByStation = new Map<string, string>();
   for (const [code, t, direction, speedKmh, gustKmh, source] of rows) {
     if (source) sourceByStation.set(code, source);
     if (!Number.isFinite(t)) continue;
     const idx = Math.round((snapToGrid(t) - start) / GRID_MS);
-    if (idx < 0 || idx >= times.length) continue;
+    if (idx < 0 || idx >= calcTimes.length) continue;
 
-    let series = stations[code];
+    let series = calc[code];
     if (!series) {
       series = {
-        d: new Array<number | null>(times.length).fill(null),
-        s: new Array<number | null>(times.length).fill(null),
-        g: new Array<number | null>(times.length).fill(null),
+        d: new Array<number | null>(calcTimes.length).fill(null),
+        s: new Array<number | null>(calcTimes.length).fill(null),
+        g: new Array<number | null>(calcTimes.length).fill(null),
       };
-      stations[code] = series;
-      distances.set(code, new Array<number>(times.length).fill(Infinity));
+      calc[code] = series;
+      distances.set(code, new Array<number>(calcTimes.length).fill(Infinity));
     }
 
-    const dist = Math.abs(t - times[idx]);
+    const dist = Math.abs(t - calcTimes[idx]);
     const taken = distances.get(code)!;
     const hasData = speedKmh !== null || gustKmh !== null;
     const curHasData = series.s[idx] !== null || series.g[idx] !== null;
@@ -158,13 +190,13 @@ export async function GET() {
   // nächsten stehen — genau so, wie es die Live-Karte zu diesem Zeitpunkt
   // gezeigt hätte (der jüngste verfügbare Wert). Erfunden wird nichts: Fehlt
   // eine Messung, endet das Halten nach einem Takt, und die Station wird grau.
-  for (const [code, series] of Object.entries(stations)) {
+  for (const [code, series] of Object.entries(calc)) {
     const source = sourceByStation.get(code) as WindStation["source"] | undefined;
     const intervalMin = source ? SOURCE_INTERVAL_MINUTES[source] : undefined;
     if (!intervalMin || intervalMin <= TIMELINE_STEP_MINUTES) continue;
     const holdSlots = Math.ceil(intervalMin / TIMELINE_STEP_MINUTES) - 1;
     let lastReal = -Infinity;
-    for (let i = 0; i < times.length; i++) {
+    for (let i = 0; i < calcTimes.length; i++) {
       const empty = series.d[i] === null && series.s[i] === null && series.g[i] === null;
       if (!empty) {
         lastReal = i;
@@ -179,15 +211,27 @@ export async function GET() {
   // Wahrscheinliche Messfehler markieren (stundenlang exakt dieselben Werte,
   // klemmende Windfahne, unmögliche Werte — Regeln in src/lib/plausibility.ts).
   // Erst NACH dem Halten der SLF-Werte, damit die Prüfung genau das sieht, was
-  // die Karte zeigt. Das Feld q bekommen nur auffällige Stationen.
-  for (const [code, series] of Object.entries(stations)) {
+  // die Karte zeigt. Danach den Vorlauf wieder abschneiden: Ausgeliefert
+  // werden nur `times`, und nur Stationen mit mindestens einem Wert darin. Das
+  // Feld q bekommen nur auffällige Stationen.
+  const stations: Record<string, TimelineSeries> = {};
+  for (const [code, full] of Object.entries(calc)) {
     const source = sourceByStation.get(code) as WindStation["source"] | undefined;
-    const q = encodeSuspectFlags(assessSeries(series, times, source));
+    const flags = assessSeries(full, calcTimes, source).slice(LEAD_SLOTS);
+    const series: TimelineSeries = {
+      d: full.d.slice(LEAD_SLOTS),
+      s: full.s.slice(LEAD_SLOTS),
+      g: full.g.slice(LEAD_SLOTS),
+    };
+    const empty = (values: (number | null)[]) => values.every((v) => v === null);
+    if (empty(series.d) && empty(series.s) && empty(series.g)) continue;
+    const q = encodeSuspectFlags(flags);
     if (q) series.q = q;
+    stations[code] = series;
   }
 
   const payload: TimelinePayload = {
-    hours: HISTORY_HOURS,
+    hours,
     stepMinutes: TIMELINE_STEP_MINUTES,
     generatedAt: times[times.length - 1],
     times,

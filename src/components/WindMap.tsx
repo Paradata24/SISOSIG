@@ -27,6 +27,7 @@ import {
   type WindStation,
 } from "@/lib/wind";
 import { assessLive } from "@/lib/plausibility";
+import { takeEarlyWindRequest } from "@/lib/earlyWind";
 import FlightMode from "@/components/FlightMode";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
@@ -870,7 +871,11 @@ export default function WindMap({
     // so verschwinden nicht plötzlich alle Pfeile von der Karte.
     async function loadWind(isInitial = false) {
       try {
-        const res = await fetch("/api/wind", { cache: "no-store" });
+        // Beim ersten Laden die Anfrage übernehmen, die die Seite schon beim
+        // Öffnen gestartet hat (src/lib/earlyWind.ts) — sie ist meist schon
+        // fertig, wenn die Karte steht.
+        const res = await ((isInitial ? takeEarlyWindRequest() : null) ??
+          fetch("/api/wind", { cache: "no-store" }));
         const data = await res.json();
         if (cancelled) return;
         if (!res.ok) {
