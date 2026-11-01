@@ -29,7 +29,7 @@ const API_BASE =
 // Stationen, die so lange nichts gemeldet haben, gelten als abgebaut oder für
 // die Saison abgeschaltet und erscheinen nicht auf der Karte (Okt. 2026 waren
 // das im Alpenraum 4 von 94, zwei davon ausdrücklich "off"). Gleiche Dauer wie
-// die Aufbewahrung in der Datenbank (/api/collect): Danach gäbe es auch im
+// die Anzeige (HISTORY_HOURS = 48 h in src/lib/wind.ts): Danach gäbe es auch im
 // Verlaufsbalken nichts mehr zu sehen. Kürzere Pausen (nachts, windstill)
 // bleiben als grauer Ring stehen.
 const MAX_SILENCE_MS = 2 * 24 * 60 * 60 * 1000;

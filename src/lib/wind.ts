@@ -201,8 +201,13 @@ export const DATABASE_TIMEOUT_MS = 15_000;
  * (supabase/functions/fetch-wind-forecasts) ist Deno-Code und kann hier NICHT
  * importieren – dort stehen eigene, abgeleitete Konstanten (PAST_HOURS /
  * FORECAST_HOURS), die bei einer Änderung mitgezogen werden müssen.
+ *
+ * 48 h (2 Tage) seit Nov. 2026, Wunsch des Projektbesitzers; vorher 12 h.
+ * Gilt für Verlaufsbalken UND Zeitbalken. Die Datenbank bewahrt die Werte
+ * deshalb 3 Tage auf (RETENTION_DAYS in /api/collect und in der Edge
+ * Function) — die Aufbewahrung muss immer länger sein als dieser Wert.
  */
-export const HISTORY_HOURS = 12;
+export const HISTORY_HOURS = 48;
 export const FUTURE_MARGIN_HOURS = 4;
 
 /**
@@ -248,7 +253,7 @@ export function upperWindLevelLabel(stationCode: string): string | null {
  */
 export const TIMELINE_STEP_MINUTES = 10;
 export const GRID_MS = TIMELINE_STEP_MINUTES * 60 * 1000;
-/** 12 h × 6 Schritte + der Schritt "jetzt" = 73 Rasterpunkte. */
+/** 48 h × 6 Schritte + der Schritt "jetzt" = 289 Rasterpunkte. */
 export const TIMELINE_SLOT_COUNT =
   HISTORY_HOURS * (60 / TIMELINE_STEP_MINUTES) + 1;
 
@@ -306,7 +311,7 @@ export interface TimelineValue {
  * Drei gleich lange Spalten, parallel zu TimelinePayload.times:
  * d = Richtung (Grad), s = Mittelwind (km/h), g = Böe (km/h).
  * null bedeutet: zu diesem Zeitpunkt keine Messung.
- * Bewusst so kurz benannt — bei ~130 Stationen × 73 Zeitpunkten macht das
+ * Bewusst so kurz benannt — bei ~650 Stationen × 289 Zeitpunkten macht das
  * im JSON einen spürbaren Unterschied.
  */
 export interface TimelineSeries {
@@ -337,7 +342,7 @@ export function decodeSuspect(code: string | undefined): SuspectReason | undefin
   return undefined;
 }
 
-/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten 12 h. */
+/** Antwort von /api/timeline: die Messwerte ALLER Stationen der letzten HISTORY_HOURS. */
 export interface TimelinePayload {
   hours: number;
   stepMinutes: number;

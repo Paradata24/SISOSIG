@@ -51,10 +51,12 @@ import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 //   SUPABASE_SERVICE_ROLE_KEY  service_role Key des Supabase-Projekts
 //   CRON_SECRET                selbst gewähltes Geheimnis für den Cron-Aufruf
 
-// Aufbewahrung in der Datenbank. Der Verlaufsbalken zeigt nur HISTORY_HOURS
-// (12h, siehe src/lib/wind.ts) — 2 Tage sind damit ein großzügiger Puffer für
-// ausgefallene Sammel-Läufe und halten die Tabelle klein.
-const RETENTION_DAYS = 2;
+// Aufbewahrung in der Datenbank. Verlaufs- und Zeitbalken zeigen HISTORY_HOURS
+// (48 h, siehe src/lib/wind.ts) — die Aufbewahrung muss LÄNGER sein, sonst
+// fehlt am linken Rand ein Stück. 3 Tage = 1 Tag Puffer (Nov. 2026; bei der
+// 12-h-Anzeige waren es 2 Tage). Rund 200.000 Zeilen, also weiter klein.
+// Gleicher Wert wie RETENTION_DAYS in der Edge Function (Prognosen).
+const RETENTION_DAYS = 3;
 const RETENTION_MS = RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 // SLF und DWD liefern ihren Verlauf mit (SLF die letzten 24 h, DWD den

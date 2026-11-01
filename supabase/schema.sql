@@ -1,4 +1,4 @@
--- Tabelle für die Wind-Historie (12h-Anzeige, 2 Tage Aufbewahrung).
+-- Tabelle für die Wind-Historie (48h-Anzeige, 3 Tage Aufbewahrung).
 -- Einmalig im Supabase SQL-Editor ausführen.
 
 create table if not exists public.wind_measurements (

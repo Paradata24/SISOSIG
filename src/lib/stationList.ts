@@ -14,10 +14,10 @@ import { DATABASE_TIMEOUT_MS, isOutdated, type WindStation } from "./wind";
 // Den neuesten Wert je Station liefert die Sicht wind_stations_latest: eine
 // Zeile der Stationsliste plus die jüngste Zeile aus wind_measurements.
 // Stationen ohne gespeicherten Wert fehlen dort. Weil wind_measurements nur
-// 2 Tage aufbewahrt wird (/api/collect), verschwinden die Stationen einer
-// tagelang ausgefallenen Quelle nach 2 Tagen also doch von der Karte. Ebenso
+// 3 Tage aufbewahrt wird (/api/collect), verschwinden die Stationen einer
+// tagelang ausgefallenen Quelle nach 3 Tagen also doch von der Karte. Ebenso
 // taucht eine Station, die eine Quelle nicht mehr führt, spätestens nach
-// 2 Tagen auch hier nicht mehr auf (ihre Zeile in wind_stations bleibt, stört
+// 3 Tagen auch hier nicht mehr auf (ihre Zeile in wind_stations bleibt, stört
 // aber nicht).
 
 /** Eine Zeile der Tabelle wind_stations. */

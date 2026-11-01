@@ -139,8 +139,8 @@ einmalig im Supabase SQL-Editor ausführen). Jede Zeile trägt in der Spalte
 `source` die Herkunft (`bolzano` oder `openwindmap`), damit sich das später
 auch bei weiteren Regionen/Quellen unterscheiden lässt. Bereits vorhandene
 Messungen werden dabei nicht doppelt angelegt (Upsert über `station_code` +
-`measured_at`), und Einträge älter als 2 Tage werden bei jedem Lauf
-gelöscht (die Anzeige braucht nur 12 Stunden, der Rest ist Puffer).
+`measured_at`), und Einträge älter als 3 Tage werden bei jedem Lauf
+gelöscht (die Anzeige braucht 48 Stunden, der Rest ist Puffer).
 
 **Wenn `wind_measurements` schon vor dieser Änderung angelegt wurde:**
 einmalig `supabase/add-source-column.sql` im Supabase SQL-Editor ausführen
@@ -208,8 +208,8 @@ jedem Lauf „succeeded" — das heißt nur „Anfrage abgeschickt". Die echte
 Antwort (siehe oben) steht 6 Stunden lang in `net._http_response`.
 
 `/api/history?station=<SCODE>` liefert die so gesammelten Messwerte der
-letzten 12 Stunden einer Station (für den Verlaufsbalken).
-`/api/timeline` liefert dieselben 12 Stunden für **alle** Stationen
+letzten 48 Stunden einer Station (für den Verlaufsbalken).
+`/api/timeline` liefert dieselben 48 Stunden für **alle** Stationen
 gemeinsam (für den Zeitbalken unter der Karte, siehe unten).
 
 ### Benötigte Zugangsdaten
@@ -272,13 +272,13 @@ curl -X POST https://<deine-vercel-domain>/api/collect \
 Ohne oder mit falschem Token muss `401` zurückkommen, mit korrektem Token
 `200` samt `{"ok":true,"saved":…}`.
 
-## Verlaufsbalken (12h-Windverlauf beim Klick auf eine Station)
+## Verlaufsbalken (48h-Windverlauf beim Klick auf eine Station)
 
 Der **Verlaufsbalken** ist das Panel, das unten über die volle
 Bildschirmbreite erscheint, sobald man auf der Karte auf eine Station
-klickt. Er zeigt den Windverlauf der letzten 12 Stunden dieser Station:
+klickt. Er zeigt den Windverlauf der letzten 48 Stunden dieser Station:
 
-- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 12 h" bis
+- eine Zeitachse in Lokalzeit mit fester Spanne von „jetzt − 48 h" bis
   „jetzt + 4 h" (gestrichelte „jetzt"-Linie nahe dem rechten Rand),
 - zwei schwarze Messkurven — Mittelwind (dünn) und Böen (etwas dicker) — vor
   den Farbflächen der Windstärke-Skala (dieselbe Skala wie die Windpfeile
@@ -376,9 +376,9 @@ und z. B. sehen, wie der Föhn durchbricht.
   Stationen im **gerade sichtbaren Kartenausschnitt**. So sieht man schon vor
   dem Drehen, wann es in diesem Gebiet aufgefrischt hat.
 - **Schrittweite 10 Minuten**, genau der Takt, in dem die Stationen messen.
-- **Zeitraum: die letzten 12 Stunden** (dieselben `HISTORY_HOURS` wie beim
-  Verlaufsbalken). Weiter zurück geht es bewusst nicht, auch wenn die Datenbank
-  2 Tage aufbewahrt.
+- **Zeitraum: die letzten 48 Stunden** (dieselben `HISTORY_HOURS` wie beim
+  Verlaufsbalken; bis Nov. 2026 12 Stunden). Die Datenbank bewahrt 3 Tage auf,
+  damit am linken Rand nichts fehlt.
 - **Öffnet man eine Station, verschwindet der Zeitbalken:** Die Karte zeigt dann
   nur die aktuellen Werte, und der Verlaufsbalken der Station reicht bis zum
   unteren Rand. Schließt man ihn, ist der Zeitbalken wieder da (auf „Aktuell").
@@ -388,7 +388,7 @@ und z. B. sehen, wie der Föhn durchbricht.
 
 **Datenquelle:** `src/app/api/timeline/route.ts` (Komponente:
 `src/components/TimeSlider.tsx`). Die Route holt alle Messwerte der letzten
-12 Stunden in **einem** Schritt über die Datenbank-Funktion `wind_timeline`
+48 Stunden in **einem** Schritt über die Datenbank-Funktion `wind_timeline`
 (seit Okt. 2026; vorher seitenweise in gut 30 Paketen, zusammen gut 2 s — die
 Funktion selbst braucht ~0,2 s) und liefert ein kompaktes Spaltenformat: eine
 gemeinsame Zeitliste und pro Station drei Zahlenreihen. Das sind rund 110 KB
@@ -451,8 +451,9 @@ kann — und schreibt sie in die Tabelle `wind_forecasts` (Schema:
   gezählt je Station. ~490 Stationen × 8 Läufe ≈ **3.900 am Tag**, dazu 16
   für den Höhenwind (Okt. 2026; bis Sept. 2026 wurde stündlich abgefragt,
   damals ~7.400 am Tag).
-- Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Angezeigt werden
-  davon nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
+- Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Die Vergangenheit im
+  48-h-Verlaufsbalken kommt aus früheren Läufen, die bis zu 3 Tage gespeichert
+  bleiben. Angezeigt werden nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf
   (und für einen ausgefallenen); `/api/forecast` schneidet den Überhang ab.
 - Einheiten wie in `wind_measurements`: Wind/Böen in **km/h**, Richtung in
   Grad, Prognosezeiten als UTC (`timestamptz`).
@@ -582,8 +583,7 @@ Rand von Frankreich und Italien). Code: `src/lib/pioupiou.ts` (genutzt von
   (`isInAlps` in `src/lib/alps.ts`, dieselbe Regel wie bei allen Quellen).
   Bis Okt. 2026 war es nur eine grobe Südtirol-Box mit 6 Stationen.
 - **Abgeschaltete Stationen:** Wer seit über 2 Tagen nichts gemeldet hat,
-  erscheint nicht (`MAX_SILENCE_MS`, gleich lang wie die Aufbewahrung in der
-  Datenbank) — das sind meist abgebaute oder für die Saison abgeschaltete
+  erscheint nicht (`MAX_SILENCE_MS`, gleich lang wie die 48-h-Anzeige) — das sind meist abgebaute oder für die Saison abgeschaltete
   Stationen. Kürzere Pausen (nachts, windstill) zeigen einen grauen Ring.
 - **Prognose nur für Südtirol:** Die Edge Function `fetch-wind-forecasts`
   fragt OpenWindMap weiterhin nur in Südtirol ab (eigene Südtirol-Box). Die

@@ -16,9 +16,9 @@ import {
 //
 // Genutzt an zwei Stellen:
 //  - /api/timeline rechnet für alle Stationen und alle Rasterpunkte der letzten
-//    12 h aus, wann sie auffällig waren (Feld q, siehe TimelineSeries) — für
+//    48 h (HISTORY_HOURS) aus, wann sie auffällig waren (Feld q, siehe TimelineSeries) — für
 //    den Zeitbalken und dessen Farbstrich.
-//  - WindMap prüft die aktuellen Live-Werte (assessLive): die 12 h aus
+//  - WindMap prüft die aktuellen Live-Werte (assessLive): die 48 h aus
 //    /api/timeline plus der neueste Wert von /api/wind.
 //
 // Grundlage sind die auf ganze km/h bzw. Grad gerundeten Werte von
@@ -187,7 +187,7 @@ function roundOrNull(value: number | null): number | null {
 }
 
 /**
- * Prüft die AKTUELLEN Werte einer Station (von /api/wind): Die 12 h aus
+ * Prüft die AKTUELLEN Werte einer Station (von /api/wind): Die 48 h aus
  * /api/timeline bekommen den Live-Wert angehängt (bzw. an seinem Rasterpunkt
  * eingesetzt), dann gelten dieselben Regeln wie für den Verlauf. Wird der
  * Live-Wert wieder "normal" (z. B. weil das Windrad abgetaut ist), ist die
