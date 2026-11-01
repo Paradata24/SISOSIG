@@ -70,7 +70,7 @@
 //   4. Stunden ohne Werte (Station am/außerhalb des Modellrands liefert
 //      null) werden übersprungen; der Rest wird per Upsert gespeichert
 //      (on_conflict station_code,model,forecast_time).
-//   5. Prognosen älter als 2 Tage löschen (wie bei wind_measurements).
+//   5. Prognosen älter als 3 Tage löschen (wie bei wind_measurements).
 //
 // Umgebungsvariablen: SUPABASE_URL und SUPABASE_SERVICE_ROLE_KEY werden von
 // Supabase automatisch in jede Edge Function injiziert — es müssen keine
