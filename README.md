@@ -501,6 +501,12 @@ der Edge Function nichts. Details:
   gezählt je Station. ~650 Stationen × 8 Läufe ≈ **5.200 am Tag**, dazu 16
   für den Höhenwind (Nov. 2026; im Okt. 2026 ~490 Stationen ≈ 3.900, bis
   Sept. 2026 wurde stündlich abgefragt, damals ~7.400 am Tag).
+- **Höchstens 600 Aufrufe pro Minute:** Beim ersten Lauf mit allen 657
+  Stationen (01.11.2026) lehnte Open-Meteo die letzten 57 ab („Minutely API
+  request limit exceeded"). Seitdem fragt ein Anstoß höchstens 450 Stationen
+  ab (`MAX_STATIONS_PER_RUN`), der Rest kommt beim nächsten Anstoß
+  15 Minuten später dran — ohne Fehlermeldung, über denselben Weg wie das
+  Nachholen.
 - Zeitfenster: letzte 12 Stunden + kommende 12 Stunden. Die Vergangenheit im
   48-h-Verlaufsbalken kommt aus früheren Läufen, die bis zu 3 Tage gespeichert
   bleiben. Angezeigt werden nur 4 Stunden Zukunft — der Rest ist Puffer bis zum nächsten Lauf

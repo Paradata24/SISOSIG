@@ -824,7 +824,13 @@ Projektbesitzers entfernt:
   Anfrage kosten erst ab 10 Reihen extra. Stand Nov. 2026: ~650 Stationen
   (alle Stationen der Karte, seit Punkt 14) × 8 Modellläufe ≈ 5.200 am Tag,
   plus 16 für den Höhenwind (2 Stationen × 8); das Nachholen gescheiterter
-  Stationen kostet nur bei Fehlern etwas. Wird die
+  Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
+  pro Minute** (und 5.000 pro Stunde): Der erste Lauf mit allen 657 Stationen
+  (01.11.2026) bekam für die letzten 57 Status 429. Deshalb fragt ein Anstoß
+  höchstens `MAX_STATIONS_PER_RUN` (450) Stationen ab, der Rest kommt beim
+  nächsten Anstoß 15 min später (wie gescheiterte Stationen, aber ohne
+  Fehler). Nicht hochsetzen, ohne die Minutengrenze zu bedenken (Luft für
+  Höhenwind und das Halbieren bei „No data"). Wird die
   Laufprüfung (`loadModelRun`/`loadLastFetchedMs` in der Edge Function)
   entfernt, wären es stündlich ≈ 15.600 — über der Grenze.
 - **Sandbox:** Ausgehende Verbindungen zu `geoservices.buergernetz.bz.it`,
