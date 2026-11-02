@@ -26,6 +26,7 @@ import {
 import { mergeRecentTimeline, TIMELINE_MERGE_MAX_GAP_MS } from "@/lib/timelineMerge";
 import WindMapLoader from "@/components/WindMapLoader";
 import LayerMenu, { type MainLayers } from "@/components/LayerMenu";
+import { isKk7Season, isKk7TimeOfDay } from "@/lib/kk7";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Zuletzt gewählter Stationsfilter, im Browser des Geräts gemerkt (Punkt 20
@@ -39,14 +40,25 @@ const FILTER_STORAGE_KEY = "sisosig-filter-v1";
 // ist KK7 von Haus aus an und die Kabel immer, auf der Hauptseite beides von
 // Haus aus aus (sonst sähe die Windkarte beim ersten Öffnen ganz anders aus).
 const LAYERS_STORAGE_KEY = "sisosig-ebenen-v1";
-const DEFAULT_LAYERS: MainLayers = { kk7: false, cables: false };
+// KK7-Jahres-/Tageszeit von Haus aus "automatisch" (wie im Flugmodus).
+const DEFAULT_LAYERS: MainLayers = {
+  kk7: false,
+  cables: false,
+  kk7Season: "auto",
+  kk7Time: "auto",
+};
 
 function readStoredLayers(): MainLayers | null {
   try {
     const text = window.localStorage.getItem(LAYERS_STORAGE_KEY);
     if (!text) return null;
     const data = JSON.parse(text) as Partial<MainLayers>;
-    return { kk7: data.kk7 === true, cables: data.cables === true };
+    return {
+      kk7: data.kk7 === true,
+      cables: data.cables === true,
+      kk7Season: isKk7Season(data.kk7Season) ? data.kk7Season : "auto",
+      kk7Time: isKk7TimeOfDay(data.kk7Time) ? data.kk7Time : "auto",
+    };
   } catch {
     return null;
   }
@@ -115,13 +127,13 @@ export default function WindApp() {
   const [mainLayers, setMainLayers] = useState<MainLayers>(DEFAULT_LAYERS);
   useEffect(() => {
     const saved = readStoredLayers();
-    if (!saved || (!saved.kk7 && !saved.cables)) return;
+    if (!saved) return;
     const frame = requestAnimationFrame(() => setMainLayers(saved));
     return () => cancelAnimationFrame(frame);
   }, []);
-  const toggleMainLayer = useCallback((key: keyof MainLayers) => {
+  const changeMainLayers = useCallback((patch: Partial<MainLayers>) => {
     setMainLayers((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
+      const next = { ...prev, ...patch };
       try {
         window.localStorage.setItem(LAYERS_STORAGE_KEY, JSON.stringify(next));
       } catch {
@@ -393,7 +405,7 @@ export default function WindApp() {
           <div className="relative z-[1100] shrink-0">
             <LayerMenu
               layers={mainLayers}
-              onToggle={toggleMainLayer}
+              onChange={changeMainLayers}
               footer={
                 <>
                   {/* Quellenangaben der Karte (MAP_SOURCES in wind.ts) —

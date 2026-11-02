@@ -536,7 +536,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
   gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`; hing bis Okt. 2026 an der
   Flug-Zoomstufe und lag deshalb ungewollt bei 15).
-  **Höhen-Schilder** („60–100 m") an Kabeln über 25 m über Grund, **erst
+  **Höhen-Schilder** („60–100 m") an **allen** Kabeln, auch „< 15 m" und
+  „15–25 m" (seit Nov. 2026, Wunsch des Projektbesitzers; vorher nur über
+  25 m), im Flugmodus und auf der Hauptseite gleich, **erst
   ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
   Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
   Bildschirmabstand (`CABLE_LABEL_SPACING_PX`), überlappende ausgedünnt
@@ -564,7 +566,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Ein/aus im **Menü** (siehe nächster Punkt), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
   **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
   (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
-  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). Deckkraft
+  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). **Auf der
+  Hauptseite** lassen sich Jahreszeit und Tageszeit im Ebenen-Menü auch von
+  Hand wählen (Nov. 2026, Wunsch des Projektbesitzers; Voreinstellung
+  „Automatisch", dazu „Ganzjährig"/„Ganztags"; Auswahl in `src/lib/kk7.ts`).
+  Im Flugmodus bleibt es immer automatisch. Deckkraft
   `KK7_OPACITY` 0,6 (30 % weniger als zuerst, Wunsch des Projektbesitzers).
   Folge: Im Winter und morgens ist die Karte in Südtirol deutlich lückenhafter
   (Datenmenge im Okt. 2026 gezählt, steht im Code) — kein Fehler. Bedingungen von KK7: Lizenz

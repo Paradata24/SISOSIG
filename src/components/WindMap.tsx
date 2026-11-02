@@ -691,7 +691,7 @@ function ContainerResizeWatcher() {
 // Komponente steht dann nicht auf der Seite. Ohne GPS richtet sich die
 // Tageszeit der KK7-Karte nach Südtirol.
 function MainPageLayers({ map, layers }: { map: L.Map | null; layers: MainLayers }) {
-  useKk7Tiles(map, layers.kk7, null, SOUTH_TYROL_CENTER);
+  useKk7Tiles(map, layers.kk7, null, SOUTH_TYROL_CENTER, layers.kk7Season, layers.kk7Time);
   useCables(map, layers.cables);
   return null;
 }

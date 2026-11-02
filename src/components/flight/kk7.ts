@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import L from "leaflet";
 import { useNow } from "./device";
 import type { OwnPosition } from "./position";
+import type { Kk7Season, Kk7TimeOfDay } from "@/lib/kk7";
 
 // --- KK7-Thermikkarte (Wunsch des Projektbesitzers, Okt. 2026) ---
 // Wahrscheinlichkeit, eine Thermik zu finden, berechnet aus Millionen
@@ -81,11 +82,23 @@ function sunriseMs(date: Date, lat: number, lng: number): number {
   return midnightUtc + minutesUtc * 60_000;
 }
 
-// KK7-Karte für Zeitpunkt und Ort, z. B. "oct_07" (Oktober, Mittag).
-function kk7Category(nowMs: number, lat: number, lng: number): string {
+// KK7-Karte für Zeitpunkt und Ort, z. B. "oct_07" (Oktober, Mittag). Von Hand
+// gewählte Jahres-/Tageszeit (Ebenen-Menü der Hauptseite, src/lib/kk7.ts)
+// geht vor; "auto" = automatisch wie bisher.
+function kk7Category(
+  nowMs: number,
+  lat: number,
+  lng: number,
+  seasonChoice: Kk7Season = "auto",
+  timeChoice: Kk7TimeOfDay = "auto",
+): string {
   const date = new Date(nowMs);
   // Jan/Apr/Jul/Okt stehen für Dez–Feb, Mär–Mai, Jun–Aug, Sep–Nov.
-  const season = ["jan", "apr", "jul", "oct"][Math.round(date.getMonth() / 3) % 4];
+  const season =
+    seasonChoice !== "auto"
+      ? seasonChoice
+      : ["jan", "apr", "jul", "oct"][Math.round(date.getMonth() / 3) % 4];
+  if (timeChoice !== "auto") return `${season}_${timeChoice}`;
   // Vor Sonnenaufgang zählt als Morgen.
   const hoursAfterSunrise = (nowMs - sunriseMs(date, lat, lng)) / 3_600_000;
   const timeOfDay =
@@ -114,6 +127,8 @@ export function useKk7Tiles(
   enabled: boolean,
   position: OwnPosition | null,
   fallbackCenter: [number, number],
+  seasonChoice: Kk7Season = "auto",
+  timeChoice: Kk7TimeOfDay = "auto",
 ) {
   // Sonnenaufgang am eigenen Standort, ohne GPS an der Startansicht. Die
   // Ebene wird nur neu angelegt, wenn sich die Karte (category) ändert, nicht
@@ -123,6 +138,8 @@ export function useKk7Tiles(
     now,
     position?.lat ?? fallbackCenter[0],
     position?.lng ?? fallbackCenter[1],
+    seasonChoice,
+    timeChoice,
   );
 
   useEffect(() => {

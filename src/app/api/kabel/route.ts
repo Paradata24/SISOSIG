@@ -52,8 +52,9 @@ const RESPONSE_CACHE_CONTROL =
   "public, s-maxage=86400, stale-while-revalidate=86400, stale-if-error=2592000";
 
 // Höhenklasse des Landes (Feld BAS_BEZ_DE) → Zahl für die kompakte Antwort
-// (siehe CABLE_HEIGHT_CLASSES in src/lib/kabel.ts). Unbekannte und niedrige
-// Klassen (bis 25 m) werden 0 = kein Schild.
+// (siehe CABLE_HEIGHT_CLASSES in src/lib/kabel.ts). Unbekannte Klassen
+// werden 0 = kein Schild (seit Nov. 2026 haben auch die niedrigen Klassen bis
+// 25 m eine eigene Zahl und ein Schild).
 const HEIGHT_CLASS_CODES = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.land, c.code]));
 
 // Web-Mercator-Meter → Grad (gleiche Formel, die Leaflet intern benutzt).
