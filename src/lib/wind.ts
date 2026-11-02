@@ -541,7 +541,7 @@ type SourceLink = { label: string; url: string; note?: string };
  * Sie stehen seit Sept. 2026 NICHT mehr in Leaflets Zeile unten rechts auf
  * der Karte (die hat auf dem Handy zwei Zeilen belegt und die
  * "Zuletzt aktualisiert"-Plakette überdeckt), sondern unter "Quellen" unter
- * der Filterliste (Filter-Schild oben rechts, WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
+ * im Ebenen-Menü (Knopf mit drei Strichen oben rechts, LayerMenu/WindApp.tsx). Auf der Karte ist Leaflets Zeile dafür per
  * attributionControl={false} abgeschaltet (WindMap.tsx).
  *
  * Wichtig: OpenTopoMap steht unter CC BY-SA und verlangt "Kartendaten:
@@ -565,22 +565,22 @@ export const MAP_SOURCES: SourceLink[] = [
 ];
 
 /**
- * Quelle der Kabel (Luftfahrthindernisse), die nur der Flugmodus zeigt
- * (FlightMode.tsx, Daten über /api/kabel). Steht unter "Quellen"
- * gleich unter den Kartenquellen.
+ * Quelle der Kabel (Luftfahrthindernisse) im Flugmodus und im Ebenen-Menü
+ * der Hauptseite (Daten über /api/kabel). Steht unter "Quellen" im
+ * Ebenen-Menü gleich unter den Kartenquellen.
  */
 export const CABLE_SOURCE: SourceLink = {
-  label: "Kabel im Flugmodus © Autonome Provinz Bozen – Südtirol, Forstdienst",
+  label: "Kabel © Autonome Provinz Bozen – Südtirol, Forstdienst",
   url: "https://forstdienst.provinz.bz.it/de/wald-holz/erfassung-luftfahrthindernissen",
 };
 
 /**
- * Quelle der Thermikkarte im Flugmodus (KK7, FlightMode.tsx). Die Lizenz
+ * Quelle der KK7-Thermikkarte (Flugmodus und Ebenen-Menü der Hauptseite). Die Lizenz
  * (CC BY-NC-SA 4.0, nur nicht-kommerziell) verlangt die Nennung — nicht
  * entfernen, solange die Ebene angezeigt wird.
  */
 export const KK7_SOURCE: SourceLink = {
-  label: "Thermikkarte im Flugmodus © thermal.kk7.ch (M. von Känel)",
+  label: "KK7-Thermikkarte © thermal.kk7.ch (M. von Känel)",
   url: "https://thermal.kk7.ch",
   note: "CC BY-NC-SA 4.0",
 };
@@ -643,12 +643,11 @@ export function getStationFilterLabel(filter: StationFilter): string {
 }
 
 /**
- * Beschriftung des Filter-Schildes (oben rechts im Titel-Balken, im
- * Flugmodus oben mittig auf der Karte). "ALLE" und "WINDANZEIGER" in
+ * Beschriftung des Filter-Schildes (oben mittig auf der Karte, auf der
+ * Hauptseite antippbar, im Flugmodus nur Info). "ALLE" und "WINDANZEIGER" in
  * Großbuchstaben (Wunsch des Projektbesitzers). Die Höhenfilter seit Okt. 2026
  * nur kurz als Zeichen + Höhe, z. B. "≥3000m" (Wunsch des Projektbesitzers:
- * ohne "STATIONEN" und ohne Tausenderpunkt, damit das Schild schmal bleibt
- * und der Titel daneben nicht umbricht). Die Einheit "m" bleibt klein — ein
+ * ohne "STATIONEN" und ohne Tausenderpunkt, damit das Schild schmal bleibt). Die Einheit "m" bleibt klein — ein
  * großes "M" läse sich wie "Millionen".
  */
 export function getStationFilterMapLabel(filter: StationFilter): string {

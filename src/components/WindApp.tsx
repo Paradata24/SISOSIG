@@ -25,7 +25,7 @@ import {
 } from "@/lib/wind";
 import { mergeRecentTimeline, TIMELINE_MERGE_MAX_GAP_MS } from "@/lib/timelineMerge";
 import WindMapLoader from "@/components/WindMapLoader";
-import StationFilterPicker from "@/components/StationFilterPicker";
+import LayerMenu, { type MainLayers } from "@/components/LayerMenu";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Zuletzt gewählter Stationsfilter, im Browser des Geräts gemerkt (Punkt 20
@@ -33,6 +33,24 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 // muss ihn nicht bei jedem Öffnen neu wählen. Gilt für Hauptseite und
 // Flugmodus gemeinsam. Den Kartenausschnitt merkt sich WindMap.
 const FILTER_STORAGE_KEY = "sisosig-filter-v1";
+
+// Ebenen der Hauptseite (KK7, Kabel; Ebenen-Menü oben rechts, Nov. 2026),
+// ebenfalls im Browser gemerkt. Getrennt von der KK7-Wahl im Flugmodus: Dort
+// ist KK7 von Haus aus an und die Kabel immer, auf der Hauptseite beides von
+// Haus aus aus (sonst sähe die Windkarte beim ersten Öffnen ganz anders aus).
+const LAYERS_STORAGE_KEY = "sisosig-ebenen-v1";
+const DEFAULT_LAYERS: MainLayers = { kk7: false, cables: false };
+
+function readStoredLayers(): MainLayers | null {
+  try {
+    const text = window.localStorage.getItem(LAYERS_STORAGE_KEY);
+    if (!text) return null;
+    const data = JSON.parse(text) as Partial<MainLayers>;
+    return { kk7: data.kk7 === true, cables: data.cables === true };
+  } catch {
+    return null;
+  }
+}
 
 // Für useSyncExternalStore unten: ein "Speicher", der sich nie ändert — es
 // geht nur um den Unterschied Server (false) / Browser (true).
@@ -63,11 +81,11 @@ function readStoredFilter(): StationFilter | null {
 }
 
 // Titel-Balken + Karte + Zeitbalken. Im Titel-Balken steht der Titel mit dem
-// "GO" für den Flugmodus, ganz rechts das Filter-Schild (StationFilterPicker), das
-// beim Antippen die Stationsfilter und darunter die Quellen aufklappt — seit
-// Okt. 2026 anstelle des früheren Menü-Knopfs (3 Linien). Im Flugmodus steht
-// das Schild auf der Karte (WindMap). Der Filter-Zustand lebt hier, weil
-// Balken und Karte getrennte Bereiche der Seite sind.
+// "GO" für den Flugmodus, ganz rechts das Ebenen-Menü (LayerMenu, drei
+// Striche: KK7, Kabel, darunter die Quellen; Nov. 2026). Das Filter-Schild
+// (StationFilterPicker) steht oben mittig auf der Karte (WindMap). Filter- und
+// Ebenen-Zustand leben hier, weil Balken und Karte getrennte Bereiche der
+// Seite sind und der Filter auch im Flugmodus gilt.
 // Dasselbe gilt für den Zeitbalken unten: er steht außerhalb der Karte, also
 // gehört sein Zustand hierher.
 export default function WindApp() {
@@ -90,6 +108,27 @@ export default function WindApp() {
     } catch {
       // Ohne Speicher (z. B. privates Fenster) gilt die Wahl bis zum Neuladen.
     }
+  }, []);
+
+  // Ebenen der Hauptseite. Wie beim Filter: Gemerktes erst nach dem ersten
+  // Bildaufbau übernehmen.
+  const [mainLayers, setMainLayers] = useState<MainLayers>(DEFAULT_LAYERS);
+  useEffect(() => {
+    const saved = readStoredLayers();
+    if (!saved || (!saved.kk7 && !saved.cables)) return;
+    const frame = requestAnimationFrame(() => setMainLayers(saved));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  const toggleMainLayer = useCallback((key: keyof MainLayers) => {
+    setMainLayers((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        window.localStorage.setItem(LAYERS_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Ohne Speicher gilt die Wahl bis zum Neuladen.
+      }
+      return next;
+    });
   }, []);
 
   // Zeitpunkt des letzten erfolgreichen Abrufs der Live-Werte (meldet WindMap);
@@ -304,8 +343,10 @@ export default function WindApp() {
 
   return (
     <>
-      {/* Der Balken ist eine Flex-Reihe: links der Titel (nimmt den freien
-          Platz und bricht bei Bedarf um), rechts das Filter-Schild. Einen
+      {/* Der Balken ist eine Flex-Reihe: links ein leerer Platzhalter so breit
+          wie der Ebenen-Knopf (damit der Titel genau mittig steht), dann der
+          Titel (nimmt den freien Platz und bricht bei Bedarf um), rechts das
+          Ebenen-Menü. Einen
           Aktualisieren-Knopf links gibt es seit Okt. 2026 nicht mehr (Wunsch
           des Projektbesitzers): Die Seite holt alle 3 min und beim
           Zurückkehren zur Seite von selbst neue Werte. Bewusst NICHT mit
@@ -329,6 +370,7 @@ export default function WindApp() {
               und die Schräglage hat der Projektbesitzer danach wieder
               entfernen lassen. Antippbar ist die ganze Zeile; beim Antippen
               wird das Feld kurz blasser (group-active). */}
+          <div className="w-9 shrink-0" aria-hidden="true" />
           <h1 className="flex min-w-0 flex-1 justify-center">
             <button
               type="button"
@@ -343,22 +385,21 @@ export default function WindApp() {
               </span>
             </button>
           </h1>
-          {/* Oben rechts der Stationsfilter (Wunsch des Projektbesitzers,
-              Okt. 2026) — an der Stelle des früheren Menü-Knopfs (3 Linien),
-              der nur noch die Quellen zeigte. Die Quellen stehen jetzt unter
-              der Filterliste. z-[1100]: Die aufgeklappte Liste liegt über
-              der Karte. */}
+          {/* Oben rechts das Ebenen-Menü (drei Striche, Wunsch des
+              Projektbesitzers, Nov. 2026): KK7 und Kabel ein/aus, darunter die
+              Quellen. Bis dahin stand hier das Filter-Schild; das steht jetzt
+              wieder oben mittig auf der Karte (WindMap). z-[1100]: Die
+              aufgeklappte Liste liegt über der Karte. */}
           <div className="relative z-[1100] shrink-0">
-            <StationFilterPicker
-              value={stationFilter}
-              onChange={changeStationFilter}
-              align="right"
-              tall
+            <LayerMenu
+              layers={mainLayers}
+              onToggle={toggleMainLayer}
               footer={
                 <>
                   {/* Quellenangaben der Karte (MAP_SOURCES in wind.ts) —
                       früher als Leaflet-Zeile unten rechts auf der Karte, dann
-                      im Menü-Popup, seit Okt. 2026 hier unter den Filtern.
+                      im Menü-Popup, im Okt. 2026 unter den Filtern, seit
+                      Nov. 2026 im Ebenen-Menü.
                       Die Quellen der Winddaten stehen bewusst NICHT hier,
                       sondern stationsweise unten im Verlaufsbalken
                       ("Quelle: …") — Wunsch des Projektbesitzers, keine
@@ -398,6 +439,7 @@ export default function WindApp() {
         <WindMapLoader
           stationFilter={stationFilter}
           onStationFilterChange={changeStationFilter}
+          mainLayers={mainLayers}
           historyFrame={historyFrame}
           timeline={timeline}
           onViewportStationsChange={setViewportCodes}
@@ -437,7 +479,7 @@ export default function WindApp() {
 // Marker im Flugmodus nicht bei jedem Neuzeichnen neu angemeldet werden.
 function ignoreStationSelect() {}
 
-// Ein Link in der Quellenliste unter den Filtern (öffnet in neuem Tab).
+// Ein Link in der Quellenliste im Ebenen-Menü (öffnet in neuem Tab).
 function SourceLink({ url, children }: { url: string; children: ReactNode }) {
   return (
     <a

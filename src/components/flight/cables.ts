@@ -5,7 +5,8 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
 // Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
 // Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
-// Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
+// Im Flugmodus immer an; auf der Hauptseite seit Nov. 2026 über das
+// Ebenen-Menü oben rechts zuschaltbar (Parameter enabled). Der Server holt sie einmal
 // am Tag beim Land; die Statuszeile oben links sagt, von wann sie sind. Das
 // Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
 // Kabel also trotzdem da.
@@ -104,7 +105,7 @@ function storeCables(text: string) {
   }
 }
 
-export function useCables(map: L.Map | null): CableState {
+export function useCables(map: L.Map | null, enabled = true): CableState {
   const [state, setState] = useState<CableState>({
     stand: null,
     updateFailed: false,
@@ -112,7 +113,7 @@ export function useCables(map: L.Map | null): CableState {
   });
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !enabled) return;
     let cancelled = false;
     let recheckTimer: ReturnType<typeof setTimeout> | undefined;
     if (!map.getPane(CABLE_PANE)) {
@@ -295,7 +296,7 @@ export function useCables(map: L.Map | null): CableState {
       // bliebe bei jedem Beenden des Flugmodus eine leere zurück.
       renderer.remove();
     };
-  }, [map]);
+  }, [map, enabled]);
 
   return state;
 }
