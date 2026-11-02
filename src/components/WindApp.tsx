@@ -27,6 +27,7 @@ import { mergeRecentTimeline, TIMELINE_MERGE_MAX_GAP_MS } from "@/lib/timelineMe
 import WindMapLoader from "@/components/WindMapLoader";
 import LayerMenu, { type MainLayers } from "@/components/LayerMenu";
 import { isKk7Season, isKk7TimeOfDay } from "@/lib/kk7";
+import { isCompassDirection, TERRAIN_SOURCE } from "@/lib/terrain";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Zuletzt gewählter Stationsfilter, im Browser des Geräts gemerkt (Punkt 20
@@ -35,17 +36,23 @@ import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/
 // Flugmodus gemeinsam. Den Kartenausschnitt merkt sich WindMap.
 const FILTER_STORAGE_KEY = "sisosig-filter-v1";
 
-// Ebenen der Hauptseite (KK7, Kabel; Ebenen-Menü oben rechts, Nov. 2026),
-// ebenfalls im Browser gemerkt. Getrennt von der KK7-Wahl im Flugmodus: Dort
+// Ebenen der Hauptseite (KK7, Kabel, Hangausrichtung, Windrose; Ebenen-Menü
+// oben rechts, Nov. 2026), ebenfalls im Browser gemerkt. Getrennt von der KK7-Wahl im Flugmodus: Dort
 // ist KK7 von Haus aus an und die Kabel immer, auf der Hauptseite beides von
 // Haus aus aus (sonst sähe die Windkarte beim ersten Öffnen ganz anders aus).
 const LAYERS_STORAGE_KEY = "sisosig-ebenen-v1";
 // KK7-Jahres-/Tageszeit von Haus aus "automatisch" (wie im Flugmodus).
+// Hangausrichtung und Windrose (Nov. 2026) ebenfalls von Haus aus aus.
 const DEFAULT_LAYERS: MainLayers = {
+  // Zeitbalken von Haus aus sichtbar (wie bisher).
+  timeSlider: true,
   kk7: false,
   cables: false,
   kk7Season: "auto",
   kk7Time: "auto",
+  aspect: false,
+  windRose: false,
+  leeFrom: null,
 };
 
 function readStoredLayers(): MainLayers | null {
@@ -54,10 +61,16 @@ function readStoredLayers(): MainLayers | null {
     if (!text) return null;
     const data = JSON.parse(text) as Partial<MainLayers>;
     return {
+      // Nur ein ausdrückliches "aus" zählt; ältere Speicherstände ohne das
+      // Feld zeigen den Zeitbalken wie bisher.
+      timeSlider: data.timeSlider !== false,
       kk7: data.kk7 === true,
       cables: data.cables === true,
       kk7Season: isKk7Season(data.kk7Season) ? data.kk7Season : "auto",
       kk7Time: isKk7TimeOfDay(data.kk7Time) ? data.kk7Time : "auto",
+      aspect: data.aspect === true,
+      windRose: data.windRose === true,
+      leeFrom: isCompassDirection(data.leeFrom) ? data.leeFrom : null,
     };
   } catch {
     return null;
@@ -122,6 +135,12 @@ export default function WindApp() {
     }
   }, []);
 
+  // --- Zeitpunkt des Zeitbalkens ---
+  // Gespeichert wird der ZEITPUNKT, nicht die Position im Balken: die Slot-
+  // Liste wandert alle 10 Minuten weiter, über die Position würde ein einmal
+  // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
+  const [selectedTime, setSelectedTime] = useState<number | null>(null);
+
   // Ebenen der Hauptseite. Wie beim Filter: Gemerktes erst nach dem ersten
   // Bildaufbau übernehmen.
   const [mainLayers, setMainLayers] = useState<MainLayers>(DEFAULT_LAYERS);
@@ -132,6 +151,9 @@ export default function WindApp() {
     return () => cancelAnimationFrame(frame);
   }, []);
   const changeMainLayers = useCallback((patch: Partial<MainLayers>) => {
+    // Zeitbalken ausgeblendet → zurück auf "Aktuell", sonst bliebe die Karte
+    // unsichtbar auf einem alten Zeitpunkt stehen.
+    if (patch.timeSlider === false) setSelectedTime(null);
     setMainLayers((prev) => {
       const next = { ...prev, ...patch };
       try {
@@ -159,10 +181,8 @@ export default function WindApp() {
   // Die Rasterzeitpunkte kommen allein aus der Uhr des Browsers, damit der
   // Balken schon beim ersten Bildaufbau steht.
   const [slots, setSlots] = useState<number[]>(() => buildTimelineSlots(Date.now()));
-  // Gespeichert wird der ZEITPUNKT, nicht die Position im Balken: die Slot-
-  // Liste wandert alle 10 Minuten weiter, über die Position würde ein einmal
-  // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
-  const [selectedTime, setSelectedTime] = useState<number | null>(null);
+  // Gewählter Zeitpunkt des Zeitbalkens: steht weiter oben bei den Ebenen
+  // (selectedTime), weil das Ausblenden des Zeitbalkens ihn zurücksetzt.
 
   // --- Geöffnete Station ---
   // Der Zustand liegt hier statt in WindMap, weil WindApp bei geöffneter
@@ -348,9 +368,12 @@ export default function WindApp() {
   // Verlaufsbalken zeigen dann nur die aktuellen Werte (Wunsch des
   // Projektbesitzers). Das hier direkt zu erzwingen vermeidet, dass der
   // verzögerte Zeitpunkt (deferredTime) noch einen Moment alte Werte zeigt.
+  // Ebenso bei ausgeblendetem Zeitbalken (Ebenen-Menü): nur aktuelle Werte.
+  const showTimeSlider = mainLayers.timeSlider;
   const historyFrame = useMemo(
-    () => (selectedStationCode ? null : buildTimelineFrame(timeline, deferredTime)),
-    [timeline, deferredTime, selectedStationCode],
+    () =>
+      selectedStationCode || !showTimeSlider ? null : buildTimelineFrame(timeline, deferredTime),
+    [timeline, deferredTime, selectedStationCode, showTimeSlider],
   );
 
   return (
@@ -432,6 +455,9 @@ export default function WindApp() {
                       <SourceLink url={CABLE_SOURCE.url}>{CABLE_SOURCE.label}</SourceLink>
                     </li>
                     <li>
+                      <SourceLink url={TERRAIN_SOURCE.url}>{TERRAIN_SOURCE.label}</SourceLink>
+                    </li>
+                    <li>
                       <SourceLink url={KK7_SOURCE.url}>{KK7_SOURCE.label}</SourceLink>
                       {` (${KK7_SOURCE.note})`}
                     </li>
@@ -452,6 +478,7 @@ export default function WindApp() {
           stationFilter={stationFilter}
           onStationFilterChange={changeStationFilter}
           mainLayers={mainLayers}
+          onMainLayersChange={changeMainLayers}
           historyFrame={historyFrame}
           timeline={timeline}
           onViewportStationsChange={setViewportCodes}
@@ -470,8 +497,10 @@ export default function WindApp() {
       {/* Unten halb durchsichtig ÜBER der Karte (siehe headerHeight). Bei
           geöffneter Station ist sie weg (Wunsch des Projektbesitzers): Dann
           zeigt die Karte nur die aktuellen Werte, und der Verlaufsbalken
-          reicht bis zum Seitenende. */}
-      {inBrowser && selectedStationCode === null && !flightMode && (
+          reicht bis zum Seitenende. Über das Ebenen-Menü lässt er sich
+          ganz ausblenden (Nov. 2026, Wunsch des Projektbesitzers); dann steht
+          auch "Zuletzt aktualisiert" nirgends. */}
+      {inBrowser && selectedStationCode === null && !flightMode && showTimeSlider && (
         <div className="absolute inset-x-0 bottom-0 z-[1000]">
           <TimeSlider
             slots={slots}
