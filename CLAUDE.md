@@ -133,7 +133,7 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Ebenen-Menü mit Quellen), Zustand von Stationsfilter, Ebenen der Hauptseite und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte der Hauptseite (eingebunden in `WindMap`), klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild, Umschalten im Menü) |
-| `src/components/LayerMenu.tsx` | Ebenen-Menü der Hauptseite (Knopf mit drei Strichen oben rechts im Titelbalken): KK7 und Kabel ein/aus, darunter die Quellen |
+| `src/components/LayerMenu.tsx` | Ebenen-Menü der Hauptseite (Knopf mit drei Strichen oben rechts im Titelbalken): Zeitbalken, KK7, Kabel, Gelände-Ebenen ein/aus, darunter die Quellen |
 | `src/lib/terrain.ts` + `src/components/terrain.ts` | Gelände-Ebenen der Hauptseite: Hangausrichtung und Lee-Hänge zur Windrose, im Browser aus Höhenkacheln gerechnet (Grundwerte ohne Leaflet in `lib/`, Ebene in `components/`) |
 | `src/components/WindRosePicker.tsx` | Windrose oben links auf der Karte der Hauptseite: Windrichtung wählen → Lee-Hänge rot |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
@@ -396,6 +396,12 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     dafür in `WindApp` (nicht in `WindMap`). Die Karte selbst ändert dabei
     ihre Größe nicht mehr (der Zeitbalken liegt über ihr);
     `ContainerResizeWatcher` in `WindMap` bleibt als Absicherung.
+  - **Im Ebenen-Menü ausblendbar** (Nov. 2026, Wunsch des
+    Projektbesitzers; Eintrag „Zeitbalken" ganz oben, von Haus aus an, Wahl
+    gemerkt als `timeSlider` in `LAYERS_STORAGE_KEY`). Ausgeblendet zeigt die
+    Karte nur die aktuellen Werte (Zeitpunkt springt auf „Aktuell"), und
+    „Zuletzt aktualisiert" steht nirgends. Der Verlauf wird trotzdem weiter
+    geladen (Messfehler-Erkennung der Live-Werte braucht ihn).
   - **Kein Abspielknopf** (Wunsch des Projektbesitzers: unnötig) — nicht
     wieder einführen. Die ◀ ▶-Knöpfe sind ebenfalls weg; per Tastatur gehen die
     Pfeiltasten.

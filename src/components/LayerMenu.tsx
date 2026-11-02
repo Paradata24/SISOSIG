@@ -32,10 +32,20 @@ import {
 // (WindRosePicker), mit der man die Windrichtung wählt; die Hänge im Lee
 // werden dann rot. Gerechnet in src/components/terrain.ts.
 //
+// Ganz oben lässt sich seit Nov. 2026 auch der Zeitbalken (Zeitrad unten)
+// ausblenden (Wunsch des Projektbesitzers); WindApp zeigt dann nur die
+// aktuellen Werte.
+//
 // Der Stationsfilter steht seit Nov. 2026 wieder oben mittig auf der Karte
 // (StationFilterPicker in WindMap), nicht mehr hier.
 
 export type MainLayers = {
+  /**
+   * Zeitbalken (Zeitrad unten) sichtbar (Nov. 2026, Wunsch des
+   * Projektbesitzers). Von Haus aus an; aus = Karte zeigt nur die aktuellen
+   * Werte, unten ist frei.
+   */
+  timeSlider: boolean;
   /** KK7-Thermikkarte (src/components/flight/kk7.ts). */
   kk7: boolean;
   /** Kabel = Luftfahrthindernisse (src/components/flight/cables.ts). */
@@ -51,9 +61,12 @@ export type MainLayers = {
   leeFrom: CompassDirection | null;
 };
 
-type LayerSwitch = "kk7" | "cables" | "aspect" | "windRose";
+type LayerSwitch = "timeSlider" | "kk7" | "cables" | "aspect" | "windRose";
 
 const LAYER_ENTRIES: { key: LayerSwitch; label: string; note?: string }[] = [
+  // Kein Kartenbild, aber ebenfalls etwas, das man ein- und ausblendet —
+  // darum hier ganz oben (Wunsch des Projektbesitzers, Nov. 2026).
+  { key: "timeSlider", label: "Zeitbalken", note: "Zeitrad unten, 48 h zurückblättern" },
   { key: "kk7", label: "KK7-Thermikkarte" },
   // Kabel gibt es nur in Südtirol und erst ab Zoom 11 (CABLE_MIN_ZOOM).
   { key: "cables", label: "Leitungen / Kabel", note: "nur Südtirol, ab Zoomstufe 11" },
