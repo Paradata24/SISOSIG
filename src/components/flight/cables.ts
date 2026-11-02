@@ -11,8 +11,8 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
 // Kabel also trotzdem da.
 
-// Erst ab dieser Zoomstufe (= Übersichtstaste, OVERVIEW_ZOOM in
-// FlightMode.tsx): Herausgezoomt wären die Täler nur noch ein Gewirr aus
+// Erst ab dieser Zoomstufe (bis Nov. 2026 = Übersichtstaste; die zeigt seit
+// Nov. 2026 Zoom 10, dort also keine Kabel): Herausgezoomt wären die Täler nur noch ein Gewirr aus
 // Leitungen, das die Windpfeile zudeckt. Bis Okt. 2026 stand hier die
 // Flug-Zoomstufe (FLIGHT_ZOOM); als die von 11 auf 15 stieg, erschienen die
 // Kabel ungewollt erst ab 15 statt wie festgelegt ab 11.
