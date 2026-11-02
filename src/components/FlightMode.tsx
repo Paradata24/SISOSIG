@@ -135,7 +135,7 @@ export default function FlightMode({
   /** Quellen ohne Daten beim letzten Abruf (siehe WindMap), als gelbe Statuszeile. */
   missingSources: WindStation["source"][];
 }) {
-  const { position, status } = useOwnPosition();
+  const { position, status, blocked, retry: retryPosition } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
   const trackConfirm = useTrackConfirm(track.recording);
@@ -305,7 +305,10 @@ export default function FlightMode({
 
   // Rücksetz- und Übersichtstaste: eigener Standort auf der jeweiligen
   // Zoomstufe, Karte folgt wieder.
+  // Ist der Standort noch nicht freigegeben, fragt der Tipp zusätzlich
+  // erneut nach der Erlaubnis (retryPosition, Wunsch des Projektbesitzers).
   const handleReset = (zoom: number) => {
+    retryPosition();
     if (!map) return;
     if (position) {
       setFollowing(true);
@@ -328,7 +331,9 @@ export default function FlightMode({
     status === "ok" && position
       ? null
       : status === "denied"
-        ? "Standort nicht erlaubt"
+        ? blocked
+          ? "Standort gesperrt – in den Einstellungen erlauben"
+          : "Standort nicht erlaubt"
         : status === "unavailable"
           ? "Kein GPS"
           : "GPS sucht…";

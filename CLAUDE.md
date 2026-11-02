@@ -481,7 +481,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   `flight/position.ts`;
   **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
   durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
-  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
+  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt;
+  **ist der Standort nicht freigegeben, fragt ein Tipp auf Rücksetz- oder
+  Übersichtstaste erneut nach** — `retry` in `flight/position.ts`, Nov. 2026;
+  bei im Browser dauerhaft gesperrtem Standort steht „Standort gesperrt – in
+  den Einstellungen erlauben"), Karte folgt dem
   Standort bis man sie verschiebt und springt **10 s nach dem Loslassen von
   selbst zurück** (`RECENTER_AFTER_MS`, Zoomstufe bleibt; Wunsch des
   Projektbesitzers nach Vorbild burnair Go), große Tasten, Bildschirm-Wachhalten

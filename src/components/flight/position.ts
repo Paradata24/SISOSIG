@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import L from "leaflet";
 
 // Eigener Standort im Flugmodus (Okt. 2026 aus FlightMode.tsx ausgelagert):
@@ -58,7 +58,22 @@ function bearingDeg(a: L.LatLng, b: L.LatLng): number {
 // kommt aus dem GPS (wohin man sich bewegt), nicht aus dem Kompass: Sie ist
 // im Flug die aussagekräftigere Angabe, braucht am iPhone keine zusätzliche
 // Erlaubnis und stimmt auch, wenn das Handy schräg im Cockpit hängt.
-export function useOwnPosition(): { position: OwnPosition | null; status: GpsStatus } {
+//
+// retry (Nov. 2026, Wunsch des Projektbesitzers): Ist der Standort noch nicht
+// freigegeben (abgelehnt oder kein GPS), startet ein Tipp auf die
+// Rücksetz-/Übersichtstaste die Standortabfrage neu — der Browser fragt dann
+// wieder "Standort erlauben?". Bewusst direkt im Tipp aufgerufen (nicht erst
+// in einem Effekt danach): Manche Browser zeigen die Frage nur als Folge
+// eines Tipps. Ist der Standort schon freigegeben, passiert nichts.
+// Grenze: Hat man im Browser bzw. in den Handy-Einstellungen "nie erlauben"
+// gewählt, fragt der Browser von sich aus nicht mehr — dann meldet die
+// Statuszeile "Standort gesperrt" (blocked), freigeben geht nur dort.
+export function useOwnPosition(): {
+  position: OwnPosition | null;
+  status: GpsStatus;
+  blocked: boolean;
+  retry: () => void;
+} {
   const [position, setPosition] = useState<OwnPosition | null>(null);
   const [status, setStatus] = useState<GpsStatus>(() =>
     typeof navigator !== "undefined" && "geolocation" in navigator ? "searching" : "unavailable",
@@ -67,10 +82,16 @@ export function useOwnPosition(): { position: OwnPosition | null; status: GpsSta
   // (für den Ersatz aus zwei Positionen, siehe MIN_HEADING_DISTANCE_M).
   const lastHeading = useRef<number | null>(null);
   const headingAnchor = useRef<L.LatLng | null>(null);
+  // Laufende Standortabfrage (watchPosition), damit retry sie ersetzen kann.
+  const watchId = useRef<number | null>(null);
+  // Abgelehnt, obwohl gerade neu gefragt wurde = im Browser dauerhaft gesperrt.
+  const [blocked, setBlocked] = useState(false);
+  const retried = useRef(false);
 
-  useEffect(() => {
+  const start = useCallback(() => {
     if (!("geolocation" in navigator)) return;
-    const id = navigator.geolocation.watchPosition(
+    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+    watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
         const here = L.latLng(latitude, longitude);
@@ -102,19 +123,37 @@ export function useOwnPosition(): { position: OwnPosition | null; status: GpsSta
           altitudeM: altitude,
         });
         setStatus("ok");
+        setBlocked(false);
       },
       (err) => {
         // Nach einem Zeitüberschreitungs-Fehler sucht der Browser weiter; der
         // Status bleibt dann "searching", bis wieder ein Wert kommt.
-        if (err.code === err.PERMISSION_DENIED) setStatus("denied");
-        else if (err.code === err.POSITION_UNAVAILABLE) setStatus("unavailable");
+        if (err.code === err.PERMISSION_DENIED) {
+          setStatus("denied");
+          if (retried.current) setBlocked(true);
+        } else if (err.code === err.POSITION_UNAVAILABLE) setStatus("unavailable");
       },
       GEO_OPTIONS,
     );
-    return () => navigator.geolocation.clearWatch(id);
   }, []);
 
-  return { position, status };
+  useEffect(() => {
+    start();
+    return () => {
+      if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+      watchId.current = null;
+    };
+  }, [start]);
+
+  // Nur wenn der Standort (noch) nicht freigegeben ist bzw. kein GPS kam.
+  const retry = useCallback(() => {
+    if (status !== "denied" && status !== "unavailable") return;
+    retried.current = true;
+    setStatus("searching");
+    start();
+  }, [status, start]);
+
+  return { position, status, blocked, retry };
 }
 
 // Icon des eigenen Standorts: blauer Navigationspfeil in Flugrichtung, ohne
