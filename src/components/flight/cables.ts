@@ -5,13 +5,14 @@ import { CABLE_HEIGHT_CLASSES, type CablePayload } from "@/lib/kabel";
 // --- Kabel (Luftfahrthindernisse, Okt. 2026, Wunsch des Projektbesitzers) ---
 // Stromleitungen, Materialseilbahnen, Schussdrähte, Seilbahnen und Lifte in
 // Südtirol aus der Hinderniskarte des Landes (Abruf und Quelle: /api/kabel).
-// Nur im Flugmodus, nicht auf der normalen Karte. Der Server holt sie einmal
+// Im Flugmodus immer an; auf der Hauptseite seit Nov. 2026 über das
+// Ebenen-Menü oben rechts zuschaltbar (Parameter enabled). Der Server holt sie einmal
 // am Tag beim Land; die Statuszeile oben links sagt, von wann sie sind. Das
 // Handy merkt sich die letzte Fassung (CABLE_STORAGE_KEY), ohne Netz sind die
 // Kabel also trotzdem da.
 
-// Erst ab dieser Zoomstufe (= Übersichtstaste, OVERVIEW_ZOOM in
-// FlightMode.tsx): Herausgezoomt wären die Täler nur noch ein Gewirr aus
+// Erst ab dieser Zoomstufe (bis Nov. 2026 = Übersichtstaste; die zeigt seit
+// Nov. 2026 Zoom 10, dort also keine Kabel): Herausgezoomt wären die Täler nur noch ein Gewirr aus
 // Leitungen, das die Windpfeile zudeckt. Bis Okt. 2026 stand hier die
 // Flug-Zoomstufe (FLIGHT_ZOOM); als die von 11 auf 15 stieg, erschienen die
 // Kabel ungewollt erst ab 15 statt wie festgelegt ab 11.
@@ -34,7 +35,8 @@ const CABLE_HALO_OPACITY = 0.9;
 const CABLE_PANE = "kabel";
 const CABLE_PANE_Z = 390;
 
-// Höhen-Schilder ("60–100 m") an Kabeln über 25 m über Grund (Klassen in
+// Höhen-Schilder ("60–100 m") an ALLEN Kabeln (seit Nov. 2026, Wunsch des
+// Projektbesitzers; vorher nur über 25 m über Grund; Klassen in
 // src/lib/kabel.ts). Erst auf der höchsten Zoomstufe (Wunsch des
 // Projektbesitzers, Okt. 2026 — Vorschauen mit Schildern ab Zoom 11/12/13 waren
 // zu unruhig). Lange Kabel bekommen mehrere Schilder im festen
@@ -52,7 +54,7 @@ const CABLE_LABEL_PANE = "kabelschild";
 const CABLE_LABEL_PANE_Z = 395;
 // Ohne "max" davor (Wunsch des Projektbesitzers, Okt. 2026), obwohl die
 // Klasse die höchste Stelle des Kabels meint (siehe src/lib/kabel.ts).
-const CABLE_LABEL_TEXT = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, c.label]));
+const CABLE_LABEL_CLASS = new Map(CABLE_HEIGHT_CLASSES.map((c) => [c.code, c]));
 
 // Kann der Server die Kabel einmal nicht aktualisieren (Landesserver gestört)
 // oder ist kein Netz da, bleiben die zuletzt erfolgreich geladenen Kabel auf
@@ -104,7 +106,7 @@ function storeCables(text: string) {
   }
 }
 
-export function useCables(map: L.Map | null): CableState {
+export function useCables(map: L.Map | null, enabled = true): CableState {
   const [state, setState] = useState<CableState>({
     stand: null,
     updateFailed: false,
@@ -112,7 +114,7 @@ export function useCables(map: L.Map | null): CableState {
   });
 
   useEffect(() => {
-    if (!map) return;
+    if (!map || !enabled) return;
     let cancelled = false;
     let recheckTimer: ReturnType<typeof setTimeout> | undefined;
     if (!map.getPane(CABLE_PANE)) {
@@ -129,9 +131,9 @@ export function useCables(map: L.Map | null): CableState {
     const group = L.layerGroup();
     // Stand der gerade gezeichneten Kabel (ms), null = noch keine.
     let shownStand: number | null = null;
-    // Kabel mit Schild (über 25 m), das höchste zuerst — so gewinnt es beim
+    // Kabel mit Schild (alle mit bekannter Höhenklasse), das höchste zuerst — so gewinnt es beim
     // Ausdünnen.
-    let labeled: { latLngs: L.LatLng[]; bounds: L.LatLngBounds; code: number; text: string }[] = [];
+    let labeled: { latLngs: L.LatLng[]; bounds: L.LatLngBounds; rank: number; text: string }[] = [];
     const labelGroup = L.layerGroup().addTo(map);
     // Ein Icon je Schildtext (nur sechs verschiedene), nicht je Schild.
     const labelIcons = new Map<string, L.DivIcon>();
@@ -218,13 +220,18 @@ export function useCables(map: L.Map | null): CableState {
         const line: L.LatLng[] = [];
         for (let i = 1; i + 1 < row.length; i += 2) line.push(L.latLng(row[i], row[i + 1]));
         lines.push(line);
-        const text = CABLE_LABEL_TEXT.get(row[0]);
-        if (text && line.length > 1) {
-          labeled.push({ latLngs: line, bounds: L.latLngBounds(line), code: row[0], text });
+        const heightClass = CABLE_LABEL_CLASS.get(row[0]);
+        if (heightClass && line.length > 1) {
+          labeled.push({
+            latLngs: line,
+            bounds: L.latLngBounds(line),
+            rank: heightClass.rank,
+            text: heightClass.label,
+          });
         }
       }
       // Höchste Klasse zuerst (Ausdünnen, siehe CABLE_HEIGHT_CLASSES).
-      labeled.sort((x, y) => y.code - x.code);
+      labeled.sort((x, y) => y.rank - x.rank);
       group.clearLayers();
       const common = { renderer, interactive: false, lineCap: "round", lineJoin: "round" } as const;
       L.polyline(lines, { ...common, color: CABLE_HALO_COLOR, weight: CABLE_HALO_WEIGHT, opacity: CABLE_HALO_OPACITY }).addTo(group);
@@ -295,7 +302,7 @@ export function useCables(map: L.Map | null): CableState {
       // bliebe bei jedem Beenden des Flugmodus eine leere zurück.
       renderer.remove();
     };
-  }, [map]);
+  }, [map, enabled]);
 
   return state;
 }

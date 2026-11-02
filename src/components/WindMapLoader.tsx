@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { MainLayers } from "@/components/LayerMenu";
 import type { StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
 
 const WindMap = dynamic(() => import("@/components/WindMap"), {
@@ -15,6 +16,7 @@ const WindMap = dynamic(() => import("@/components/WindMap"), {
 export default function WindMapLoader({
   stationFilter,
   onStationFilterChange,
+  mainLayers,
   historyFrame,
   timeline,
   onViewportStationsChange,
@@ -29,6 +31,8 @@ export default function WindMapLoader({
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
   onStationFilterChange: (filter: StationFilter) => void;
+  /** Ebenen der Hauptseite (KK7, Kabel), siehe WindMap. */
+  mainLayers: MainLayers;
   /** Gewählter Verlaufs-Zeitpunkt aus dem Zeitbalken; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
@@ -51,6 +55,7 @@ export default function WindMapLoader({
     <WindMap
       stationFilter={stationFilter}
       onStationFilterChange={onStationFilterChange}
+      mainLayers={mainLayers}
       historyFrame={historyFrame}
       timeline={timeline}
       onViewportStationsChange={onViewportStationsChange}

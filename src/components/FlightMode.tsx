@@ -51,10 +51,12 @@ import { TRACK_COLOR, useTrack } from "@/components/flight/track";
 // Höhen-Schilder (ab 15) im Detail. Für den Überblick über die Windstationen
 // herauszoomen.
 const FLIGHT_ZOOM = 15;
-// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026;
-// zuerst 10, dann 11): eigener Standort mit rund 20 km Kartenbreite am
-// Handy, Zahlen der Windpfeile (ab 10) und Kabel (ab 11) sind sichtbar.
-const OVERVIEW_ZOOM = 11;
+// Zoomstufe der Übersichtstaste (Wunsch des Projektbesitzers, Okt. 2026
+// zuerst 10, dann 11; Nov. 2026 wieder 10, "etwas mehr von der Karte"):
+// eigener Standort mit rund 40 km Kartenbreite am Handy, die Zahlen der
+// Windpfeile (ab 10) sind gerade noch sichtbar. Die Kabel erscheinen erst ab
+// Zoom 11 (CABLE_MIN_ZOOM in flight/cables.ts), in der Übersicht also nicht.
+const OVERVIEW_ZOOM = 10;
 
 // Beim Mitführen wird die Karte erst verschoben, wenn der Standort so weit
 // (Bildschirmpixel) von der Mitte abgewandert ist. Spart Akku: Sonst würde die
@@ -135,7 +137,7 @@ export default function FlightMode({
   /** Quellen ohne Daten beim letzten Abruf (siehe WindMap), als gelbe Statuszeile. */
   missingSources: WindStation["source"][];
 }) {
-  const { position, status } = useOwnPosition();
+  const { position, status, blocked, retry: retryPosition } = useOwnPosition();
   const wakeLockActive = useWakeLock();
   const track = useTrack(map, position);
   const trackConfirm = useTrackConfirm(track.recording);
@@ -305,7 +307,10 @@ export default function FlightMode({
 
   // Rücksetz- und Übersichtstaste: eigener Standort auf der jeweiligen
   // Zoomstufe, Karte folgt wieder.
+  // Ist der Standort noch nicht freigegeben, fragt der Tipp zusätzlich
+  // erneut nach der Erlaubnis (retryPosition, Wunsch des Projektbesitzers).
   const handleReset = (zoom: number) => {
+    retryPosition();
     if (!map) return;
     if (position) {
       setFollowing(true);
@@ -328,7 +333,9 @@ export default function FlightMode({
     status === "ok" && position
       ? null
       : status === "denied"
-        ? "Standort nicht erlaubt"
+        ? blocked
+          ? "Standort gesperrt – in den Einstellungen erlauben"
+          : "Standort nicht erlaubt"
         : status === "unavailable"
           ? "Kein GPS"
           : "GPS sucht…";
@@ -618,7 +625,7 @@ export default function FlightMode({
 
       {/* Unten rechts: oben die Rücksetztaste (eigener Standort, Flug-
           Zoomstufe 15; ohne Standort die Startansicht), darunter die
-          Übersichtstaste (eigener Standort, Zoom 11). Die Rücksetztaste ist
+          Übersichtstaste (eigener Standort, Zoom 10). Die Rücksetztaste ist
           gefüllt, solange die Karte dem Standort folgt — so sieht man, ob sie
           gerade mitläuft. */}
       <div className="pointer-events-none absolute right-3 bottom-7 z-[1000] flex flex-col gap-3">

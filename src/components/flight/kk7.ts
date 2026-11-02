@@ -2,16 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import L from "leaflet";
 import { useNow } from "./device";
 import type { OwnPosition } from "./position";
+import type { Kk7Season, Kk7TimeOfDay } from "@/lib/kk7";
 
 // --- KK7-Thermikkarte (Wunsch des Projektbesitzers, Okt. 2026) ---
 // Wahrscheinlichkeit, eine Thermik zu finden, berechnet aus Millionen
 // hochgeladener Streckenflüge (thermal.kk7.ch): je wärmer die Farbe, desto
-// eher steigt es dort. Nur im Flugmodus, als halb durchsichtige Ebene über
-// OpenTopoMap und unter Kabeln, Track und Windpfeilen. Ein-/Ausschalten über
-// die Taste "KK7" unten links; die Wahl merkt sich das Handy.
+// eher steigt es dort. Als halb durchsichtige Ebene über
+// OpenTopoMap und unter Kabeln, Track und Windpfeilen. Ein-/Ausschalten im
+// Menü; die Wahl merkt sich das Handy. Seit Nov. 2026 auch auf der Hauptseite
+// (Ebenen-Menü oben rechts, eigene Wahl, Voreinstellung aus).
 //
 // Bedingungen von KK7 (Okt. 2026 auf der Seite nachgelesen): Lizenz
-// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung unter "Quellen" in der Filterliste,
+// CC BY-NC-SA 4.0 (nur nicht-kommerziell, Nennung unter "Quellen" im Ebenen-Menü,
 // KK7_SOURCE in src/lib/wind.ts), jede Anfrage trägt "src=<Adresse der
 // Seite>", die Kacheln liegen in TMS-Zählung (y von unten, daher tms: true)
 // und gibt es bis Zoom 12 — darüber vergrößert Leaflet sie.
@@ -80,11 +82,23 @@ function sunriseMs(date: Date, lat: number, lng: number): number {
   return midnightUtc + minutesUtc * 60_000;
 }
 
-// KK7-Karte für Zeitpunkt und Ort, z. B. "oct_07" (Oktober, Mittag).
-function kk7Category(nowMs: number, lat: number, lng: number): string {
+// KK7-Karte für Zeitpunkt und Ort, z. B. "oct_07" (Oktober, Mittag). Von Hand
+// gewählte Jahres-/Tageszeit (Ebenen-Menü der Hauptseite, src/lib/kk7.ts)
+// geht vor; "auto" = automatisch wie bisher.
+function kk7Category(
+  nowMs: number,
+  lat: number,
+  lng: number,
+  seasonChoice: Kk7Season = "auto",
+  timeChoice: Kk7TimeOfDay = "auto",
+): string {
   const date = new Date(nowMs);
   // Jan/Apr/Jul/Okt stehen für Dez–Feb, Mär–Mai, Jun–Aug, Sep–Nov.
-  const season = ["jan", "apr", "jul", "oct"][Math.round(date.getMonth() / 3) % 4];
+  const season =
+    seasonChoice !== "auto"
+      ? seasonChoice
+      : ["jan", "apr", "jul", "oct"][Math.round(date.getMonth() / 3) % 4];
+  if (timeChoice !== "auto") return `${season}_${timeChoice}`;
   // Vor Sonnenaufgang zählt als Morgen.
   const hoursAfterSunrise = (nowMs - sunriseMs(date, lat, lng)) / 3_600_000;
   const timeOfDay =
@@ -104,15 +118,18 @@ function loadKk7Enabled(): boolean {
   }
 }
 
-export function useKk7Layer(
+// Die Ebene selbst (ohne eigenen Ein/Aus-Zustand): Seit Nov. 2026 auch auf
+// der Hauptseite, dort schaltet sie das Ebenen-Menü im Titel-Balken
+// (LayerMenu, Zustand in WindApp). Im Flugmodus hängt sie an useKk7Layer
+// unten (eigener Schalter im Menü, eigene gemerkte Wahl).
+export function useKk7Tiles(
   map: L.Map | null,
+  enabled: boolean,
   position: OwnPosition | null,
   fallbackCenter: [number, number],
+  seasonChoice: Kk7Season = "auto",
+  timeChoice: Kk7TimeOfDay = "auto",
 ) {
-  // Standard: eingeschaltet. Direkt aus dem Speicher gelesen — der Flugmodus
-  // läuft nur im Browser (WindMap wird ohne Server-Rendering geladen).
-  const [enabled, setEnabled] = useState(loadKk7Enabled);
-
   // Sonnenaufgang am eigenen Standort, ohne GPS an der Startansicht. Die
   // Ebene wird nur neu angelegt, wenn sich die Karte (category) ändert, nicht
   // bei jedem GPS-Wert.
@@ -121,6 +138,8 @@ export function useKk7Layer(
     now,
     position?.lat ?? fallbackCenter[0],
     position?.lng ?? fallbackCenter[1],
+    seasonChoice,
+    timeChoice,
   );
 
   useEffect(() => {
@@ -137,6 +156,18 @@ export function useKk7Layer(
       layer.remove();
     };
   }, [map, enabled, category]);
+}
+
+// Flugmodus: Ebene plus Schalter im Menü, Wahl im Handy gemerkt.
+export function useKk7Layer(
+  map: L.Map | null,
+  position: OwnPosition | null,
+  fallbackCenter: [number, number],
+) {
+  // Standard: eingeschaltet. Direkt aus dem Speicher gelesen — der Flugmodus
+  // läuft nur im Browser (WindMap wird ohne Server-Rendering geladen).
+  const [enabled, setEnabled] = useState(loadKk7Enabled);
+  useKk7Tiles(map, enabled, position, fallbackCenter);
 
   const toggle = useCallback(() => {
     setEnabled((was) => {

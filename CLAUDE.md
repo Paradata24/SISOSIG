@@ -130,9 +130,10 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
-| `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Filter-Schild mit Quellen), Zustand von Stationsfilter und Zeitbalken |
+| `src/components/WindApp.tsx` | Titelbalken (Titel = Flugmodus-Knopf, Ebenen-Menü mit Quellen), Zustand von Stationsfilter, Ebenen der Hauptseite und Zeitbalken |
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
-| `src/components/StationFilterPicker.tsx` | Filter-Schild oben rechts im Titelbalken der Hauptseite, klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild in `WindMap`, Umschalten im Menü) |
+| `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte der Hauptseite (eingebunden in `WindMap`), klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild, Umschalten im Menü) |
+| `src/components/LayerMenu.tsx` | Ebenen-Menü der Hauptseite (Knopf mit drei Strichen oben rechts im Titelbalken): KK7 und Kabel ein/aus, darunter die Quellen |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): Tasten (Zoom, Rücksetzen, Übersicht, START/STOP, Beenden), Statuszeile, Menü, Mitführen der Karte, Standort-Marker |
 | `src/components/flight/` | Teile des Flugmodus (Okt. 2026 ausgelagert): `position.ts` (GPS, Flugrichtung, Standort-Icon), `device.ts` (Bildschirm wach halten, Netz, Uhr), `track.ts` (Track-Aufzeichnung und -Linie), `igc.ts` (IGC-Datei), `cables.ts` (Kabel), `kk7.ts` (KK7-Thermikkarte) |
@@ -292,18 +293,30 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     Blättern im Zeitbalken. Ausgedünnte Marker bleiben als unsichtbare Marker
     bestehen (Anzahl/Reihenfolge unverändert). Ausgefallene Stationen sind in
     der Übersicht unsichtbar, sonst ein blasser hohler Ring.
-  - **Aktiver Filter steht als Schild oben rechts im Titel-Balken** (Okt.
-    2026, Wunsch des Projektbesitzers; anstelle des früheren Menü-Knopfs mit
-    3 Linien, der nur noch die Quellen zeigte — den gibt es nicht mehr).
+  - **Aktiver Filter steht als Schild oben mittig auf der Karte** (Nov.
+    2026, Wunsch des Projektbesitzers; im Okt. 2026 stand es oben rechts im
+    Titel-Balken, davor schon einmal mittig auf der Karte).
     „ALLE"/„WINDANZEIGER" in Großbuchstaben, Höhenfilter nur kurz als
     „≥3000m"/„≤1000m" (ohne „Stationen", ohne Tausenderpunkt; Wunsch des
     Projektbesitzers; `getStationFilterMapLabel` in `src/lib/wind.ts`). **Das Schild ist zugleich der Filter-Schalter:**
-    Antippen klappt die Liste aller Filter auf, **darunter die Quellen**
-    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindApp`).
-    Im Flugmodus (kein Titel-Balken) steht oben mittig auf der Karte nur
+    Antippen klappt die Liste aller Filter auf; der aktive Filter ist dort
+    **gelb** (`amber-300`, wie im Menü des Flugmodus)
+    (`src/components/StationFilterPicker.tsx`, eingebunden in `WindMap`).
+    Im Flugmodus steht an derselben Stelle nur
     ein **Info-Schild** mit dem aktiven Filter (`WindMap`, nicht antippbar;
     Wunsch des Projektbesitzers) — umgestellt wird dort im Menü; Fehlermeldungen
-    stehen immer oben mittig auf der Karte.
+    stehen immer oben mittig auf der Karte, unter dem Schild.
+  - **Ebenen-Menü oben rechts im Titel-Balken** (Nov. 2026, Wunsch des
+    Projektbesitzers): Knopf mit drei Strichen („Sandwich-Knopf", wie die
+    Menü-Taste im Flugmodus), klappt die **Ebenen** auf — KK7-Thermikkarte
+    und Kabel (Leitungen) ein/aus, eingeschaltet gelb — und darunter die
+    **Quellen** (`src/components/LayerMenu.tsx`, eingebunden in `WindApp`).
+    Auf der Hauptseite sind beide Ebenen von Haus aus **aus**, die Wahl wird
+    im Browser gemerkt (`LAYERS_STORAGE_KEY` in `WindApp`, getrennt von der
+    KK7-Wahl im Flugmodus). Gezeichnet von `MainPageLayers` in `WindMap` mit
+    denselben Bausteinen wie im Flugmodus (`useKk7Tiles`, `useCables(map,
+    enabled)`). Links im Titel-Balken steht ein gleich breiter leerer
+    Platzhalter, damit der Titel genau mittig bleibt.
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Einzige Karte der Hauptseite ist OpenTopoMap, gleich dargestellt wie im
@@ -335,7 +348,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   oben mittig darunter rückt. Die weichen Ränder des Zeitrads haben dazu
   passend dieselbe Deckkraft wie der Zeitbalken (0,7; sonst weiße Flecken). **Lizenz:**
   CC BY-SA, die Quellenangabe (Kartendaten OpenStreetMap/SRTM,
-  Kartendarstellung OpenTopoMap) steht unter „Quellen" in der Filterliste
+  Kartendarstellung OpenTopoMap) steht unter „Quellen" im Ebenen-Menü
   (`MAP_SOURCES`) — nicht entfernen.
 - **„Zuletzt aktualisiert" steht mittig unter dem Rad** im Zeitbalken (nicht
   mehr als Plakette auf der Karte; Wunsch des Projektbesitzers, Okt. 2026).
@@ -343,7 +356,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   `TimeSlider` weiter. Bei geöffneter Station (Zeitbalken weg) steht er nirgends.
   Leaflets Quellen-Zeile unten rechts ist per `attributionControl={false}`
   abgeschaltet (belegte am Handy zwei Zeilen und überdeckte die Plakette).
-  Die Quellenangaben stehen stattdessen unter der Filterliste (siehe oben).
+  Die Quellenangaben stehen stattdessen im Ebenen-Menü (siehe oben).
 - **Zeitbalken = Zeitrad** (dritter Umbau, Okt. 2026, Wunsch des Projektbesitzers,
   Vorbild: die Höhenauswahl bei Meteoparapente): ein waagrecht liegendes **Rad**,
   das man nach vorne und hinten dreht (`src/components/TimeSlider.tsx`). Fester
@@ -453,9 +466,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   ohne grünen Schatten und nicht schräg (beides auf Wunsch des
   Projektbesitzers wieder entfernt).
   Antippbar ist die ganze Zeile. **Der Titel darf sich beim Filterwechsel
-  nicht verschieben** (Wunsch des Projektbesitzers): Das Filter-Schild
-  daneben hat deshalb eine feste Breite (`w-28`, passend für
-  „WINDANZEIGER"); ab 360 px Bildschirmbreite steht der Titel in einer
+  nicht verschieben** (Wunsch des Projektbesitzers): Seit Nov. 2026 steht
+  daneben nur noch der Ebenen-Knopf mit fester Größe (das Filter-Schild ist
+  auf der Karte); ab 360 px Bildschirmbreite steht der Titel in einer
   Zeile, darunter rutscht „GO" in die zweite. Beendet über die ✕-Taste oben links auf der Karte (mit
   zweitem Tipper „BEENDEN?" wie bei START/STOP). Titel-
   und Zeitbalken sind dann weg, die Karte zeigt nur Live-Werte; Antippen der
@@ -468,7 +481,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   `flight/position.ts`;
   **Flugrichtung aus dem GPS**, nicht Kompass; GPS-Ungenauigkeit als leicht
   durchsichtiger blauer Kreis erst ab 10 m, `ACCURACY_CIRCLE_MIN_M`, statt
-  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt), Karte folgt dem
+  „GPS ±… m" in der Statuszeile — dort steht nur noch, wenn GPS fehlt;
+  **ist der Standort nicht freigegeben, fragt ein Tipp auf Rücksetz- oder
+  Übersichtstaste erneut nach** — `retry` in `flight/position.ts`, Nov. 2026;
+  bei im Browser dauerhaft gesperrtem Standort steht „Standort gesperrt – in
+  den Einstellungen erlauben"), Karte folgt dem
   Standort bis man sie verschiebt und springt **10 s nach dem Loslassen von
   selbst zurück** (`RECENTER_AFTER_MS`, Zoomstufe bleibt; Wunsch des
   Projektbesitzers nach Vorbild burnair Go), große Tasten, Bildschirm-Wachhalten
@@ -486,7 +503,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Statuszeile; alle Tasten oben bündig 12 px unter dem Rand; oben rechts
   +/−; unten links IGC und Papierkorb (darüber die Menü-Taste mit drei Strichen); unten rechts die Rücksetztaste (eigener Standort auf Zoom 15
   `FLIGHT_ZOOM`, ohne GPS die Startansicht) über der **Übersichtstaste**
-  (eigener Standort auf Zoom 11 `OVERVIEW_ZOOM`). Abstände 12 px, unten
+  (eigener Standort auf Zoom 10 `OVERVIEW_ZOOM`; Nov. 2026 von 11 auf 10,
+  Wunsch des Projektbesitzers — Kabel erscheinen erst ab 11, in der
+  Übersicht also nicht). Abstände 12 px, unten
   28 px (Wischleiste des iPhones). Die vier Zoomtasten (+, −, Rücksetzen, Übersicht)
   haben einen **halb durchsichtigen Hintergrund** (50 %, `zoomButtonLight`/
   `zoomButtonDark`), Zeichen und Rand bleiben voll deckend. Ebenso ✕ und
@@ -505,8 +524,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   sobald die Zahlen sichtbar sind (ab Zoom 10) — nicht erst in der
   Detail-Stufe wie auf der normalen Karte (`showAltitude` in
   `src/components/WindMap.tsx`).
-- **Kabel (Luftfahrthindernisse) nur im Flugmodus** (Okt. 2026, Wunsch des
-  Projektbesitzers): Stromleitungen, Material-/Seilbahnen, Schussdrähte und
+- **Kabel (Luftfahrthindernisse) im Flugmodus immer, auf der Hauptseite
+  zuschaltbar** (Okt. 2026, Wunsch des Projektbesitzers; seit Nov. 2026 auch
+  im Ebenen-Menü der Hauptseite, von Haus aus aus): Stromleitungen, Material-/Seilbahnen, Schussdrähte und
   Lifte aus der Hinderniskarte des Landes (Forstdienst, Meldepflicht nach
   LG 1/2006; WFS `p_bz-FlightObstacles:LinearObstacles` auf
   `geoservices6.civis.bz.it`). Abgeholt von `/api/kabel` und **einmal am Tag
@@ -518,7 +538,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   weißem Saum, alle Kabel gleich breit** (vom Projektbesitzer am Probebild
   gewählt), **erst ab Zoom 11** (`CABLE_MIN_ZOOM`; hing bis Okt. 2026 an der
   Flug-Zoomstufe und lag deshalb ungewollt bei 15).
-  **Höhen-Schilder** („60–100 m") an Kabeln über 25 m über Grund, **erst
+  **Höhen-Schilder** („60–100 m") an **allen** Kabeln, auch „< 15 m" und
+  „15–25 m" (seit Nov. 2026, Wunsch des Projektbesitzers; vorher nur über
+  25 m), im Flugmodus und auf der Hauptseite gleich, **erst
   ab Zoom 15** (`CABLE_LABEL_MIN_ZOOM`; Vorschauen ab Zoom 11–13 waren dem
   Projektbesitzer zu unruhig), bei langen Kabeln wiederholt im festen
   Bildschirmabstand (`CABLE_LABEL_SPACING_PX`), überlappende ausgedünnt
@@ -537,20 +559,25 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   sind (`CABLE_OUTDATED_MS`; vorher wird einmal nachgefragt, falls nur der
   Zwischenspeicher gerade auffrischt).
   **Kein Hinweistext** zur Vollständigkeit (Wunsch des Projektbesitzers).
-  Quelle unter „Quellen" in der Filterliste (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
+  Quelle unter „Quellen" im Ebenen-Menü (`CABLE_SOURCE` in `src/lib/wind.ts`). Nur
   Südtirol.
-- **KK7-Thermikkarte nur im Flugmodus** (Okt. 2026, Wunsch des
-  Projektbesitzers): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
+- **KK7-Thermikkarte im Flugmodus und zuschaltbar auf der Hauptseite** (Okt.
+  2026, Wunsch des Projektbesitzers; Hauptseite seit Nov. 2026 über das
+  Ebenen-Menü, von Haus aus aus): Thermik-Wahrscheinlichkeit von thermal.kk7.ch als halb
   durchsichtige Ebene über OpenTopoMap (`useKk7Layer` in `flight/kk7.ts`).
   Ein/aus im **Menü** (siehe nächster Punkt), Voreinstellung an, Wahl im Handy gemerkt (`KK7_STORAGE_KEY`).
   **Automatisch nach Jahreszeit und Tageszeit gefiltert** wie in burnair Go
   (`kk7Category`: Jahreszeit aus dem Datum, Morgen/Mittag/Abend aus den
-  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). Deckkraft
+  Stunden seit Sonnenaufgang am eigenen Standort, `sunriseMs`). **Auf der
+  Hauptseite** lassen sich Jahreszeit und Tageszeit im Ebenen-Menü auch von
+  Hand wählen (Nov. 2026, Wunsch des Projektbesitzers; Voreinstellung
+  „Automatisch", dazu „Ganzjährig"/„Ganztags"; Auswahl in `src/lib/kk7.ts`).
+  Im Flugmodus bleibt es immer automatisch. Deckkraft
   `KK7_OPACITY` 0,6 (30 % weniger als zuerst, Wunsch des Projektbesitzers).
   Folge: Im Winter und morgens ist die Karte in Südtirol deutlich lückenhafter
   (Datenmenge im Okt. 2026 gezählt, steht im Code) — kein Fehler. Bedingungen von KK7: Lizenz
   **CC BY-NC-SA 4.0 (nur nicht-kommerziell!)**, Nennung unter „Quellen"
-  in der Filterliste (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
+  im Ebenen-Menü (`KK7_SOURCE` in `src/lib/wind.ts`, nicht entfernen), jede
   Anfrage mit `src=<Adresse>`, Kacheln in TMS-Zählung bis Zoom 12. Wird die
   Seite je kommerziell, muss die Ebene raus oder mit KK7 gesprochen werden.
 - **Menü im Flugmodus** (Okt. 2026, Wunsch des Projektbesitzers): Taste mit
@@ -845,8 +872,8 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, KK7-Thermikkarte im Flugmodus) stehen unter
-  „Quellen" unterhalb der Filterliste (Filter-Schild oben rechts;
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Kabel, KK7-Thermikkarte) stehen unter
+  „Quellen" im Ebenen-Menü (Knopf mit drei Strichen oben rechts;
   `MAP_SOURCES` in `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,
   keine Doppelung), sondern stationsweise unten im Verlaufsbalken als

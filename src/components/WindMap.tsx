@@ -29,6 +29,10 @@ import {
 import { assessLive } from "@/lib/plausibility";
 import { takeEarlyWindRequest } from "@/lib/earlyWind";
 import FlightMode from "@/components/FlightMode";
+import StationFilterPicker from "@/components/StationFilterPicker";
+import type { MainLayers } from "@/components/LayerMenu";
+import { useCables } from "@/components/flight/cables";
+import { useKk7Tiles } from "@/components/flight/kk7";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
 // ersten Klick auf eine Station) und steckt deshalb in einem eigenen
@@ -118,7 +122,7 @@ const FLIGHT_MAX_ZOOM = 16;
 
 // --- OpenTopoMap (Standardkarte) ---
 // Frei nutzbare Topografie-Karte auf Basis von OpenStreetMap und SRTM-
-// Höhendaten (CC BY-SA, Quellenangabe unter "Quellen" in der Filterliste). Ohne
+// Höhendaten (CC BY-SA, Quellenangabe unter "Quellen" im Ebenen-Menü). Ohne
 // "{s}."-Unterdomain, siehe Kommentar im JSX weiter unten. OpenTopoMap
 // liefert nur bis Zoom 17; die eigene Obergrenze der Karte (MAP_MAX_ZOOM)
 // liegt darunter, der Wert hier schützt nur vor einer späteren Änderung.
@@ -680,12 +684,25 @@ function ContainerResizeWatcher() {
   return null;
 }
 
-// Der Stationsfilter wird auf der Hauptseite über das Filter-Schild im
-// Titel-Balken (WindApp), im Flugmodus über das Menü (FlightMode)
+// Ebenen der Hauptseite (Nov. 2026, Wunsch des Projektbesitzers): KK7-
+// Thermikkarte und Kabel, geschaltet im Ebenen-Menü oben rechts (LayerMenu in
+// WindApp). Dieselben Bausteine wie im Flugmodus (flight/kk7.ts,
+// flight/cables.ts); im Flugmodus übernimmt FlightMode beides selbst, diese
+// Komponente steht dann nicht auf der Seite. Ohne GPS richtet sich die
+// Tageszeit der KK7-Karte nach Südtirol.
+function MainPageLayers({ map, layers }: { map: L.Map | null; layers: MainLayers }) {
+  useKk7Tiles(map, layers.kk7, null, SOUTH_TYROL_CENTER, layers.kk7Season, layers.kk7Time);
+  useCables(map, layers.cables);
+  return null;
+}
+
+// Der Stationsfilter wird auf der Hauptseite über das Filter-Schild oben
+// mittig auf der Karte, im Flugmodus über das Menü (FlightMode)
 // umgeschaltet. Der Zustand liegt in WindApp und kommt als Prop herein.
 export default function WindMap({
   stationFilter,
   onStationFilterChange,
+  mainLayers,
   historyFrame,
   timeline,
   onViewportStationsChange,
@@ -698,8 +715,10 @@ export default function WindMap({
   topInset,
 }: {
   stationFilter: StationFilter;
-  /** Stationsfilter umschalten (im Flugmodus über dessen Menü). */
+  /** Stationsfilter umschalten (Filter-Schild bzw. Menü im Flugmodus). */
   onStationFilterChange: (filter: StationFilter) => void;
+  /** Ebenen der Hauptseite (KK7, Kabel), Zustand in WindApp. */
+  mainLayers: MainLayers;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /**
@@ -942,7 +961,7 @@ export default function WindMap({
         zoomControl={false}
         // Leaflets Quellen-Zeile unten rechts ist aus: Sie belegte auf dem
         // Handy zwei Zeilen und schob sich über "Zuletzt aktualisiert". Die
-        // Quellenangaben stehen stattdessen unter der Filterliste (MAP_SOURCES in
+        // Quellenangaben stehen stattdessen im Ebenen-Menü oben rechts (MAP_SOURCES in
         // src/lib/wind.ts) — NICHT ersatzlos streichen, sie sind Pflicht.
         attributionControl={false}
         className="h-full w-full"
@@ -985,18 +1004,22 @@ export default function WindMap({
       {/* "Zuletzt aktualisiert" steht nicht mehr auf der Karte, sondern mittig
           unter dem Rad im Zeitbalken (WindApp/TimeSlider, Wunsch des
           Projektbesitzers). */}
-      {/* Oben mittig: im Flugmodus der aktive Stationsfilter als reines
-          INFO-Schild (Wunsch des Projektbesitzers, Okt. 2026) — umgestellt
-          wird dort nur noch im Menü unten links (FlightMode). Auf der
-          Hauptseite steht stattdessen das Filter-Schild zum Antippen oben
-          rechts im Titel-Balken (WindApp). Darunter ggf. die Fehlermeldung,
-          beide in EINER Spalte, damit sie sich nicht überdecken.
-          pointer-events-none: Ziehen und Antippen gehen zur Karte durch. */}
+      {/* Oben mittig: auf der Hauptseite das Filter-Schild zum Antippen
+          (StationFilterPicker; Nov. 2026 auf Wunsch des Projektbesitzers
+          wieder hier, im Okt. 2026 stand es oben rechts im Titel-Balken), im
+          Flugmodus der aktive Filter als reines INFO-Schild (umgestellt wird
+          dort im Menü unten links, FlightMode). Darunter ggf. die
+          Fehlermeldung, alles in EINER Spalte, damit sich nichts überdeckt.
+          pointer-events-none: Ziehen und Antippen gehen zur Karte durch (das
+          Filter-Schild fängt seine Tipps selbst ab). */}
       <div
         className="pointer-events-none absolute left-1/2 z-[1000] flex -translate-x-1/2 flex-col items-center gap-2"
         // Im Flugmodus (kein Titel-Balken) unter der iPhone-Statusleiste.
         style={{ top: topInset > 0 ? topInset + 12 : "calc(0.75rem + env(safe-area-inset-top))" }}
       >
+        {!flightMode && (
+          <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
+        )}
         {flightMode && (
           // Gleiches Aussehen wie das Filter-Schild, nur ohne Dreieck (nicht antippbar).
           <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm">
@@ -1018,6 +1041,7 @@ export default function WindMap({
           </div>
         )}
       </div>
+      {!flightMode && <MainPageLayers map={leafletMap} layers={mainLayers} />}
       {flightMode && (
         <FlightMode
           map={leafletMap}

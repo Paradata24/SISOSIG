@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   getStationFilterLabel,
   getStationFilterMapLabel,
@@ -12,11 +12,12 @@ import {
 // Projektbesitzers, Okt. 2026): Antippen klappt darunter die Liste aller
 // Filter auf, ein Tipp auf einen Eintrag schaltet um und klappt wieder zu.
 //
-// Das Schild steht oben rechts im Titel-Balken der Hauptseite, an der
-// Stelle des früheren Menü-Knopfs (3 Linien); unter der Filterliste stehen
-// dort die Quellen (footer, kommt aus WindApp). Im Flugmodus zeigt WindMap
-// oben mittig nur ein Info-Schild ohne Liste; umgeschaltet wird dort im Menü
-// (FlightMode).
+// Das Schild steht auf der Hauptseite oben mittig auf der Karte (WindMap;
+// Nov. 2026 auf Wunsch des Projektbesitzers wieder dorthin, Okt. 2026 stand es
+// oben rechts im Titel-Balken — dort ist jetzt das Ebenen-Menü mit den
+// Quellen, LayerMenu). Der aktive Filter ist in der Liste GELB wie im Menü
+// des Flugmodus. Im Flugmodus zeigt WindMap an derselben Stelle nur ein
+// Info-Schild ohne Liste; umgeschaltet wird dort im Menü (FlightMode).
 //
 // Das Schild selbst zeigt den aktiven Filter immer in Großbuchstaben (auch
 // "ALLE"), die aufgeklappte Liste die normale Schreibweise — beides aus
@@ -24,23 +25,9 @@ import {
 export default function StationFilterPicker({
   value,
   onChange,
-  align = "center",
-  tall = false,
-  footer,
 }: {
   value: StationFilter;
   onChange: (filter: StationFilter) => void;
-  /** Liste mittig unter dem Schild (Karte) oder rechtsbündig (Titel-Balken). */
-  align?: "center" | "right";
-  /**
-   * Für den Titel-Balken: 36 px hoch und FESTE Breite (passend für den
-   * längsten Namen "WINDANZEIGER"). Sonst verschöbe jeder Filterwechsel den
-   * Titel daneben bzw. ließe ihn umbrechen (Wunsch des Projektbesitzers: der
-   * Titel bleibt immer gleich).
-   */
-  tall?: boolean;
-  /** Zusätzlicher Inhalt unter der Filterliste (Quellen im Titel-Balken). */
-  footer?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -76,7 +63,7 @@ export default function StationFilterPicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={`Stationsfilter: ${getStationFilterLabel(value)}`}
-        className={`flex items-center gap-1.5 border border-black bg-white px-2 text-xs ${tall ? "h-9 w-28 justify-between" : "py-0.5"} font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`}
+        className={`flex h-8 items-center gap-1.5 border border-black px-2.5 text-xs ${open ? "bg-amber-300" : "bg-white hover:bg-zinc-100"} font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`}
       >
         {getStationFilterMapLabel(value)}
         <svg
@@ -91,15 +78,13 @@ export default function StationFilterPicker({
       </button>
       {/* Die Liste liegt ÜBER der Karte (absolut), damit Schild und eine
           eventuelle Fehlermeldung darunter nicht verrutschen. Mittig unter dem
-          Schild (Karte) bzw. rechtsbündig (Titel-Balken), immer eckig. */}
+          Schild, eckig. */}
       {/* Einfache Knopf-Liste mit aria-pressed (wie früher im Menü) statt einer
           "listbox": Die verlangt eine eigene Pfeiltasten-Steuerung, und eine
           halbe Umsetzung ist für Bildschirmleser schlechter als gar keine. */}
       {open && (
         <div
-          className={`absolute top-full z-[1100] mt-1 border border-black/10 bg-white p-2 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800 ${
-            align === "right" ? "right-0 w-52" : "left-1/2 w-44 -translate-x-1/2"
-          }`}
+          className="absolute top-full left-1/2 z-[1100] mt-1 w-52 -translate-x-1/2 border border-black/10 bg-white p-2 text-left shadow-lg dark:border-white/10 dark:bg-zinc-800"
         >
           <ul aria-label="Stationsfilter" className="flex flex-col gap-1.5">
             {STATION_FILTER_ORDER.map((filter) => {
@@ -115,7 +100,7 @@ export default function StationFilterPicker({
                     }}
                     className={`w-full border px-2 py-1.5 text-left text-xs font-medium transition-colors ${
                       active
-                        ? "border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500"
+                        ? "border-black bg-amber-300 text-zinc-900"
                         : "border-black/10 bg-white text-zinc-700 hover:bg-zinc-100 dark:border-white/10 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                     }`}
                   >
@@ -125,7 +110,6 @@ export default function StationFilterPicker({
               );
             })}
           </ul>
-          {footer}
         </div>
       )}
     </div>
