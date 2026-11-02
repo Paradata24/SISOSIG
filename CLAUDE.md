@@ -134,6 +134,8 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/components/WindMapLoader.tsx` | Lädt die Karte ohne Server-Rendering (Leaflet braucht `window`) |
 | `src/components/StationFilterPicker.tsx` | Filter-Schild oben mittig auf der Karte der Hauptseite (eingebunden in `WindMap`), klappt beim Antippen die Stationsfilter auf (im Flugmodus nur Info-Schild, Umschalten im Menü) |
 | `src/components/LayerMenu.tsx` | Ebenen-Menü der Hauptseite (Knopf mit drei Strichen oben rechts im Titelbalken): KK7 und Kabel ein/aus, darunter die Quellen |
+| `src/lib/terrain.ts` + `src/components/terrain.ts` | Gelände-Ebenen der Hauptseite: Hangausrichtung und Lee-Hänge zur Windrose, im Browser aus Höhenkacheln gerechnet (Grundwerte ohne Leaflet in `lib/`, Ebene in `components/`) |
+| `src/components/WindRosePicker.tsx` | Windrose oben links auf der Karte der Hauptseite: Windrichtung wählen → Lee-Hänge rot |
 | `src/components/WindMap.tsx` | Karte, Kachel-Ebene (OpenTopoMap, normal und Flugmodus), Zoom-Grenzen, Marker/Pfeile, Abruf-Takt, Auswahl einer Station |
 | `src/components/FlightMode.tsx` | Flugmodus (Titel-Knopf „Should I stay or should I GO"): Tasten (Zoom, Rücksetzen, Übersicht, START/STOP, Beenden), Statuszeile, Menü, Mitführen der Karte, Standort-Marker |
 | `src/components/flight/` | Teile des Flugmodus (Okt. 2026 ausgelagert): `position.ts` (GPS, Flugrichtung, Standort-Icon), `device.ts` (Bildschirm wach halten, Netz, Uhr), `track.ts` (Track-Aufzeichnung und -Linie), `igc.ts` (IGC-Datei), `cables.ts` (Kabel), `kk7.ts` (KK7-Thermikkarte) |
@@ -317,6 +319,19 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     denselben Bausteinen wie im Flugmodus (`useKk7Tiles`, `useCables(map,
     enabled)`). Links im Titel-Balken steht ein gleich breiter leerer
     Platzhalter, damit der Titel genau mittig bleibt.
+  - **Gelände-Ebenen: Hangausrichtung und Windrose/Lee-Hänge** (Nov. 2026,
+    Wunsch des Projektbesitzers; Vorbild die Hangausrichtung der Karte im
+    Repo Wolkenatlas, dieselben acht Farben `ASPECT_COLORS`). Beide im
+    Ebenen-Menü, von Haus aus aus, nur Hauptseite (nicht im Flugmodus).
+    Der Browser rechnet die Kacheln selbst aus freien Höhendaten („Terrain
+    Tiles“ auf AWS, ohne Schlüssel; `src/components/terrain.ts`), erst ab
+    Zoom 9 (`TERRAIN_MIN_ZOOM`, darunter steht „Gelände: näher zoomen“).
+    „Windrose / Lee-Hänge“ blendet oben links auf der Karte eine Windrose
+    ein (`WindRosePicker`): Man tippt an, WOHER der Wind kommt, und alle
+    vom Wind abgewandten Hänge werden **rot halbtransparent** (Wind aus Ost →
+    Westhänge; ±45° um die Lee-Richtung, `LEE_HALF_ANGLE_DEG`; flache Stellen
+    unter 5° bleiben frei). Nochmal tippen hebt die Wahl auf. Quelle der
+    Höhendaten unter „Quellen“ im Ebenen-Menü (`TERRAIN_SOURCE`).
   - Nur Pfeil, Plakette und Ring sind anklickbar, nicht der breitere
     Icon-Kasten (`.wind-marker` in `src/app/globals.css`).
 - **Einzige Karte der Hauptseite ist OpenTopoMap, gleich dargestellt wie im
@@ -872,7 +887,7 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Kabel, KK7-Thermikkarte) stehen unter
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Kabel, Höhendaten der Gelände-Ebenen, KK7-Thermikkarte) stehen unter
   „Quellen" im Ebenen-Menü (Knopf mit drei Strichen oben rechts;
   `MAP_SOURCES` in `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,

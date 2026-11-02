@@ -7,6 +7,12 @@ import {
   type Kk7Season,
   type Kk7TimeOfDay,
 } from "@/lib/kk7";
+import {
+  ASPECT_COLORS,
+  COMPASS_DIRECTIONS,
+  TERRAIN_MIN_ZOOM,
+  type CompassDirection,
+} from "@/lib/terrain";
 
 // Ebenen-Menü oben rechts im Titel-Balken der Hauptseite (Nov. 2026, Wunsch
 // des Projektbesitzers): Knopf mit drei Strichen ("Sandwich-Knopf", wie die
@@ -20,6 +26,12 @@ import {
 // (Nov. 2026, Wunsch des Projektbesitzers; nur hier, im Flugmodus bleibt KK7
 // automatisch). "Automatisch" = wie im Flugmodus nach Datum und Uhrzeit.
 //
+// Dazu seit Nov. 2026 (Wunsch des Projektbesitzers) die Gelände-Ebenen:
+// "Hangausrichtung" (Farben wie im Wolkenatlas, kleine Legenden-Rose darunter)
+// und "Windrose / Lee-Hänge" — blendet die Windrose auf der Karte ein
+// (WindRosePicker), mit der man die Windrichtung wählt; die Hänge im Lee
+// werden dann rot. Gerechnet in src/components/terrain.ts.
+//
 // Der Stationsfilter steht seit Nov. 2026 wieder oben mittig auf der Karte
 // (StationFilterPicker in WindMap), nicht mehr hier.
 
@@ -31,14 +43,27 @@ export type MainLayers = {
   /** Von Hand gewählte Jahres- und Tageszeit der KK7-Karte (src/lib/kk7.ts). */
   kk7Season: Kk7Season;
   kk7Time: Kk7TimeOfDay;
+  /** Hangausrichtung (src/components/terrain.ts). */
+  aspect: boolean;
+  /** Windrose auf der Karte ein-/ausgeblendet (WindRosePicker). */
+  windRose: boolean;
+  /** In der Windrose gewählte Richtung ("Wind aus …"); null = keine. */
+  leeFrom: CompassDirection | null;
 };
 
-type LayerSwitch = "kk7" | "cables";
+type LayerSwitch = "kk7" | "cables" | "aspect" | "windRose";
 
 const LAYER_ENTRIES: { key: LayerSwitch; label: string; note?: string }[] = [
   { key: "kk7", label: "KK7-Thermikkarte" },
   // Kabel gibt es nur in Südtirol und erst ab Zoom 11 (CABLE_MIN_ZOOM).
   { key: "cables", label: "Leitungen / Kabel", note: "nur Südtirol, ab Zoomstufe 11" },
+  // Gelände-Ebenen (Nov. 2026): erst ab der Startansicht Südtirol.
+  { key: "aspect", label: "Hangausrichtung", note: `ab Zoomstufe ${TERRAIN_MIN_ZOOM}` },
+  {
+    key: "windRose",
+    label: "Windrose / Lee-Hänge",
+    note: "Windrichtung wählen, Lee-Hänge rot",
+  },
 ];
 
 export default function LayerMenu({
@@ -124,6 +149,7 @@ export default function LayerMenu({
                     </span>
                     <span className="text-[10px] font-bold">{active ? "AN" : "AUS"}</span>
                   </button>
+                  {entry.key === "aspect" && active && <AspectLegend />}
                   {entry.key === "kk7" && active && (
                     <div className="mt-1.5 mb-1 flex flex-col gap-1.5 pl-1">
                       <ChoiceRow
@@ -187,6 +213,62 @@ function ChoiceRow<T extends string>({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Legende der Hangausrichtung: kleine Rose in den Farben der Ebene, wie im
+// Wolkenatlas. Nur N, O, S und W beschriftet, damit die Schrift lesbar bleibt;
+// auf dunklen Feldern weiß. Zeigt, wohin ein Hang ABFÄLLT.
+function AspectLegend() {
+  const center = 50;
+  const outer = 48;
+  const inner = 12;
+  const point = (deg: number, radius: number) => {
+    const rad = (deg * Math.PI) / 180;
+    return [center + radius * Math.sin(rad), center - radius * Math.cos(rad)];
+  };
+  const isDark = ([r, g, b]: [number, number, number]) => 0.299 * r + 0.587 * g + 0.114 * b < 110;
+  return (
+    <div className="mt-1.5 mb-1 flex items-center gap-2 pl-1">
+      <svg width="84" height="84" viewBox="0 0 100 100" aria-hidden="true" className="shrink-0">
+        {COMPASS_DIRECTIONS.map((direction, index) => {
+          const [x1, y1] = point(index * 45 - 22.5, inner);
+          const [x2, y2] = point(index * 45 - 22.5, outer);
+          const [x3, y3] = point(index * 45 + 22.5, outer);
+          const [x4, y4] = point(index * 45 + 22.5, inner);
+          const [tx, ty] = point(index * 45, (outer + inner) / 2);
+          const rgb = ASPECT_COLORS[direction];
+          return (
+            <g key={direction}>
+              <path
+                d={`M${x1} ${y1}L${x2} ${y2}A${outer} ${outer} 0 0 1 ${x3} ${y3}L${x4} ${y4}A${inner} ${inner} 0 0 0 ${x1} ${y1}Z`}
+                fill={`rgb(${rgb.join(",")})`}
+                fillOpacity={0.85}
+                stroke="#a1a1aa"
+                strokeWidth={1}
+              />
+              {index % 2 === 0 && (
+                <text
+                  x={tx}
+                  y={ty}
+                  dy=".35em"
+                  textAnchor="middle"
+                  fontSize={14}
+                  fontWeight={700}
+                  fill={isDark(rgb) ? "#ffffff" : "#18181b"}
+                >
+                  {direction}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        <circle cx={center} cy={center} r={inner} fill="#ffffff" stroke="#a1a1aa" strokeWidth={1} />
+      </svg>
+      <p className="text-[10px] leading-snug text-zinc-500">
+        Farbe = Richtung, in die der Hang abfällt. Flache Stellen bleiben frei.
+      </p>
     </div>
   );
 }

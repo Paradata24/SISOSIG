@@ -33,6 +33,9 @@ import StationFilterPicker from "@/components/StationFilterPicker";
 import type { MainLayers } from "@/components/LayerMenu";
 import { useCables } from "@/components/flight/cables";
 import { useKk7Tiles } from "@/components/flight/kk7";
+import { useAspectLayer, useLeeLayer } from "@/components/terrain";
+import WindRosePicker from "@/components/WindRosePicker";
+import { TERRAIN_MIN_ZOOM } from "@/lib/terrain";
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
 // ersten Klick auf eine Station) und steckt deshalb in einem eigenen
@@ -690,10 +693,58 @@ function ContainerResizeWatcher() {
 // flight/cables.ts); im Flugmodus übernimmt FlightMode beides selbst, diese
 // Komponente steht dann nicht auf der Seite. Ohne GPS richtet sich die
 // Tageszeit der KK7-Karte nach Südtirol.
-function MainPageLayers({ map, layers }: { map: L.Map | null; layers: MainLayers }) {
+//
+// Dazu die Gelände-Ebenen (Nov. 2026, Wunsch des Projektbesitzers,
+// src/components/terrain.ts): Hangausrichtung und — bei eingeblendeter
+// Windrose mit gewählter Richtung — die Lee-Hänge in Rot. Die Windrose steht
+// oben links auf der Karte, unter dem Titel-Balken (oben mittig ist das
+// Filter-Schild, oben rechts das Ebenen-Menü). Weiter draußen als
+// TERRAIN_MIN_ZOOM steht darunter "Näher zoomen", weil die Ebenen dort nicht
+// gezeichnet werden.
+function MainPageLayers({
+  map,
+  layers,
+  onChange,
+  topInset,
+}: {
+  map: L.Map | null;
+  layers: MainLayers;
+  onChange: (patch: Partial<MainLayers>) => void;
+  topInset: number;
+}) {
   useKk7Tiles(map, layers.kk7, null, SOUTH_TYROL_CENTER, layers.kk7Season, layers.kk7Time);
   useCables(map, layers.cables);
-  return null;
+  useAspectLayer(map, layers.aspect);
+  useLeeLayer(map, layers.windRose ? layers.leeFrom : null);
+
+  const [zoom, setZoom] = useState(() => map?.getZoom() ?? SOUTH_TYROL_ZOOM);
+  useEffect(() => {
+    if (!map) return;
+    const update = () => setZoom(map.getZoom());
+    update();
+    map.on("zoomend", update);
+    return () => {
+      map.off("zoomend", update);
+    };
+  }, [map]);
+  const tooFar = zoom < TERRAIN_MIN_ZOOM;
+
+  if (!layers.windRose && !(layers.aspect && tooFar)) return null;
+  return (
+    <div
+      className="pointer-events-none absolute left-3 z-[1000] flex flex-col items-start gap-1"
+      style={{ top: topInset + 12 }}
+    >
+      {layers.windRose && (
+        <WindRosePicker value={layers.leeFrom} onChange={(leeFrom) => onChange({ leeFrom })} />
+      )}
+      {tooFar && (
+        <div className="border border-black bg-white px-2 py-0.5 text-[10px] font-semibold text-zinc-900 shadow-sm">
+          Gelände: näher zoomen
+        </div>
+      )}
+    </div>
+  );
 }
 
 // Der Stationsfilter wird auf der Hauptseite über das Filter-Schild oben
@@ -703,6 +754,7 @@ export default function WindMap({
   stationFilter,
   onStationFilterChange,
   mainLayers,
+  onMainLayersChange,
   historyFrame,
   timeline,
   onViewportStationsChange,
@@ -717,8 +769,10 @@ export default function WindMap({
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild bzw. Menü im Flugmodus). */
   onStationFilterChange: (filter: StationFilter) => void;
-  /** Ebenen der Hauptseite (KK7, Kabel), Zustand in WindApp. */
+  /** Ebenen der Hauptseite (KK7, Kabel, Gelände), Zustand in WindApp. */
   mainLayers: MainLayers;
+  /** Ebenen ändern (Windrose auf der Karte), Zustand in WindApp. */
+  onMainLayersChange: (patch: Partial<MainLayers>) => void;
   /** Aus dem Zeitbalken gewählter Verlaufs-Zeitpunkt; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /**
@@ -1041,7 +1095,14 @@ export default function WindMap({
           </div>
         )}
       </div>
-      {!flightMode && <MainPageLayers map={leafletMap} layers={mainLayers} />}
+      {!flightMode && (
+        <MainPageLayers
+          map={leafletMap}
+          layers={mainLayers}
+          onChange={onMainLayersChange}
+          topInset={topInset}
+        />
+      )}
       {flightMode && (
         <FlightMode
           map={leafletMap}

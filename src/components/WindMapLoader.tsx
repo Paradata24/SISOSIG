@@ -17,6 +17,7 @@ export default function WindMapLoader({
   stationFilter,
   onStationFilterChange,
   mainLayers,
+  onMainLayersChange,
   historyFrame,
   timeline,
   onViewportStationsChange,
@@ -31,8 +32,10 @@ export default function WindMapLoader({
   stationFilter: StationFilter;
   /** Stationsfilter umschalten (Filter-Schild auf der Karte), siehe WindMap. */
   onStationFilterChange: (filter: StationFilter) => void;
-  /** Ebenen der Hauptseite (KK7, Kabel), siehe WindMap. */
+  /** Ebenen der Hauptseite (KK7, Kabel, Gelände), siehe WindMap. */
   mainLayers: MainLayers;
+  /** Ebenen ändern (Windrose auf der Karte), siehe WindMap. */
+  onMainLayersChange: (patch: Partial<MainLayers>) => void;
   /** Gewählter Verlaufs-Zeitpunkt aus dem Zeitbalken; null = Live-Werte. */
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
@@ -56,6 +59,7 @@ export default function WindMapLoader({
       stationFilter={stationFilter}
       onStationFilterChange={onStationFilterChange}
       mainLayers={mainLayers}
+      onMainLayersChange={onMainLayersChange}
       historyFrame={historyFrame}
       timeline={timeline}
       onViewportStationsChange={onViewportStationsChange}
