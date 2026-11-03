@@ -85,15 +85,23 @@ export function usePressureData(enabled: boolean): {
   return { data, failed };
 }
 
-/** Gemessene und prognostizierte Differenz-Reihe (Bozen − Innsbruck). */
+/**
+ * Differenz-Reihen Bozen − Innsbruck: `measured` = 10-Minuten-Werte der
+ * Stationen (Hauptkurve), `metar` = Flugwetter-Meldungen (Vergleich),
+ * `forecast` = ICON-CH1.
+ */
 export function usePressureSeries(data: PressurePayload | null): {
   measured: PressureDiffPoint[];
+  metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
 } {
   return useMemo(
     () => ({
       measured: data
-        ? pairPressureSeries(data.measured[FOEHN_PAIR.north], data.measured[FOEHN_PAIR.south])
+        ? pairPressureSeries(data.stations[FOEHN_PAIR.north], data.stations[FOEHN_PAIR.south])
+        : [],
+      metar: data
+        ? pairPressureSeries(data.metar[FOEHN_PAIR.north], data.metar[FOEHN_PAIR.south])
         : [],
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
@@ -150,6 +158,7 @@ export function usePressureLine(
   map: L.Map | null,
   enabled: boolean,
   measured: PressureDiffPoint[],
+  metar: PressureDiffPoint[],
   time: number | null,
   onOpen: () => void,
 ): void {
@@ -211,10 +220,12 @@ export function usePressureLine(
   // Farbe und Zahl nach dem gewählten Zeitpunkt.
   useEffect(() => {
     if (!layers) return;
-    const point = pressureDiffAt(measured, time ?? Date.now());
+    // Die 10-Minuten-Werte; fehlen sie (Station ausgefallen), die METAR.
+    const at = time ?? Date.now();
+    const point = pressureDiffAt(measured, at) ?? pressureDiffAt(metar, at);
     layers.line.setStyle({ color: point ? foehnColor(point.diff).color : FOEHN_STALE_COLOR });
     layers.label.setIcon(
       L.divIcon({ className: "foehn-marker", html: labelHtml(point), iconSize: [96, 24], iconAnchor: [48, 12] }),
     );
-  }, [layers, measured, time]);
+  }, [layers, measured, metar, time]);
 }

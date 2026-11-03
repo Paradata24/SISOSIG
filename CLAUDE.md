@@ -128,8 +128,9 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken; mit `?hours=8` nur die letzten 8 h (Punkt 27), gerechnet immer mit 3 h Vorlauf |
 | `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
 | `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Vorzeichen (Bozen − Innsbruck), Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
-| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (nur Server: Sammler und Notbetrieb von `/api/pressure`) |
-| `src/app/api/pressure/route.ts` | Luftdruck der Flughäfen (48 h gemessen + ICON-CH1-Prognose) aus `pressure_values`; Notbetrieb direkt beim METAR-Dienst |
+| `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen (Hauptkurve; nur Server) |
+| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (Vergleichslinie; nur Server: Sammler und Notbetrieb von `/api/pressure`) |
+| `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen + METAR, ICON-CH1-Prognose) aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
@@ -483,14 +484,26 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Föhn-Anzeige: Druckdifferenz Bozen − Innsbruck (Nov. 2026, Wunsch des Projektbesitzers)**
-- Vorbild: die „Live-Druckdifferenzen" der burnair Map (Quelle dort nicht
-  öffentlich). **Daten von den Flughäfen** (Wunsch des Projektbesitzers):
-  QNH aus dem METAR von Innsbruck (LOWI, alle 30 min) und Bozen (LIPB,
-  stündlich), über das Aviation Weather Center der NOAA (frei, ohne
-  Schlüssel; `src/lib/metar.ts`). Beide Seiten rechnen nach derselben Regel
-  (Normatmosphäre) — die Landesdienste rechnen verschieden (GeoSphere lag am
-  03.11.2026 1,6 hPa über dem METAR), deshalb bewusst nicht gemischt. Bozen
-  hat im Landesnetz keine Wetterstation am Flughafen. Nachteil: nur ganze hPa.
+- Vorbild: die „Live-Druckdifferenzen" der burnair Map. **Immer QNH**
+  (Wunsch des Projektbesitzers; QFF/QFE von burnair sind nur aus dem QNH
+  gerechnet). burnair und Breezedude nehmen dafür die METAR von LOWI/LIPB
+  über aviationweather.gov (Nov. 2026 nachgesehen).
+- **Zwei Messreihen** (Nov. 2026, vom Projektbesitzer beauftragt):
+  - **Hauptkurve, Linie und Schild:** QNH alle 10 min auf 0,1 hPa, **selbst
+    gerechnet** aus GeoSphere 11121 „Innsbruck-Flughafen“ (Stationsdruck `P`)
+    und Landesstation 83200MS „Bozen“ (reduzierter Druck `LD.RED` mit
+    Temperatur `LT` auf Stationsdruck zurückgerechnet), beide nach der
+    Normatmosphäre wie die Flughäfen (`src/lib/stationPressure.ts`). Am
+    03.11.2026 über 48 h geprüft: Differenz im Mittel 0,02 hPa neben der
+    METAR-Differenz, höchstens ±1 hPa (Rundung der METAR). Die
+    reduzierten Werte der Landesdienste NICHT direkt vergleichen (jeder
+    rechnet anders, GeoSphere lag 1,6 hPa über dem METAR).
+  - **Vergleich:** die METAR der Flughäfen LOWI/LIPB (`src/lib/metar.ts`,
+    NOAA Aviation Weather Center), im Diagramm als **dünne graue punktierte
+    Linie** (Wunsch des Projektbesitzers). Nur ganze hPa, Bozen meldet
+    **nachts nicht** (etwa 22:50–6:30 Uhr) — die erste Fassung zeigte nur
+    diese, die Kurve war treppig und nachts unterbrochen. Fehlen die
+    Stationswerte, zeigen Karte und Kopfzeile die METAR.
 - **Vorzeichen Bozen − Innsbruck:** positiv = Süd höher (Südföhn-Lage),
   negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
@@ -498,22 +511,25 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis
   1,5 grün, bis 2,5 gelb, bis 3 orange, darüber rot (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
-  (`PRESSURE_STALE_AFTER_MS`). **Quellen** (METAR, ICON-CH1) stehen unter
+  (`PRESSURE_STALE_AFTER_MS`). **Quellen** (GeoSphere, Land Südtirol, METAR,
+  ICON-CH1; `PRESSURE_SOURCES`) stehen unter
   „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des
   Projektbesitzers).
 - **Gespeichert** in der eigenen Tabelle `pressure_values`
-  (`supabase/druck.sql`): Messungen schreibt der Sammler (Zustand in
+  (`supabase/druck.sql`, Spalte `kind`: `station`, `metar`, `icon_ch1`):
+  Messungen schreibt der Sammler, jeweils die letzten 3 h (Zustand in
   `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
   Edge Function (`refreshPressure`, eigene Laufprüfung über die
   ICON-CH1-Metadaten, 33 h voraus). Die Prognose ist der ICON-CH1-Druck **am
   Boden**, nach derselben Regel in den QNH umgerechnet (`qnhFromSurface`) —
   nicht `pressure_msl`, das lag in Innsbruck ~2 hPa daneben.
-  `/api/pressure` hat einen Notbetrieb direkt beim METAR-Dienst.
+  `/api/pressure` hat je Messreihe einen Notbetrieb direkt bei den Diensten.
 - **Anzeige:** nur Hauptseite, im Ebenen-Menü „Föhn (Druck BZ–IBK)", als
   einzige Ebene **von Haus aus an** (gemerkt als `foehn`). Linie zwischen
   den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
   Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
-  48 h gemessen (schwarz) + Prognose (grau gestrichelt), Farbstreifen der
+  48 h gemessen (schwarz, 10-min-Werte), METAR (dünn grau punktiert) +
+  Prognose (grau gestrichelt), Farbstreifen der
   Stufen, **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
@@ -871,7 +887,9 @@ Projektbesitzers entfernt:
 - **GeoSphere erlaubt nur 240 Anfragen pro Stunde** (je Absender). Deshalb
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
-  über `SOURCE_INFO` im Verlaufsbalken steht.
+  über `SOURCE_INFO` im Verlaufsbalken steht. Seit Nov. 2026 fragt der
+  Sammler zusätzlich alle 5 min den Druck von Innsbruck-Flughafen ab
+  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde).
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
   10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den

@@ -28,7 +28,7 @@ import WindMapLoader from "@/components/WindMapLoader";
 import LayerMenu, { type MainLayers } from "@/components/LayerMenu";
 import { isKk7Season, isKk7TimeOfDay } from "@/lib/kk7";
 import { isCompassDirection, TERRAIN_SOURCE } from "@/lib/terrain";
-import { METAR_SOURCE, PRESSURE_FORECAST_SOURCE } from "@/lib/pressure";
+import { PRESSURE_SOURCES } from "@/lib/pressure";
 import TimeSlider, { buildStripColors, type TimelineStatus } from "@/components/TimeSlider";
 
 // Zuletzt gewählter Stationsfilter, im Browser des Geräts gemerkt (Punkt 20
@@ -485,15 +485,12 @@ export default function WindApp() {
                     </li>
                     {/* Föhn-Anzeige (Druck der Flughäfen), seit Nov. 2026
                         hier statt unten im Druck-Verlaufsbalken. */}
-                    <li>
-                      <SourceLink url={METAR_SOURCE.url}>{METAR_SOURCE.label}</SourceLink>
-                    </li>
-                    <li>
-                      <SourceLink url={PRESSURE_FORECAST_SOURCE.url}>
-                        {PRESSURE_FORECAST_SOURCE.label}
-                      </SourceLink>
-                      {` (${PRESSURE_FORECAST_SOURCE.note})`}
-                    </li>
+                    {PRESSURE_SOURCES.map((source) => (
+                      <li key={source.label}>
+                        <SourceLink url={source.url}>{source.label}</SourceLink>
+                        {source.note ? ` (${source.note})` : null}
+                      </li>
+                    ))}
                     <li>
                       <SourceLink url={KK7_SOURCE.url}>{KK7_SOURCE.label}</SourceLink>
                       {` (${KK7_SOURCE.note})`}

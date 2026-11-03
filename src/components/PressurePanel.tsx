@@ -15,9 +15,11 @@ import { HISTORY_HOURS } from "@/lib/wind";
 
 // Druck-Verlaufsbalken der Föhn-Anzeige (Nov. 2026, Wunsch des
 // Projektbesitzers): öffnet sich beim Antippen der Linie Innsbruck–Bozen auf
-// der Karte. Oben die aktuellen Werte beider Flughäfen und die Differenz,
-// darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h
-// (schwarz, gemessen) und die ICON-CH1-Prognose (grau gestrichelt) bis zu
+// der Karte. Oben die aktuellen Werte (QNH) beider Seiten und die Differenz,
+// darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h —
+// schwarz die 10-Minuten-Werte der Stationen (Hauptkurve), dünn grau
+// punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
+// Projektbesitzers) — und die ICON-CH1-Prognose (grau gestrichelt) bis zu
 // 33 h voraus. Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
 // Karte (dieselben Farben wie die Windskala, über 3 hPa rot). Die Quellen
@@ -42,15 +44,29 @@ const PAD_TOP = 6;
 const Y_MIN_EXTENT_HPA = 3;
 const Y_STEP_HPA = 1;
 const Y_HEADROOM_HPA = 0.3;
-// Messlücke, ab der die Kurve unterbrochen wird: Bozen meldet stündlich, ein
-// fehlender METAR wird überbrückt, zwei nicht.
-const MEASURED_GAP_MS = 150 * 60 * 1000;
+// Messlücke, ab der eine Kurve unterbrochen wird. Stationen: alle 10 min,
+// bis zu drei fehlende Werte werden überbrückt. METAR: Bozen meldet
+// stündlich, ein fehlender wird überbrückt, die Nacht (keine Meldungen) nicht.
+const MEASURED_GAP_MS = 40 * 60 * 1000;
+const METAR_GAP_MS = 150 * 60 * 1000;
+// Vergleichslinie der Flughafen-Meldungen: dünn, grau, punktiert.
+const METAR_COLOR = "#71717a";
+const METAR_DASH = "1 3";
 const FORECAST_GAP_MS = 90 * 60 * 1000;
 // Wie die Prognose im Wind-Verlaufsbalken (CH1_COLOR, FORECAST_DASH).
 const FORECAST_COLOR = "#52525b";
 const FORECAST_DASH = "5 3";
 const MEASURED_COLOR = "#18181b";
 const BAND_OPACITY = 0.3;
+
+/** QNH mit einer Nachkommastelle, z. B. "1019,6". */
+function formatHpa(value: number): string {
+  return value.toLocaleString("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    useGrouping: false,
+  });
+}
 
 function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
@@ -77,12 +93,16 @@ function buildPath(
 
 export default function PressurePanel({
   measured,
+  metar,
   forecast,
   modelRun,
   loading,
   onClose,
 }: {
+  /** 10-Minuten-Werte der Stationen (Hauptkurve). */
   measured: PressureDiffPoint[];
+  /** Flugwetter-Meldungen der Flughäfen (Vergleichslinie). */
+  metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   modelRun: string | null;
   /** true = noch keine Daten geladen. */
@@ -117,7 +137,8 @@ export default function PressurePanel({
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
-  const current = pressureDiffAt(measured, now);
+  // Fehlen die Stationswerte, die Flughafen-Meldungen (wie auf der Karte).
+  const current = pressureDiffAt(measured, now) ?? pressureDiffAt(metar, now);
 
   const chart = useMemo(() => {
     // px-1 des Rahmens abziehen.
@@ -129,7 +150,8 @@ export default function PressurePanel({
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
     const m = measured.filter(inRange);
     const f = forecast.filter(inRange);
-    const values = [...m, ...f].map((p) => p.diff);
+    const mt = metar.filter(inRange);
+    const values = [...m, ...mt, ...f].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -168,10 +190,11 @@ export default function PressurePanel({
       times,
       bands,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
+      metarPath: buildPath(mt, x, y, METAR_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       nowX: x(now),
     };
-  }, [width, now, measured, forecast]);
+  }, [width, now, measured, metar, forecast]);
 
   const svgH = PAD_TOP + CHART_H + TIME_LABEL_H;
   const currentColor = current ? foehnColor(current.diff) : null;
@@ -208,10 +231,10 @@ export default function PressurePanel({
         {current ? (
           <>
             <span>
-              {south.short} <strong className="tabular-nums">{current.south}</strong> hPa
+              {south.short} <strong className="tabular-nums">{formatHpa(current.south)}</strong> hPa
             </span>
             <span>
-              {north.short} <strong className="tabular-nums">{current.north}</strong> hPa
+              {north.short} <strong className="tabular-nums">{formatHpa(current.north)}</strong> hPa
             </span>
             <span
               className="border border-black px-1.5 py-0.5 font-bold tabular-nums"
@@ -309,13 +332,16 @@ export default function PressurePanel({
               strokeDasharray="2 2"
             />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
+            {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
+            <path d={chart.metarPath} fill="none" stroke={METAR_COLOR} strokeWidth={1.2} strokeDasharray={METAR_DASH} strokeLinecap="round" />
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
         )}
       </div>
 
       <p className="px-3 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400">
-        <span className="text-zinc-800 dark:text-zinc-100">schwarz</span>: gemessen (QNH der Flughäfen, ganze hPa) ·{" "}
+        <span className="text-zinc-800 dark:text-zinc-100">schwarz</span>: gemessen (Wetterstationen, 10 min) ·{" "}
+        <span style={{ color: METAR_COLOR }}>grau punktiert</span>: Flughäfen (METAR) ·{" "}
         <span style={{ color: FORECAST_COLOR }}>grau gestrichelt</span>: Prognose ICON-CH1
         {modelRun && <>, Lauf {formatClock(Date.parse(modelRun))} Uhr</>}
       </p>

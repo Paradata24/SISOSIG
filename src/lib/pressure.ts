@@ -1,22 +1,28 @@
 import { WIND_COLOR_SCALE } from "./wind";
 
-// Föhn-Anzeige: Druckdifferenz zwischen den Flughäfen Bozen und Innsbruck
-// (Nov. 2026, Wunsch des Projektbesitzers; Vorbild die "Live-Druckdifferenzen"
-// der burnair Map). Gemeinsame Angaben für Sammler, /api/pressure, Karte und
-// Druck-Verlaufsbalken — die Abfrage der Flugwetter-Meldungen selbst steht in
-// src/lib/metar.ts (nur Server).
+// Föhn-Anzeige: Druckdifferenz zwischen Bozen und Innsbruck (Nov. 2026,
+// Wunsch des Projektbesitzers; Vorbild die "Live-Druckdifferenzen" der burnair
+// Map). Gemeinsame Angaben für Sammler, /api/pressure, Karte und
+// Druck-Verlaufsbalken. Die Abrufe selbst stehen in src/lib/stationPressure.ts
+// und src/lib/metar.ts (nur Server).
 //
-// WARUM DIE FLUGHÄFEN (Wunsch des Projektbesitzers): Beide melden in ihrer
-// Flugwetter-Meldung (METAR) den QNH — den Luftdruck, nach der
-// Normatmosphäre auf Meereshöhe umgerechnet. Beide Seiten rechnen also nach
-// DERSELBEN Regel. Die Landeswetterdienste rechnen jeder auf eigene Art um
-// (am 03.11.2026 lag GeoSphere Innsbruck-Flughafen 1,6 hPa über dem METAR),
-// eine Differenz aus zwei verschiedenen Diensten hätte deshalb einen festen
-// Versatz. Nachteil: Der METAR nennt nur ganze hPa (abgerundet), die
-// Differenz ist also auf ±1 hPa genau. Für die Föhn-Faustregeln (ab etwa
-// 4 hPa) reicht das.
+// IMMER QNH (Wunsch des Projektbesitzers): der Luftdruck, nach der
+// Normatmosphäre der ICAO auf Meereshöhe umgerechnet — so, wie ihn die
+// Flughäfen melden. Beide Seiten rechnen nach DERSELBEN Regel; die
+// Landeswetterdienste rechnen ihre eigenen Werte auf Meereshöhe jeder anders
+// um (am 03.11.2026 lag GeoSphere Innsbruck-Flughafen 1,6 hPa über dem METAR)
+// — deren umgerechnete Werte werden deshalb NICHT direkt verglichen.
 //
-// Messtakt: Innsbruck alle 30 min (:20 und :50), Bozen jede Stunde (:50).
+// ZWEI MESSREIHEN (seit Nov. 2026):
+//   1. Hauptkurve, Linie und Schild auf der Karte: QNH alle 10 min auf 0,1 hPa,
+//      selbst gerechnet aus den Wetterstationen Innsbruck-Flughafen (GeoSphere)
+//      und Bozen (Landeswetterdienst) — src/lib/stationPressure.ts.
+//   2. Zum Vergleich (dünne graue punktierte Linie im Diagramm, Wunsch des
+//      Projektbesitzers): die METAR der Flughäfen LOWI und LIPB. Nur ganze hPa
+//      (abgerundet), Innsbruck alle 30 min, Bozen stündlich und NACHTS GAR
+//      NICHT (etwa 22:50–6:30 Uhr). Die erste Fassung zeigte nur diese — die
+//      Kurve war treppig und jede Nacht unterbrochen. Fehlen die
+//      Stationswerte, zeigt die Karte die METAR.
 //
 // VORZEICHEN: Differenz = Bozen − Innsbruck (wie im Föhndiagramm üblich).
 //   positiv = Druck im Süden höher → Luft strömt nach Norden → Südföhn
@@ -55,34 +61,40 @@ export const FOEHN_PAIR = { north: "LOWI", south: "LIPB" } as const satisfies {
   south: PressureStationId;
 };
 
-/** Name der Zeile in wind_status, in die der Sammler den Zustand der METAR-Abfrage schreibt. */
+/** Name der Zeile in wind_status, in die der Sammler den Zustand der Druck-Abfrage schreibt. */
 export const PRESSURE_STATUS_NAME = "druck";
 
 /**
  * Ab diesem Alter gilt die Differenz als ausgefallen (Linie grau, ohne Zahl).
- * Bozen meldet nur stündlich, der METAR ist dann ~15 min unterwegs und der
- * Sammler läuft alle 5 min — normal ist also bis ~80 min. 2 h = ein
- * verpasster Bozner METAR wird noch überbrückt.
+ * Die 10-Minuten-Werte der Stationen sind normal 10–20 min alt; fehlen sie,
+ * springt die Anzeige auf die METAR (Bozen stündlich, ~15 min unterwegs,
+ * normal bis ~80 min). 2 h überbrücken einen verpassten Bozner METAR.
  */
 export const PRESSURE_STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Zwei Messungen gehören zusammen, wenn sie höchstens so weit auseinander
- * liegen. Beide Flughäfen melden zu :50; Sondermeldungen (SPECI) liegen
- * dazwischen und werden so mit der nächstgelegenen Meldung der anderen Seite
- * gepaart.
+ * liegen. Die Stationen messen beide zu jeder vollen 10 Minuten; die
+ * Flughäfen melden beide zu :50, Sondermeldungen (SPECI) dazwischen werden so
+ * mit der nächstgelegenen Meldung der anderen Seite gepaart.
  */
 const PAIR_TOLERANCE_MS = 20 * 60 * 1000;
 
 /** Antwort von /api/pressure. Zeiten in ms (UTC), Druck in hPa (QNH). */
 export interface PressurePayload {
-  /** Gemessene Werte (METAR) der letzten HISTORY_HOURS je Flughafen, aufsteigend. */
-  measured: Record<PressureStationId, Array<[number, number]>>;
+  /**
+   * Hauptkurve: QNH alle 10 min, selbst gerechnet aus den Wetterstationen an
+   * den Flughäfen (src/lib/stationPressure.ts), letzte HISTORY_HOURS,
+   * aufsteigend.
+   */
+  stations: Record<PressureStationId, Array<[number, number]>>;
+  /** Zum Vergleich: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
+  metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;
   /** Startzeit des Modelllaufs (ISO), sonst null. */
   modelRun: string | null;
-  /** true = Messwerte im Notbetrieb direkt beim Flugwetterdienst geholt. */
+  /** true = Messwerte im Notbetrieb direkt bei den Diensten geholt (nicht aus der Datenbank). */
   fallback: boolean;
 }
 
@@ -182,18 +194,29 @@ export function formatPressureDiff(diff: number): string {
 /**
  * Quellen der Föhn-Anzeige — stehen unter "Quellen" im Ebenen-Menü bei den
  * übrigen Quellen (Wunsch des Projektbesitzers, Nov. 2026; zuerst unten im
- * Druck-Verlaufsbalken). Messung: METAR, gemeinfrei (US-Behörde NOAA).
- * Prognose: ICON-CH1 von MeteoSchweiz über Open-Meteo (CC BY 4.0).
+ * Druck-Verlaufsbalken). GeoSphere verlangt die Nennung (CC BY 4.0), ebenso
+ * Open-Meteo; METAR sind gemeinfrei (US-Behörde NOAA).
  */
-export const METAR_SOURCE = {
-  label: "Luftdruck Flughäfen IBK/BZ (METAR) © NOAA Aviation Weather Center",
-  url: "https://aviationweather.gov/data/api/",
-};
-export const PRESSURE_FORECAST_SOURCE = {
-  label: "Druckprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
-  url: "https://open-meteo.com/en/docs/meteoswiss-api",
-  note: "CC BY 4.0",
-};
+export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string }> = [
+  {
+    label: "Luftdruck Innsbruck-Flughafen © GeoSphere Austria",
+    url: "https://data.hub.geosphere.at",
+    note: "CC BY 4.0",
+  },
+  {
+    label: "Luftdruck Bozen © Land Südtirol – Wetterdienst",
+    url: "https://wetter.provinz.bz.it",
+  },
+  {
+    label: "Flughäfen IBK/BZ (METAR) © NOAA Aviation Weather Center",
+    url: "https://aviationweather.gov/data/api/",
+  },
+  {
+    label: "Druckprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
+    url: "https://open-meteo.com/en/docs/meteoswiss-api",
+    note: "CC BY 4.0",
+  },
+];
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
