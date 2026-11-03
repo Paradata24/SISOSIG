@@ -1,3 +1,5 @@
+import { WIND_COLOR_SCALE } from "./wind";
+
 // Föhn-Anzeige: Druckdifferenz zwischen den Flughäfen Bozen und Innsbruck
 // (Nov. 2026, Wunsch des Projektbesitzers; Vorbild die "Live-Druckdifferenzen"
 // der burnair Map). Gemeinsame Angaben für Sammler, /api/pressure, Karte und
@@ -129,22 +131,32 @@ export function pressureDiffAt(series: PressureDiffPoint[], time: number): Press
 }
 
 /**
- * Farbe je Betrag der Differenz, in harten Stufen wie bei burnair (und wie die
- * Windfarben): bis 1 hPa weiß, bis 2 gelb, bis 4 orange, bis 8 rot, darüber
- * schwarz. Faustregel: ab etwa 4 hPa ist mit Föhn zu rechnen.
+ * Farbe je Betrag der Differenz (Nov. 2026, vom Projektbesitzer festgelegt;
+ * zuerst die Stufen von burnair): dieselben fünf Farben wie die Windskala
+ * (WIND_COLOR_SCALE in src/lib/wind.ts), in harten Stufen, für positive und
+ * negative Werte gleich:
+ *   bis 0,5 hPa blau · bis 2 grün · bis 2,5 gelb · unter 3 orange · ab 3 rot
+ * Die gemessenen Werte sind ganzzahlig (METAR), dort gibt es also nur blau
+ * (0), grün (1–2) und rot (ab 3); gelb und orange kommen in der Prognose vor.
+ * `upTo` = höchster Betrag der Stufe, `inclusive` = ob er noch dazugehört.
  */
-export const FOEHN_COLOR_SCALE: Array<{ below: number; color: string; text: string; label: string }> = [
-  { below: 1, color: "#ffffff", text: "#18181b", label: "unter 1 hPa" },
-  { below: 2, color: "#facc15", text: "#18181b", label: "1–2 hPa" },
-  { below: 4, color: "#fb923c", text: "#18181b", label: "2–4 hPa" },
-  { below: 8, color: "#dc2626", text: "#ffffff", label: "4–8 hPa" },
-  { below: Infinity, color: "#18181b", text: "#ffffff", label: "ab 8 hPa" },
+export const FOEHN_COLOR_SCALE: Array<{ upTo: number; inclusive: boolean; color: string; text: string }> = [
+  { upTo: 0.5, inclusive: true, color: WIND_COLOR_SCALE[0].color, text: "#18181b" }, // blau
+  { upTo: 2, inclusive: true, color: WIND_COLOR_SCALE[1].color, text: "#18181b" }, // grün
+  { upTo: 2.5, inclusive: true, color: WIND_COLOR_SCALE[2].color, text: "#18181b" }, // gelb
+  { upTo: 3, inclusive: false, color: WIND_COLOR_SCALE[3].color, text: "#18181b" }, // orange
+  { upTo: Infinity, inclusive: false, color: WIND_COLOR_SCALE[4].color, text: "#18181b" }, // rot
 ];
 
 /** Farbstufe zum Betrag einer Differenz. */
 export function foehnColor(diff: number): { color: string; text: string } {
-  const magnitude = Math.abs(diff);
-  return FOEHN_COLOR_SCALE.find((step) => magnitude < step.below) ?? FOEHN_COLOR_SCALE[0];
+  // Auf Zehntel runden wie die angezeigte Zahl, damit Zahl und Farbe passen.
+  const magnitude = Math.round(Math.abs(diff) * 10) / 10;
+  return (
+    FOEHN_COLOR_SCALE.find((step) =>
+      step.inclusive ? magnitude <= step.upTo : magnitude < step.upTo,
+    ) ?? FOEHN_COLOR_SCALE[FOEHN_COLOR_SCALE.length - 1]
+  );
 }
 
 /** Grau für ausgefallene Werte (wie ausgefallene Windstationen). */
@@ -167,10 +179,20 @@ export function formatPressureDiff(diff: number): string {
   return `${rounded > 0 ? "+" : "−"}${text} hPa`;
 }
 
-/** Quelle der Messwerte (Lizenz: gemeinfrei, US-Behörde) — Nennung im Druck-Verlaufsbalken. */
+/**
+ * Quellen der Föhn-Anzeige — stehen unter "Quellen" im Ebenen-Menü bei den
+ * übrigen Quellen (Wunsch des Projektbesitzers, Nov. 2026; zuerst unten im
+ * Druck-Verlaufsbalken). Messung: METAR, gemeinfrei (US-Behörde NOAA).
+ * Prognose: ICON-CH1 von MeteoSchweiz über Open-Meteo (CC BY 4.0).
+ */
 export const METAR_SOURCE = {
-  label: "METAR LOWI/LIPB über NOAA Aviation Weather Center",
+  label: "Luftdruck Flughäfen IBK/BZ (METAR) © NOAA Aviation Weather Center",
   url: "https://aviationweather.gov/data/api/",
+};
+export const PRESSURE_FORECAST_SOURCE = {
+  label: "Druckprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
+  url: "https://open-meteo.com/en/docs/meteoswiss-api",
+  note: "CC BY 4.0",
 };
 
 function round1(value: number): number {

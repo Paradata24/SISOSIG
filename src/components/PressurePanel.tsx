@@ -7,7 +7,6 @@ import {
   FOEHN_PAIR,
   foehnColor,
   formatPressureDiff,
-  METAR_SOURCE,
   pressureDiffAt,
   PRESSURE_STATIONS,
   type PressureDiffPoint,
@@ -21,7 +20,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // (schwarz, gemessen) und die ICON-CH1-Prognose (grau gestrichelt) bis zu
 // 33 h voraus. Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
-// Karte (ab 4 hPa rot = Föhn wahrscheinlich).
+// Karte (dieselben Farben wie die Windskala, ab 3 hPa rot). Die Quellen
+// stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt), aber eigenständig — das
 // Diagramm passt sich der Breite an, statt seitlich zu scrollen.
@@ -42,7 +42,7 @@ const FORECAST_GAP_MS = 90 * 60 * 1000;
 const FORECAST_COLOR = "#52525b";
 const FORECAST_DASH = "5 3";
 const MEASURED_COLOR = "#18181b";
-const BAND_OPACITY = 0.22;
+const BAND_OPACITY = 0.3;
 
 function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
@@ -139,8 +139,8 @@ export default function PressurePanel({
     const bands: { from: number; to: number; color: string }[] = [];
     let lower = 0;
     for (const step of FOEHN_COLOR_SCALE) {
-      const upper = Math.min(step.below, yMax);
-      if (upper > lower && step.color !== "#ffffff") {
+      const upper = Math.min(step.upTo, yMax);
+      if (upper > lower) {
         bands.push({ from: lower, to: upper, color: step.color });
         bands.push({ from: -upper, to: -lower, color: step.color });
       }
@@ -306,27 +306,7 @@ export default function PressurePanel({
       <p className="px-3 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400">
         <span className="text-zinc-800 dark:text-zinc-100">schwarz</span>: gemessen (QNH der Flughäfen, ganze hPa) ·{" "}
         <span style={{ color: FORECAST_COLOR }}>grau gestrichelt</span>: Prognose ICON-CH1
-        {modelRun && <>, Lauf {formatClock(Date.parse(modelRun))} Uhr</>} · ab etwa 4 hPa ist Föhn wahrscheinlich
-      </p>
-      <p className="border-t border-zinc-100 px-3 py-1.5 text-[11px] text-zinc-400 dark:border-zinc-800 dark:text-zinc-500">
-        Quelle:{" "}
-        <a
-          href={METAR_SOURCE.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
-        >
-          {METAR_SOURCE.label}
-        </a>
-        {" · Prognose: "}
-        <a
-          href="https://open-meteo.com/en/docs/meteoswiss-api"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline hover:text-zinc-600 dark:hover:text-zinc-300"
-        >
-          MeteoSchweiz ICON-CH1 über Open-Meteo
-        </a>
+        {modelRun && <>, Lauf {formatClock(Date.parse(modelRun))} Uhr</>}
       </p>
     </section>
   );

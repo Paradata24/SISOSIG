@@ -493,9 +493,14 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   hat im Landesnetz keine Wetterstation am Flughafen. Nachteil: nur ganze hPa.
 - **Vorzeichen Bozen − Innsbruck:** positiv = Süd höher (Südföhn-Lage),
   negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
-  Schild vom hohen zum tiefen Druck. Farbstufen wie bei burnair (bis 1 hPa
-  weiß, bis 2 gelb, bis 4 orange, bis 8 rot, darüber schwarz;
-  `FOEHN_COLOR_SCALE`), grau ab 2 h ohne Messung (`PRESSURE_STALE_AFTER_MS`).
+  Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
+  festgelegt** (Nov. 2026; zuerst die Stufen von burnair), dieselben Farben
+  wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis 2
+  grün, bis 2,5 gelb, unter 3 orange, ab 3 rot (`FOEHN_COLOR_SCALE`, gilt
+  für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
+  (`PRESSURE_STALE_AFTER_MS`). **Quellen** (METAR, ICON-CH1) stehen unter
+  „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des
+  Projektbesitzers).
 - **Gespeichert** in der eigenen Tabelle `pressure_values`
   (`supabase/druck.sql`): Messungen schreibt der Sammler (Zustand in
   `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
@@ -929,7 +934,7 @@ Projektbesitzers entfernt:
 
 ## Quellenangaben (Lizenzpflicht)
 
-- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Kabel, Höhendaten der Gelände-Ebenen, KK7-Thermikkarte) stehen unter
+- **Kartenquellen** (OpenTopoMap/OpenStreetMap/SRTM, Kabel, Höhendaten der Gelände-Ebenen, Luftdruck der Föhn-Anzeige, KK7-Thermikkarte) stehen unter
   „Quellen" im Ebenen-Menü (Knopf mit drei Strichen oben rechts;
   `MAP_SOURCES` in `src/lib/wind.ts`).
 - **Winddaten-Quellen** stehen NICHT dort (Wunsch des Projektbesitzers,
