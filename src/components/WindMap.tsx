@@ -1162,6 +1162,8 @@ export default function WindMap({
           metar={pressureSeries.metar}
           forecast={pressureSeries.forecast}
           modelRun={pressureData?.modelRun ?? null}
+          ecmwf={pressureSeries.ecmwf}
+          ecmwfRun={pressureData?.ecmwfRun ?? null}
           loading={pressureData === null && !pressureFailed}
           onClose={() => onPressureOpenChange(false)}
         />

@@ -92,6 +92,10 @@ export interface PressurePayload {
   metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;
+  /** ECMWF-Prognose (IFS, 9 km) je Flughafen (stündlich), aufsteigend. */
+  ecmwf: Record<PressureStationId, Array<[number, number]>>;
+  /** Startzeit des ECMWF-Laufs (ISO), sonst null. */
+  ecmwfRun: string | null;
   /** Startzeit des Modelllaufs (ISO), sonst null. */
   modelRun: string | null;
   /** true = Messwerte im Notbetrieb direkt bei den Diensten geholt (nicht aus der Datenbank). */
@@ -214,6 +218,11 @@ export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string
   {
     label: "Druckprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
     url: "https://open-meteo.com/en/docs/meteoswiss-api",
+    note: "CC BY 4.0",
+  },
+  {
+    label: "Druckprognose ECMWF IFS © ECMWF über Open-Meteo",
+    url: "https://open-meteo.com/en/docs/ecmwf-api",
     note: "CC BY 4.0",
   },
 ];

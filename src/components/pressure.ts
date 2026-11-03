@@ -88,12 +88,13 @@ export function usePressureData(enabled: boolean): {
 /**
  * Differenz-Reihen Bozen − Innsbruck: `measured` = 10-Minuten-Werte der
  * Stationen (Hauptkurve), `metar` = Flugwetter-Meldungen (Vergleich),
- * `forecast` = ICON-CH1.
+ * `forecast` = ICON-CH1, `ecmwf` = ECMWF.
  */
 export function usePressureSeries(data: PressurePayload | null): {
   measured: PressureDiffPoint[];
   metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
+  ecmwf: PressureDiffPoint[];
 } {
   return useMemo(
     () => ({
@@ -105,6 +106,10 @@ export function usePressureSeries(data: PressurePayload | null): {
         : [],
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
+        : [],
+      // Ältere Antworten (vor ECMWF) haben das Feld nicht.
+      ecmwf: data?.ecmwf
+        ? pairPressureSeries(data.ecmwf[FOEHN_PAIR.north], data.ecmwf[FOEHN_PAIR.south])
         : [],
     }),
     [data],

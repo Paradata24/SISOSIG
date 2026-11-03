@@ -519,10 +519,13 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   (`supabase/druck.sql`, Spalte `kind`: `station`, `metar`, `icon_ch1`):
   Messungen schreibt der Sammler, jeweils die letzten 3 h (Zustand in
   `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
-  Edge Function (`refreshPressure`, eigene Laufprüfung über die
-  ICON-CH1-Metadaten, 33 h voraus). Die Prognose ist der ICON-CH1-Druck **am
-  Boden**, nach derselben Regel in den QNH umgerechnet (`qnhFromSurface`) —
-  nicht `pressure_msl`, das lag in Innsbruck ~2 hPa daneben.
+  Edge Function (`refreshPressure`, `PRESSURE_MODELS`, eigene Laufprüfung je
+  Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
+  auf Wunsch des Projektbesitzers **ECMWF IFS** (`ecmwf_ifs`, 9 km, 72 h
+  voraus, blau gestrichelt). Beide als Druck **am Boden** geholt und nach
+  derselben Regel in den QNH umgerechnet (`qnhFromSurface`) — nicht
+  `pressure_msl`, das lag in Innsbruck ~2 hPa daneben. ECMWF gibt es NUR hier
+  beim Druck, nicht beim Wind (siehe „Prognosemodelle“).
   `/api/pressure` hat je Messreihe einen Notbetrieb direkt bei den Diensten.
 - **Anzeige:** nur Hauptseite, im Ebenen-Menü „Föhn (Druck BZ–IBK)", als
   einzige Ebene **von Haus aus an** (gemerkt als `foehn`). Linie zwischen
@@ -729,7 +732,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Pfeilreihe **oben im Diagramm** (je Stunde ein Pfeil). **Nur ICON-CH1 wird
   überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
   mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
-  Einzige Ausnahme ist der Höhenwind (nächster Punkt).
+  Einzige Ausnahme ist der Höhenwind (nächster Punkt). Die Druckprognose der
+  Föhn-Anzeige (ICON-CH1 und ECMWF) ist davon getrennt, siehe dort.
 - **Höhenwind (Okt. 2026, Wunsch des Projektbesitzers)** nur für
   **Rittnerhorn** (`82500WS`) und **Leiterspitz** (`pioupiou-2163`): blaue
   gestrichelte Linie im Verlaufsbalken (`UPPER_WIND_COLOR`), nur Mittelwind
@@ -930,8 +934,8 @@ Projektbesitzers entfernt:
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
   Anfrage kosten erst ab 10 Reihen extra. Stand Nov. 2026: ~650 Stationen
   (alle Stationen der Karte, seit Punkt 14) × 8 Modellläufe ≈ 5.200 am Tag,
-  plus 16 für den Höhenwind (2 Stationen × 8) und 16 für den Luftdruck der
-  Flughäfen (2 × 8); das Nachholen gescheiterter
+  plus 16 für den Höhenwind (2 Stationen × 8) und 24 für den Luftdruck der
+  Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4); das Nachholen gescheiterter
   Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
   pro Minute** (und 5.000 pro Stunde): Der erste Lauf mit allen 657 Stationen
   (01.11.2026) bekam für die letzten 57 Status 429. Deshalb fragt ein Anstoß

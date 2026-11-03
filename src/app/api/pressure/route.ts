@@ -14,6 +14,7 @@ import {
 //   stations  QNH alle 10 min aus den Wetterstationen (Hauptkurve)
 //   metar     QNH aus den Flugwetter-Meldungen (Vergleichslinie)
 //   forecast  ICON-CH1-Prognose
+//   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
 // Gefüllt wird die Tabelle vom Sammler (/api/collect, Messwerte) und der Edge
 // Function fetch-wind-forecasts (Prognose) — "Ein Sammler, eine Wahrheit".
 //
@@ -111,10 +112,11 @@ export async function GET() {
   const since = now - HISTORY_HOURS * 60 * 60 * 1000;
   const sinceIso = new Date(since).toISOString();
 
-  const [stationsDb, metarDb, forecastDb] = await Promise.all([
+  const [stationsDb, metarDb, forecastDb, ecmwfDb] = await Promise.all([
     readSeries("station", sinceIso),
     readSeries("metar", sinceIso),
     readSeries("icon_ch1", sinceIso),
+    readSeries("ecmwf_ifs", sinceIso),
   ]);
 
   let stations = stationsDb?.series ?? emptySeries();
@@ -148,7 +150,8 @@ export async function GET() {
   ]);
 
   const forecast = forecastDb?.series ?? emptySeries();
-  const hasAny = [stations, metar, forecast].some((series) =>
+  const ecmwf = ecmwfDb?.series ?? emptySeries();
+  const hasAny = [stations, metar, forecast, ecmwf].some((series) =>
     PRESSURE_STATION_IDS.some((id) => series[id].length > 0),
   );
   if (!hasAny) {
@@ -160,6 +163,8 @@ export async function GET() {
     metar,
     forecast,
     modelRun: forecastDb?.modelRun ?? null,
+    ecmwf,
+    ecmwfRun: ecmwfDb?.modelRun ?? null,
     fallback,
   };
   return NextResponse.json(payload, { headers: { "Cache-Control": RESPONSE_CACHE_CONTROL } });

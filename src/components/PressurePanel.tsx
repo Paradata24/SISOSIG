@@ -19,8 +19,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h —
 // schwarz die 10-Minuten-Werte der Stationen (Hauptkurve), dünn grau
 // punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
-// Projektbesitzers) — und die ICON-CH1-Prognose (grau gestrichelt) bis zu
-// 33 h voraus. Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
+// Projektbesitzers) — und die Prognosen ICON-CH1 (grau gestrichelt, 33 h
+// voraus) und ECMWF (blau gestrichelt, 72 h voraus, seit Nov. 2026). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
 // Karte (dieselben Farben wie die Windskala, über 3 hPa rot). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
@@ -56,6 +56,9 @@ const FORECAST_GAP_MS = 90 * 60 * 1000;
 // Wie die Prognose im Wind-Verlaufsbalken (CH1_COLOR, FORECAST_DASH).
 const FORECAST_COLOR = "#52525b";
 const FORECAST_DASH = "5 3";
+// ECMWF (seit Nov. 2026, Wunsch des Projektbesitzers): blau gestrichelt, damit
+// es sich klar vom grauen ICON-CH1 abhebt. Reicht 72 h voraus, ICON-CH1 33 h.
+const ECMWF_COLOR = "#2563eb";
 const MEASURED_COLOR = "#18181b";
 const BAND_OPACITY = 0.3;
 
@@ -96,6 +99,8 @@ export default function PressurePanel({
   metar,
   forecast,
   modelRun,
+  ecmwf,
+  ecmwfRun,
   loading,
   onClose,
 }: {
@@ -105,6 +110,9 @@ export default function PressurePanel({
   metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   modelRun: string | null;
+  /** ECMWF-Prognose (blau gestrichelt). */
+  ecmwf: PressureDiffPoint[];
+  ecmwfRun: string | null;
   /** true = noch keine Daten geladen. */
   loading: boolean;
   onClose: () => void;
@@ -145,13 +153,18 @@ export default function PressurePanel({
     const svgW = width - 8;
     if (svgW <= PAD_LEFT + PAD_RIGHT + 50) return null;
     const start = now - HISTORY_HOURS * 60 * 60 * 1000;
-    const lastForecast = forecast.length > 0 ? forecast[forecast.length - 1].time : now;
+    // Rechts bis zum Ende der längsten Prognose (ECMWF 72 h, ICON-CH1 33 h).
+    const lastForecast = Math.max(
+      forecast.length > 0 ? forecast[forecast.length - 1].time : now,
+      ecmwf.length > 0 ? ecmwf[ecmwf.length - 1].time : now,
+    );
     const end = Math.max(now + 60 * 60 * 1000, lastForecast);
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
     const m = measured.filter(inRange);
     const f = forecast.filter(inRange);
     const mt = metar.filter(inRange);
-    const values = [...m, ...mt, ...f].map((p) => p.diff);
+    const e = ecmwf.filter(inRange);
+    const values = [...m, ...mt, ...f, ...e].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -165,12 +178,15 @@ export default function PressurePanel({
     const tickStep = span > 20 ? 4 : span > 10 ? 2 : 1;
     const ticks: number[] = [];
     for (let v = Math.ceil(yBottom / tickStep) * tickStep; v <= yTop; v += tickStep) ticks.push(v);
-    // Zeitmarken alle 6 h (Ortszeit), Mitternacht mit Datum.
+    // Zeitmarken alle 6 h (Ortszeit), Mitternacht mit Datum. Seit ECMWF
+    // (72 h voraus) ist der Zeitraum rund 5 Tage lang — dann nur alle 12 h,
+    // sonst stoßen die Beschriftungen am Handy aneinander.
+    const stepH = end - start > 80 * 60 * 60 * 1000 ? 12 : 6;
     const times: number[] = [];
     const first = new Date(start);
     first.setMinutes(0, 0, 0);
-    first.setHours(Math.ceil(first.getHours() / 6) * 6);
-    for (let t = first.getTime(); t <= end; t += 6 * 60 * 60 * 1000) times.push(t);
+    first.setHours(Math.ceil(first.getHours() / stepH) * stepH);
+    for (let t = first.getTime(); t <= end; t += stepH * 60 * 60 * 1000) times.push(t);
     // Farbstreifen je Stufe, oberhalb und unterhalb der Nulllinie gespiegelt
     // (jede Seite bis zu ihrem Achsenende).
     const bands: { from: number; to: number; color: string }[] = [];
@@ -192,9 +208,10 @@ export default function PressurePanel({
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
+      ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       nowX: x(now),
     };
-  }, [width, now, measured, metar, forecast]);
+  }, [width, now, measured, metar, forecast, ecmwf]);
 
   const svgH = PAD_TOP + CHART_H + TIME_LABEL_H;
   const currentColor = current ? foehnColor(current.diff) : null;
@@ -331,6 +348,7 @@ export default function PressurePanel({
               strokeWidth={1}
               strokeDasharray="2 2"
             />
+            <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
             {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
             <path d={chart.metarPath} fill="none" stroke={METAR_COLOR} strokeWidth={1.2} strokeDasharray={METAR_DASH} strokeLinecap="round" />
@@ -343,7 +361,9 @@ export default function PressurePanel({
         <span className="text-zinc-800 dark:text-zinc-100">schwarz</span>: gemessen (Wetterstationen, 10 min) ·{" "}
         <span style={{ color: METAR_COLOR }}>grau punktiert</span>: Flughäfen (METAR) ·{" "}
         <span style={{ color: FORECAST_COLOR }}>grau gestrichelt</span>: Prognose ICON-CH1
-        {modelRun && <>, Lauf {formatClock(Date.parse(modelRun))} Uhr</>}
+        {modelRun && <>, Lauf {formatClock(Date.parse(modelRun))} Uhr</>} ·{" "}
+        <span style={{ color: ECMWF_COLOR }}>blau gestrichelt</span>: Prognose ECMWF
+        {ecmwfRun && <>, Lauf {formatClock(Date.parse(ecmwfRun))} Uhr</>}
       </p>
     </section>
   );
