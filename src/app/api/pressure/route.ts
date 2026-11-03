@@ -13,6 +13,7 @@ import {
 // (src/lib/pressure.ts), alles aus der Tabelle pressure_values:
 //   stations  QNH alle 10 min aus den Wetterstationen (Hauptkurve)
 //   temperature  Lufttemperatur derselben Stationen (für ΔT Innsbruck − Bozen)
+//   forecastTemperature  ICON-CH1-Temperatur (2 m) an beiden Flughäfen
 //   metar     QNH aus den Flugwetter-Meldungen (Vergleichslinie)
 //   forecast  ICON-CH1-Prognose
 //   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
@@ -175,6 +176,7 @@ export async function GET() {
     temperature,
     metar,
     forecast,
+    forecastTemperature: forecastDb?.temperature ?? emptySeries(),
     modelRun: forecastDb?.modelRun ?? null,
     ecmwf,
     ecmwfRun: ecmwfDb?.modelRun ?? null,

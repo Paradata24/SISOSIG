@@ -97,6 +97,8 @@ export interface PressurePayload {
   metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;
+  /** ICON-CH1-Prognose der Lufttemperatur (2 m, °C) je Flughafen, stündlich. */
+  forecastTemperature: Record<PressureStationId, Array<[number, number]>>;
   /** ECMWF-Prognose (IFS, 9 km) je Flughafen (stündlich), aufsteigend. */
   ecmwf: Record<PressureStationId, Array<[number, number]>>;
   /** Startzeit des ECMWF-Laufs (ISO), sonst null. */

@@ -544,16 +544,23 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
-- **Temperatur-Differenz ΔT = Innsbruck − Bozen** (Nov. 2026, Wunsch des
-  Projektbesitzers; negativ = Innsbruck kälter): eigenes, flacheres Diagramm
-  unter dem Druck auf derselben Zeitachse, Fläche zur Nulllinie rot
-  (Innsbruck wärmer) bzw. blau (kälter), aktueller Wert in der Kopfzeile
-  (`TEMP_*` in `PressurePanel`). Bewusst die echte, NICHT höhenbereinigte
-  Differenz (Innsbruck liegt ~330 m höher, ΔT um −2 °C ist normal).
-  Temperatur und Luftfeuchtigkeit der beiden Stationen (`TL`/`RF` bei
-  GeoSphere, `LT`/`LF` in Bozen) speichert der Sammler in den Spalten
-  `temp_c`/`humidity_pct` von `pressure_values` (nur `kind = 'station'`); die
-  Feuchte wird noch nicht angezeigt. Eine ΔT-Prognose gibt es noch nicht.
+- **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
+  Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
+  Zeitachse. Gemessene Temperaturen beider Stationen als Linien (IBK
+  schwarz, BZ braun), die **Fläche zwischen den Linien = ΔT Innsbruck −
+  Bozen**: rot, wo Innsbruck wärmer ist, blau, wo kälter (erste Fassung
+  zeigte nur ΔT um eine Nulllinie). Nach „jetzt“ die **ICON-CH1-Temperatur**
+  beider Stationen gestrichelt, Fläche blasser (`temperature_2m` in derselben
+  Anfrage der Edge Function, Spalte `temp_c` der Prognosezeilen). ΔT und
+  beide Temperaturen in der Kopfzeile. Bewusst NICHT höhenbereinigt
+  (Innsbruck ~330 m höher, normal ~2 °C kälter). Temperatur und Feuchte der
+  Stationen (`TL`/`RF` bei GeoSphere, `LT`/`LF` in Bozen) speichert der
+  Sammler in `temp_c`/`humidity_pct` (`kind = 'station'`); die Feuchte wird
+  noch nicht angezeigt.
+- **Lesbarkeit der Druckkurve** (Nov. 2026, Vorschlag auf Wunsch des
+  Projektbesitzers): Prognosen vor „jetzt“ blass (`FORECAST_PAST_OPACITY`),
+  senkrechte Rasterlinien nur alle 3 h, blassere Stufenlinien, hPa-Zahlen
+  ab 7 hPa Spanne nur jede zweite, kurze Legende mit Linienmustern.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
