@@ -531,7 +531,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   einzige Ebene **von Haus aus an** (gemerkt als `foehn`). Linie zwischen
   den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
   Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
-  48 h gemessen (schwarz, 10-min-Werte), METAR (dünn grau punktiert) +
+  48 h gemessen (schwarz, **nur ein Wert je halbe Stunde** zu :00/:30 —
+  Wunsch des Projektbesitzers, `MEASURED_STEP_MINUTES`; gespeichert wird
+  weiter alle 10 min, Kopfzeile und Karte zeigen den neuesten Wert), METAR
+  (dünn grau punktiert) +
   Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die

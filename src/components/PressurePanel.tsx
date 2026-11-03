@@ -62,10 +62,15 @@ const HOUR_MS = 60 * 60 * 1000;
 const Y_MIN_EXTENT_HPA = 3;
 const Y_STEP_HPA = 1;
 const Y_HEADROOM_HPA = 0.3;
-// Messlücke, ab der eine Kurve unterbrochen wird. Stationen: alle 10 min,
-// bis zu drei fehlende Werte werden überbrückt. METAR: Bozen meldet
+// Die gemessene Druckkurve zeigt nur EINEN Wert je halbe Stunde (zu :00 und
+// :30; Wunsch des Projektbesitzers, Nov. 2026 — mit allen 10-Minuten-Werten
+// war sie zu unruhig). Gespeichert und abgefragt wird weiter alle 10 min;
+// Kopfzeile und Karte zeigen den neuesten Wert.
+const MEASURED_STEP_MINUTES = 30;
+// Messlücke, ab der eine Kurve unterbrochen wird. Druckkurve (halbstündlich):
+// ein fehlender Wert wird überbrückt, zwei nicht. METAR: Bozen meldet
 // stündlich, ein fehlender wird überbrückt, die Nacht (keine Meldungen) nicht.
-const MEASURED_GAP_MS = 40 * 60 * 1000;
+const MEASURED_GAP_MS = 75 * 60 * 1000;
 const METAR_GAP_MS = 150 * 60 * 1000;
 // Vergleichslinie der Flughafen-Meldungen: dünn, hellgrau, punktiert —
 // bewusst zurückhaltend, sie ist nur zum Vergleich da.
@@ -333,7 +338,10 @@ export default function PressurePanel({
     );
     const end = Math.ceil(Math.max(now + HOUR_MS, lastForecast) / HOUR_MS) * HOUR_MS;
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
-    const m = measured.filter(inRange);
+    // Nur die Werte zu :00 und :30 (siehe MEASURED_STEP_MINUTES).
+    const m = measured.filter(
+      (p) => inRange(p) && new Date(p.time).getUTCMinutes() % MEASURED_STEP_MINUTES === 0,
+    );
     const f = forecast.filter(inRange);
     const mt = metar.filter(inRange);
     const e = ecmwf.filter(inRange);
