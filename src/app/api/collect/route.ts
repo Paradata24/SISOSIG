@@ -4,6 +4,7 @@ import { saveStationList } from "@/lib/stationList";
 import { saveSourceStatus, type SourceOutcome } from "@/lib/sourceStatus";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 import { fetchMetarPressure } from "@/lib/metar";
+import { fetchStationPressure } from "@/lib/stationPressure";
 import { PRESSURE_STATUS_NAME } from "@/lib/pressure";
 
 // Sammel-Route: ruft alle Wetterdienste ab (Liste in src/lib/sources.ts,
@@ -19,9 +20,10 @@ import { PRESSURE_STATUS_NAME } from "@/lib/pressure";
 //  - die Stationsliste (Tabelle wind_stations: Name, Lage, Höhe; Okt. 2026)
 //  - den Zustand jeder Quelle (Tabelle wind_status, src/lib/sourceStatus.ts):
 //    Daraus zeigt die Karte den Hinweis "… liefert gerade keine Daten".
-//  - seit Nov. 2026 den Luftdruck (QNH) der Flughäfen Innsbruck und Bozen für
-//    die Föhn-Anzeige (Tabelle pressure_values, src/lib/metar.ts; Zustand in
-//    wind_status unter "druck"). Ein Fehler dort betrifft den Wind nicht.
+//  - seit Nov. 2026 den Luftdruck (QNH) bei den Flughäfen Innsbruck und Bozen
+//    für die Föhn-Anzeige (Tabelle pressure_values, siehe collectPressure;
+//    Zustand in wind_status unter "druck"). Ein Fehler dort betrifft den Wind
+//    nicht.
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -177,49 +179,70 @@ async function collectSource(
   return { source, values, error: null, stations };
 }
 
-// Luftdruck der Flughäfen (Föhn-Anzeige, src/lib/pressure.ts) holen und
-// speichern. Jeder Lauf schreibt die METAR der letzten 3 h (wenige Zeilen):
-// Ein verpasster Lauf oder eine verspätete Meldung füllt sich so von selbst
-// auf. Ganz getrennt vom Wind — scheitert es, wird es nur gemeldet.
+// Luftdruck für die Föhn-Anzeige (src/lib/pressure.ts) holen und speichern,
+// zwei Arten in der Tabelle pressure_values:
+//   kind 'station' = QNH alle 10 min, selbst gerechnet aus den Wetterstationen
+//                    Innsbruck-Flughafen (GeoSphere) und Bozen (Land),
+//                    src/lib/stationPressure.ts — die Hauptkurve
+//   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
+//                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts — zum
+//                    Vergleich (dünne graue Linie im Diagramm)
+// Jeder Lauf schreibt beides für die letzten 3 h (wenige Zeilen): Ein
+// verpasster Lauf oder ein verspäteter Wert füllt sich so von selbst auf.
+// Ganz getrennt vom Wind — scheitert etwas, wird es nur gemeldet.
 async function collectPressure(
   supabaseUrl: string,
   headers: Record<string, string>,
-  fetchedAt: string,
+  now: number,
 ): Promise<SourceOutcome> {
-  const outcome = (values: number, error: string | null): SourceOutcome => ({
+  const fetchedAt = new Date(now).toISOString();
+  const errors: string[] = [];
+  const rows: object[] = [];
+
+  const [metar, stations] = await Promise.allSettled([
+    fetchMetarPressure(HISTORY_WINDOW_MS / (60 * 60 * 1000)),
+    fetchStationPressure(now - HISTORY_WINDOW_MS),
+  ]);
+  if (metar.status === "fulfilled") {
+    if (metar.value.length === 0) errors.push("METAR: keine Meldung erhalten");
+    for (const p of metar.value) {
+      rows.push({ station: p.station, kind: "metar", valid_at: p.observedAt, qnh_hpa: p.qnhHpa, fetched_at: fetchedAt });
+    }
+  } else {
+    console.error("Luftdruck (METAR) nicht abrufbar:", metar.reason);
+    errors.push(`METAR: ${String(metar.reason)}`);
+  }
+  if (stations.status === "fulfilled") {
+    errors.push(...stations.value.errors);
+    for (const p of stations.value.values) {
+      rows.push({ station: p.station, kind: "station", valid_at: p.measuredAt, qnh_hpa: p.qnhHpa, fetched_at: fetchedAt });
+    }
+  } else {
+    console.error("Luftdruck (Stationen) nicht abrufbar:", stations.reason);
+    errors.push(`Stationen: ${String(stations.reason)}`);
+  }
+
+  if (rows.length > 0) {
+    try {
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
+        {
+          method: "POST",
+          headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify(rows),
+          signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+        },
+      );
+      if (!res.ok) errors.push(`Speichern: Status ${res.status}: ${await res.text()}`);
+    } catch (err) {
+      errors.push(`Speichern: ${String(err)}`);
+    }
+  }
+  return {
     source: PRESSURE_STATUS_NAME,
-    values,
-    error,
-  });
-  let rows: object[];
-  try {
-    rows = (await fetchMetarPressure(HISTORY_WINDOW_MS / (60 * 60 * 1000))).map((p) => ({
-      station: p.station,
-      kind: "metar",
-      valid_at: p.observedAt,
-      qnh_hpa: p.qnhHpa,
-      fetched_at: fetchedAt,
-    }));
-  } catch (err) {
-    console.error("Luftdruck (METAR) nicht abrufbar:", err);
-    return outcome(0, `Abruf: ${String(err)}`);
-  }
-  if (rows.length === 0) return outcome(0, "Keine METAR-Meldung erhalten");
-  try {
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
-      {
-        method: "POST",
-        headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(rows),
-        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
-      },
-    );
-    if (!res.ok) return outcome(rows.length, `Speichern: Status ${res.status}: ${await res.text()}`);
-  } catch (err) {
-    return outcome(rows.length, `Speichern: ${String(err)}`);
-  }
-  return outcome(rows.length, null);
+    values: rows.length,
+    error: errors.length > 0 ? errors.join("; ") : null,
+  };
 }
 
 // Alte Zeilen einer Tabelle löschen (Aufräumen, unkritisch). true = geklappt.
@@ -279,7 +302,7 @@ export async function POST(request: Request) {
     Promise.all(
       SOURCE_IDS.map((source) => collectSource(source, supabaseUrl, supabaseHeaders, now)),
     ),
-    collectPressure(supabaseUrl, supabaseHeaders, new Date(now).toISOString()),
+    collectPressure(supabaseUrl, supabaseHeaders, now),
   ]);
   const perSource = Object.fromEntries(runs.map((r) => [r.source, r.values]));
   const errors = Object.fromEntries(

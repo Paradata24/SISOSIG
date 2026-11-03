@@ -14,8 +14,13 @@
 --
 -- Eine Zeile je Flughafen, Art und Zeitpunkt:
 --   station    ICAO-Kennung des Flughafens: 'LOWI' (Innsbruck), 'LIPB' (Bozen)
---   kind       'metar'    = gemessen (Flugwetter-Meldung METAR, geschrieben
---                           vom Sammler /api/collect)
+--   kind       'station'  = gemessen, QNH alle 10 min, selbst gerechnet aus den
+--                           Wetterstationen Innsbruck-Flughafen (GeoSphere)
+--                           und Bozen (Land) — station bleibt dabei 'LOWI'
+--                           bzw. 'LIPB' (die Seite); geschrieben vom Sammler
+--                           (seit Nov. 2026, src/lib/stationPressure.ts)
+--              'metar'    = gemessen (Flugwetter-Meldung METAR, geschrieben
+--                           vom Sammler /api/collect; Vergleichslinie)
 --              'icon_ch1' = Prognose (ICON-CH1 über Open-Meteo, geschrieben
 --                           von der Edge Function fetch-wind-forecasts)
 --   valid_at   Messzeit bzw. Prognosestunde (UTC)

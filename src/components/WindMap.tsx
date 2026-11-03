@@ -1017,13 +1017,14 @@ export default function WindMap({
   // src/components/pressure.ts): nur auf der Hauptseite und wenn im
   // Ebenen-Menü an. Zeigt den Wert zum Zeitpunkt des Zeitbalkens.
   const foehnEnabled = !flightMode && mainLayers.foehn;
-  const pressureData = usePressureData(foehnEnabled);
+  const { data: pressureData, failed: pressureFailed } = usePressureData(foehnEnabled);
   const pressureSeries = usePressureSeries(pressureData);
   const openPressure = useCallback(() => onPressureOpenChange(true), [onPressureOpenChange]);
   usePressureLine(
     leafletMap,
     foehnEnabled,
     pressureSeries.measured,
+    pressureSeries.metar,
     historyFrame?.time ?? null,
     openPressure,
   );
@@ -1158,9 +1159,12 @@ export default function WindMap({
       {pressureOpen && foehnEnabled && (
         <PressurePanel
           measured={pressureSeries.measured}
+          metar={pressureSeries.metar}
           forecast={pressureSeries.forecast}
           modelRun={pressureData?.modelRun ?? null}
-          loading={pressureData === null}
+          ecmwf={pressureSeries.ecmwf}
+          ecmwfRun={pressureData?.ecmwfRun ?? null}
+          loading={pressureData === null && !pressureFailed}
           onClose={() => onPressureOpenChange(false)}
         />
       )}
