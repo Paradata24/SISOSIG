@@ -532,8 +532,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
   Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
   48 h gemessen (schwarz, 10-min-Werte), METAR (dünn grau punktiert) +
-  Prognose (grau gestrichelt), Farbstreifen der
-  Stufen, **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
+  Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
+  Nulllinie in den Farben der Stufen**, Hintergrund weiß, die Stufengrenzen
+  als dünne farbige Linien in der Farbe der Stufe, die dort beginnt (Wunsch
+  des Projektbesitzers, Nov. 2026; vorher blasse Streifen über den ganzen
+  Hintergrund; bewusst durchgezogen, nicht gestrichelt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 3. Stunde; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),

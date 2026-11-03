@@ -23,8 +23,10 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // voraus) und ECMWF (blau gestrichelt, 72 h voraus, seit Nov. 2026).
 // Darunter ein zweites, flacheres Diagramm: Temperatur-Differenz Innsbruck −
 // Bozen (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
-// höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
-// Karte (dieselben Farben wie die Windskala, über 3 hPa rot). Die Quellen
+// höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
+// ist in den Farbstufen der Karte gefärbt (dieselben Farben wie die
+// Windskala, über 3 hPa rot), die Stufengrenzen stehen als farbige Linien
+// im weißen Hintergrund (siehe AREA_OPACITY / STEP_LINE_*). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt). Die Zeitachse ist STÜNDLICH
@@ -77,7 +79,14 @@ const FORECAST_DASH = "5 3";
 // es sich klar vom grauen ICON-CH1 abhebt. Reicht 72 h voraus, ICON-CH1 33 h.
 const ECMWF_COLOR = "#2563eb";
 const MEASURED_COLOR = "#18181b";
-const BAND_OPACITY = 0.3;
+// Fläche zwischen gemessener Kurve und Nulllinie in den Farben der Stufen
+// (Wunsch des Projektbesitzers, Nov. 2026; vorher waren die Stufen als blasse
+// Streifen über den ganzen Hintergrund gelegt). Der Hintergrund ist jetzt
+// weiß, die Stufengrenzen stehen als dünne farbige Linien darin
+// (STEP_LINE_*): jede in der Farbe der Stufe, die dort beginnt.
+const AREA_OPACITY = 0.6;
+const STEP_LINE_WIDTH = 1.2;
+const STEP_LINE_OPACITY = 0.9;
 
 // --- Temperatur-Differenz ΔT = Innsbruck − Bozen (Nov. 2026, Wunsch des
 // Projektbesitzers) ---
@@ -270,16 +279,23 @@ export default function PressurePanel({
     // das nicht, für die Alpen egal).
     const times: number[] = [];
     for (let t = start; t <= end; t += HOUR_MS) times.push(t);
-    // Farbstreifen je Stufe, oberhalb und unterhalb der Nulllinie gespiegelt
-    // (jede Seite bis zu ihrem Achsenende).
+    // Farbstufen, oberhalb und unterhalb der Nulllinie gespiegelt (jede Seite
+    // bis zu ihrem Achsenende): `bands` füllen nur die Fläche unter der
+    // gemessenen Kurve (Clip), `stepLines` markieren die Grenzen in der Farbe
+    // der Stufe, die dort beginnt (bei 0,5 grün, 1,5 gelb, 2,5 orange, 3 rot).
     const bands: { from: number; to: number; color: string }[] = [];
+    const stepLines: { at: number; color: string }[] = [];
     let lower = 0;
-    for (const step of FOEHN_COLOR_SCALE) {
+    FOEHN_COLOR_SCALE.forEach((step, i) => {
       if (lower < yTop) bands.push({ from: lower, to: Math.min(step.upTo, yTop), color: step.color });
       if (-lower > yBottom) bands.push({ from: Math.max(-step.upTo, yBottom), to: -lower, color: step.color });
+      const next = FOEHN_COLOR_SCALE[i + 1];
+      if (next && Number.isFinite(step.upTo)) {
+        if (step.upTo < yTop) stepLines.push({ at: step.upTo, color: next.color });
+        if (-step.upTo > yBottom) stepLines.push({ at: -step.upTo, color: next.color });
+      }
       lower = step.upTo;
-      if (lower >= Math.max(yTop, -yBottom)) break;
-    }
+    });
     return {
       svgW,
       x,
@@ -287,7 +303,9 @@ export default function PressurePanel({
       ticks,
       times,
       bands,
+      stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
+      measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
@@ -409,17 +427,27 @@ export default function PressurePanel({
           }}
         >
           <svg width={chart.svgW} height={svgH} viewBox={`0 0 ${chart.svgW} ${svgH}`} className="block select-none">
-            {chart.bands.map((band) => (
-              <rect
-                key={`${band.from}`}
-                x={0}
-                width={chart.svgW}
-                y={chart.y(band.to)}
-                height={chart.y(band.from) - chart.y(band.to)}
-                fill={band.color}
-                opacity={BAND_OPACITY}
-              />
-            ))}
+            {/* Fläche zwischen gemessener Kurve und Nulllinie, in den
+                Farben der Stufen: die Stufen-Streifen, ausgeschnitten auf
+                die Fläche unter der Kurve. */}
+            <defs>
+              <clipPath id="dp-area">
+                <path d={chart.measuredAreaPath} />
+              </clipPath>
+            </defs>
+            <g clipPath="url(#dp-area)">
+              {chart.bands.map((band) => (
+                <rect
+                  key={`${band.from}`}
+                  x={0}
+                  width={chart.svgW}
+                  y={chart.y(band.to)}
+                  height={chart.y(band.from) - chart.y(band.to)}
+                  fill={band.color}
+                  opacity={AREA_OPACITY}
+                />
+              ))}
+            </g>
             {chart.ticks.map((tick) => (
               <line
                 key={tick}
@@ -429,6 +457,19 @@ export default function PressurePanel({
                 y2={chart.y(tick)}
                 stroke={tick === 0 ? "#18181b" : "#e4e4e7"}
                 strokeWidth={tick === 0 ? 1.2 : 1}
+              />
+            ))}
+            {/* Stufengrenzen als farbige Linien (über dem Gitter). */}
+            {chart.stepLines.map((line) => (
+              <line
+                key={`s${line.at}`}
+                x1={0}
+                x2={chart.svgW}
+                y1={chart.y(line.at)}
+                y2={chart.y(line.at)}
+                stroke={line.color}
+                strokeWidth={STEP_LINE_WIDTH}
+                opacity={STEP_LINE_OPACITY}
               />
             ))}
             {/* Temperatur-Diagramm: Gitter, Fläche (rot oberhalb, blau
