@@ -24,9 +24,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Darunter ein zweites, flacheres Diagramm: Temperatur-Differenz Innsbruck −
 // Bozen (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
-// ist in den Farbstufen der Karte gefärbt (dieselben Farben wie die
-// Windskala, über 3 hPa rot), die Stufengrenzen stehen als farbige Linien
-// im weißen Hintergrund (siehe AREA_OPACITY / STEP_LINE_*). Die Quellen
+// ist rot (oberhalb) bzw. blau (unterhalb), die Farbstufen der Karte stehen
+// als farbige Linien im weißen Hintergrund (siehe AREA_* / STEP_LINE_*). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt). Die Zeitachse ist STÜNDLICH
@@ -79,12 +78,15 @@ const FORECAST_DASH = "5 3";
 // es sich klar vom grauen ICON-CH1 abhebt. Reicht 72 h voraus, ICON-CH1 33 h.
 const ECMWF_COLOR = "#2563eb";
 const MEASURED_COLOR = "#18181b";
-// Fläche zwischen gemessener Kurve und Nulllinie in den Farben der Stufen
-// (Wunsch des Projektbesitzers, Nov. 2026; vorher waren die Stufen als blasse
-// Streifen über den ganzen Hintergrund gelegt). Der Hintergrund ist jetzt
-// weiß, die Stufengrenzen stehen als dünne farbige Linien darin
+// Fläche zwischen gemessener Kurve und Nulllinie zweifarbig wie im
+// ΔT-Diagramm: rot oberhalb (Süd höher), blau unterhalb (Nord höher) —
+// nach einer Skizze des Projektbesitzers (Nov. 2026; vorher waren die Stufen
+// als blasse Streifen über den ganzen Hintergrund gelegt). Der Hintergrund
+// ist weiß, die Stufengrenzen stehen als dünne farbige Linien darin
 // (STEP_LINE_*): jede in der Farbe der Stufe, die dort beginnt.
-const AREA_OPACITY = 0.6;
+const AREA_OPACITY = 0.35;
+const AREA_ABOVE_FILL = "#dc2626";
+const AREA_BELOW_FILL = "#2563eb";
 const STEP_LINE_WIDTH = 1.2;
 const STEP_LINE_OPACITY = 0.9;
 
@@ -279,22 +281,15 @@ export default function PressurePanel({
     // das nicht, für die Alpen egal).
     const times: number[] = [];
     for (let t = start; t <= end; t += HOUR_MS) times.push(t);
-    // Farbstufen, oberhalb und unterhalb der Nulllinie gespiegelt (jede Seite
-    // bis zu ihrem Achsenende): `bands` füllen nur die Fläche unter der
-    // gemessenen Kurve (Clip), `stepLines` markieren die Grenzen in der Farbe
-    // der Stufe, die dort beginnt (bei 0,5 grün, 1,5 gelb, 2,5 orange, 3 rot).
-    const bands: { from: number; to: number; color: string }[] = [];
+    // Stufengrenzen als Linien, oberhalb und unterhalb der Nulllinie
+    // gespiegelt (soweit die Achse reicht), in der Farbe der Stufe, die dort
+    // beginnt (bei 0,5 grün, 1,5 gelb, 2,5 orange, 3 rot).
     const stepLines: { at: number; color: string }[] = [];
-    let lower = 0;
     FOEHN_COLOR_SCALE.forEach((step, i) => {
-      if (lower < yTop) bands.push({ from: lower, to: Math.min(step.upTo, yTop), color: step.color });
-      if (-lower > yBottom) bands.push({ from: Math.max(-step.upTo, yBottom), to: -lower, color: step.color });
       const next = FOEHN_COLOR_SCALE[i + 1];
-      if (next && Number.isFinite(step.upTo)) {
-        if (step.upTo < yTop) stepLines.push({ at: step.upTo, color: next.color });
-        if (-step.upTo > yBottom) stepLines.push({ at: -step.upTo, color: next.color });
-      }
-      lower = step.upTo;
+      if (!next || !Number.isFinite(step.upTo)) return;
+      if (step.upTo < yTop) stepLines.push({ at: step.upTo, color: next.color });
+      if (-step.upTo > yBottom) stepLines.push({ at: -step.upTo, color: next.color });
     });
     return {
       svgW,
@@ -302,7 +297,6 @@ export default function PressurePanel({
       y,
       ticks,
       times,
-      bands,
       stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
@@ -427,27 +421,18 @@ export default function PressurePanel({
           }}
         >
           <svg width={chart.svgW} height={svgH} viewBox={`0 0 ${chart.svgW} ${svgH}`} className="block select-none">
-            {/* Fläche zwischen gemessener Kurve und Nulllinie, in den
-                Farben der Stufen: die Stufen-Streifen, ausgeschnitten auf
-                die Fläche unter der Kurve. */}
+            {/* Fläche zwischen gemessener Kurve und Nulllinie: rot oberhalb,
+                blau unterhalb (wie im ΔT-Diagramm darunter). */}
             <defs>
-              <clipPath id="dp-area">
-                <path d={chart.measuredAreaPath} />
+              <clipPath id="dp-above">
+                <rect x={0} y={PAD_TOP} width={chart.svgW} height={chart.y(0) - PAD_TOP} />
+              </clipPath>
+              <clipPath id="dp-below">
+                <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + CHART_H - chart.y(0)} />
               </clipPath>
             </defs>
-            <g clipPath="url(#dp-area)">
-              {chart.bands.map((band) => (
-                <rect
-                  key={`${band.from}`}
-                  x={0}
-                  width={chart.svgW}
-                  y={chart.y(band.to)}
-                  height={chart.y(band.from) - chart.y(band.to)}
-                  fill={band.color}
-                  opacity={AREA_OPACITY}
-                />
-              ))}
-            </g>
+            <path d={chart.measuredAreaPath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-above)" />
+            <path d={chart.measuredAreaPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-below)" />
             {chart.ticks.map((tick) => (
               <line
                 key={tick}
