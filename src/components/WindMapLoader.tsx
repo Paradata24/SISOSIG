@@ -23,6 +23,8 @@ export default function WindMapLoader({
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
+  pressureOpen,
+  onPressureOpenChange,
   onDataLoaded,
   flightMode,
   lastUpdated,
@@ -45,6 +47,9 @@ export default function WindMapLoader({
   /** Geöffnete Station (null = keine), siehe WindMap. */
   selectedStationCode: string | null;
   onSelectStation: (stationCode: string | null) => void;
+  /** Druck-Verlaufsbalken der Föhn-Linie offen, siehe WindMap. */
+  pressureOpen: boolean;
+  onPressureOpenChange: (open: boolean) => void;
   /** Zeitpunkt jedes erfolgreichen Abrufs der Live-Werte, siehe WindMap. */
   onDataLoaded: (time: Date) => void;
   /** Flugmodus an/aus und was er braucht, siehe WindMap/FlightMode. */
@@ -65,6 +70,8 @@ export default function WindMapLoader({
       onViewportStationsChange={onViewportStationsChange}
       selectedStationCode={selectedStationCode}
       onSelectStation={onSelectStation}
+      pressureOpen={pressureOpen}
+      onPressureOpenChange={onPressureOpenChange}
       onDataLoaded={onDataLoaded}
       flightMode={flightMode}
       lastUpdated={lastUpdated}

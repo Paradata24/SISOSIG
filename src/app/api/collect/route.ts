@@ -3,6 +3,8 @@ import { SOURCE_IDS, WIND_SOURCES, type MeasurementRow, type SourceId } from "@/
 import { saveStationList } from "@/lib/stationList";
 import { saveSourceStatus, type SourceOutcome } from "@/lib/sourceStatus";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
+import { fetchMetarPressure } from "@/lib/metar";
+import { PRESSURE_STATUS_NAME } from "@/lib/pressure";
 
 // Sammel-Route: ruft alle Wetterdienste ab (Liste in src/lib/sources.ts,
 // Logik je Quelle in src/lib/) und schreibt die Windwerte in die
@@ -17,6 +19,9 @@ import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 //  - die Stationsliste (Tabelle wind_stations: Name, Lage, Höhe; Okt. 2026)
 //  - den Zustand jeder Quelle (Tabelle wind_status, src/lib/sourceStatus.ts):
 //    Daraus zeigt die Karte den Hinweis "… liefert gerade keine Daten".
+//  - seit Nov. 2026 den Luftdruck (QNH) der Flughäfen Innsbruck und Bozen für
+//    die Föhn-Anzeige (Tabelle pressure_values, src/lib/metar.ts; Zustand in
+//    wind_status unter "druck"). Ein Fehler dort betrifft den Wind nicht.
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -172,6 +177,71 @@ async function collectSource(
   return { source, values, error: null, stations };
 }
 
+// Luftdruck der Flughäfen (Föhn-Anzeige, src/lib/pressure.ts) holen und
+// speichern. Jeder Lauf schreibt die METAR der letzten 3 h (wenige Zeilen):
+// Ein verpasster Lauf oder eine verspätete Meldung füllt sich so von selbst
+// auf. Ganz getrennt vom Wind — scheitert es, wird es nur gemeldet.
+async function collectPressure(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  fetchedAt: string,
+): Promise<SourceOutcome> {
+  const outcome = (values: number, error: string | null): SourceOutcome => ({
+    source: PRESSURE_STATUS_NAME,
+    values,
+    error,
+  });
+  let rows: object[];
+  try {
+    rows = (await fetchMetarPressure(HISTORY_WINDOW_MS / (60 * 60 * 1000))).map((p) => ({
+      station: p.station,
+      kind: "metar",
+      valid_at: p.observedAt,
+      qnh_hpa: p.qnhHpa,
+      fetched_at: fetchedAt,
+    }));
+  } catch (err) {
+    console.error("Luftdruck (METAR) nicht abrufbar:", err);
+    return outcome(0, `Abruf: ${String(err)}`);
+  }
+  if (rows.length === 0) return outcome(0, "Keine METAR-Meldung erhalten");
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
+      {
+        method: "POST",
+        headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) return outcome(rows.length, `Speichern: Status ${res.status}: ${await res.text()}`);
+  } catch (err) {
+    return outcome(rows.length, `Speichern: ${String(err)}`);
+  }
+  return outcome(rows.length, null);
+}
+
+// Alte Zeilen einer Tabelle löschen (Aufräumen, unkritisch). true = geklappt.
+async function deleteOlderThan(
+  url: string,
+  headers: Record<string, string>,
+  label: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers,
+      signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+    });
+    if (res.ok) return true;
+    console.error(`WARNUNG: Aufräumen alter ${label} schlug fehl (Status ${res.status})`);
+  } catch (err) {
+    console.error(`WARNUNG: Aufräumen alter ${label} schlug fehl:`, err);
+  }
+  return false;
+}
+
 export async function POST(request: Request) {
   // 1) Zugriffsschutz: nur mit korrektem Bearer-Token ausführen.
   const cronSecret = process.env.CRON_SECRET;
@@ -203,10 +273,14 @@ export async function POST(request: Request) {
 
   // 2) Alle Quellen gleichzeitig abrufen, jede speichert für sich (siehe
   //    collectSource). Eine gescheiterte Quelle hält die übrigen nicht auf.
+  //    Der Luftdruck der Flughäfen läuft gleichzeitig mit (collectPressure).
   const now = Date.now();
-  const runs = await Promise.all(
-    SOURCE_IDS.map((source) => collectSource(source, supabaseUrl, supabaseHeaders, now)),
-  );
+  const [runs, pressure] = await Promise.all([
+    Promise.all(
+      SOURCE_IDS.map((source) => collectSource(source, supabaseUrl, supabaseHeaders, now)),
+    ),
+    collectPressure(supabaseUrl, supabaseHeaders, new Date(now).toISOString()),
+  ]);
   const perSource = Object.fromEntries(runs.map((r) => [r.source, r.values]));
   const errors = Object.fromEntries(
     runs.filter((r) => r.error !== null).map((r) => [r.source, r.error]),
@@ -220,7 +294,7 @@ export async function POST(request: Request) {
   const statusError = await saveSourceStatus(
     supabaseUrl,
     supabaseHeaders,
-    runs,
+    [...runs, pressure],
     new Date(now).toISOString(),
   );
   if (statusError) {
@@ -234,6 +308,7 @@ export async function POST(request: Request) {
         sources: perSource,
         failedSources,
         errors,
+        pressure: { values: pressure.values, error: pressure.error },
         sourceStatusOk: statusError === null,
       },
       { status: 502 },
@@ -252,29 +327,21 @@ export async function POST(request: Request) {
     console.error(`WARNUNG: Stationsliste nicht gespeichert: ${stationListError}`);
   }
 
-  // 5) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen.
+  // 5) Aufräumen: Einträge älter als RETENTION_DAYS Tage löschen — Windwerte
+  //    und Luftdruck (Messungen wie Prognosen der Flughäfen).
   const cutoff = new Date(now - RETENTION_MS).toISOString();
-  let deleted = true;
-  try {
-    const deleteRes = await fetch(
+  const [deleted, pressureDeleted] = await Promise.all([
+    deleteOlderThan(
       `${supabaseUrl}/rest/v1/wind_measurements?measured_at=lt.${encodeURIComponent(cutoff)}`,
-      {
-        method: "DELETE",
-        headers: supabaseHeaders,
-        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
-      },
-    );
-    if (!deleteRes.ok) {
-      // Aufräumen ist unkritisch — Fehler nur protokollieren, nicht abbrechen.
-      console.error(
-        `WARNUNG: Aufräumen alter Einträge schlug fehl (Status ${deleteRes.status})`,
-      );
-      deleted = false;
-    }
-  } catch (err) {
-    console.error("WARNUNG: Aufräumen alter Einträge schlug fehl:", err);
-    deleted = false;
-  }
+      supabaseHeaders,
+      "Einträge",
+    ),
+    deleteOlderThan(
+      `${supabaseUrl}/rest/v1/pressure_values?valid_at=lt.${encodeURIComponent(cutoff)}`,
+      supabaseHeaders,
+      "Druckwerte",
+    ),
+  ]);
 
   return NextResponse.json({
     ok: true,
@@ -282,9 +349,10 @@ export async function POST(request: Request) {
     sources: perSource,
     failedSources,
     errors,
+    pressure: { values: pressure.values, error: pressure.error },
     stationListOk: stationListError === null,
     sourceStatusOk: statusError === null,
     cleanupBefore: cutoff,
-    cleanupOk: deleted,
+    cleanupOk: deleted && pressureDeleted,
   });
 }

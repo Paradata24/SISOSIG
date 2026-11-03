@@ -32,6 +32,10 @@ import {
 // (WindRosePicker), mit der man die Windrichtung wählt; die Hänge im Lee
 // werden dann rot. Gerechnet in src/components/terrain.ts.
 //
+// Darunter seit Nov. 2026 die Föhn-Linie (Druckdifferenz der Flughäfen Bozen
+// und Innsbruck, src/components/pressure.ts) — als einzige Ebene von Haus aus
+// an, weil sie klein ist und die Windkarte kaum verändert.
+//
 // Ganz oben lässt sich seit Nov. 2026 auch der Zeitbalken (Zeitrad unten)
 // ausblenden (Wunsch des Projektbesitzers); WindApp zeigt dann nur die
 // aktuellen Werte.
@@ -50,6 +54,11 @@ export type MainLayers = {
   kk7: boolean;
   /** Kabel = Luftfahrthindernisse (src/components/flight/cables.ts). */
   cables: boolean;
+  /**
+   * Föhn-Linie Innsbruck–Bozen mit der Druckdifferenz der Flughäfen
+   * (src/components/pressure.ts, Nov. 2026). Von Haus aus an.
+   */
+  foehn: boolean;
   /** Von Hand gewählte Jahres- und Tageszeit der KK7-Karte (src/lib/kk7.ts). */
   kk7Season: Kk7Season;
   kk7Time: Kk7TimeOfDay;
@@ -61,12 +70,15 @@ export type MainLayers = {
   leeFrom: CompassDirection | null;
 };
 
-type LayerSwitch = "timeSlider" | "kk7" | "cables" | "aspect" | "windRose";
+type LayerSwitch = "timeSlider" | "foehn" | "kk7" | "cables" | "aspect" | "windRose";
 
 const LAYER_ENTRIES: { key: LayerSwitch; label: string; note?: string }[] = [
   // Kein Kartenbild, aber ebenfalls etwas, das man ein- und ausblendet —
   // darum hier ganz oben (Wunsch des Projektbesitzers, Nov. 2026).
   { key: "timeSlider", label: "Zeitbalken", note: "Zeitrad unten, 48 h zurückblättern" },
+  // Föhn-Anzeige (Nov. 2026, Wunsch des Projektbesitzers): Linie mit der
+  // Druckdifferenz der Flughäfen Bozen und Innsbruck.
+  { key: "foehn", label: "Föhn (Druck BZ–IBK)", note: "Druckdifferenz der Flughäfen, antippen für Verlauf" },
   { key: "kk7", label: "KK7-Thermikkarte" },
   // Kabel gibt es nur in Südtirol und erst ab Zoom 11 (CABLE_MIN_ZOOM).
   { key: "cables", label: "Leitungen / Kabel", note: "nur Südtirol, ab Zoomstufe 11" },

@@ -92,6 +92,31 @@ body {
   background: none;
   border: none;
 }
+
+/* Föhn-Schild in der Mitte der Linie Innsbruck–Bozen (src/components/
+   pressure.ts): Druckdifferenz mit Pfeil, Hintergrund in der Farbstufe.
+   Eckig mit dunklem Rahmen wie die Zahlen-Plakette der Windpfeile. */
+.foehn-marker {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.foehn-schild {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  font-family: var(--font-barlow-semi-condensed), Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.1;
+  border: 1.5px solid #18181b;
+  padding: 2px 5px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
 .kabel-schild span {
   display: inline-block;
   transform: translate(-50%, -50%);

@@ -46,6 +46,8 @@ const LAYERS_STORAGE_KEY = "sisosig-ebenen-v1";
 const DEFAULT_LAYERS: MainLayers = {
   // Zeitbalken von Haus aus sichtbar (wie bisher).
   timeSlider: true,
+  // Föhn-Linie Innsbruck–Bozen (Nov. 2026): von Haus aus an.
+  foehn: true,
   kk7: false,
   cables: false,
   kk7Season: "auto",
@@ -64,6 +66,8 @@ function readStoredLayers(): MainLayers | null {
       // Nur ein ausdrückliches "aus" zählt; ältere Speicherstände ohne das
       // Feld zeigen den Zeitbalken wie bisher.
       timeSlider: data.timeSlider !== false,
+      // Wie beim Zeitbalken: nur ein ausdrückliches "aus" zählt.
+      foehn: data.foehn !== false,
       kk7: data.kk7 === true,
       cables: data.cables === true,
       kk7Season: isKk7Season(data.kk7Season) ? data.kk7Season : "auto",
@@ -141,6 +145,12 @@ export default function WindApp() {
   // gewählter Zeitpunkt also stillschweigend verrutschen. null = live.
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
 
+  // Druck-Verlaufsbalken der Föhn-Linie (PressurePanel): wird geöffnet wie eine
+  // Station — Zeitbalken weg, Karte auf "Aktuell". Höchstens einer der beiden
+  // Balken (Wind oder Druck) ist offen. Steht hier oben, weil auch das
+  // Ebenen-Menü ihn schließt (Föhn-Linie aus).
+  const [pressureOpen, setPressureOpen] = useState(false);
+
   // Ebenen der Hauptseite. Wie beim Filter: Gemerktes erst nach dem ersten
   // Bildaufbau übernehmen.
   const [mainLayers, setMainLayers] = useState<MainLayers>(DEFAULT_LAYERS);
@@ -154,6 +164,8 @@ export default function WindApp() {
     // Zeitbalken ausgeblendet → zurück auf "Aktuell", sonst bliebe die Karte
     // unsichtbar auf einem alten Zeitpunkt stehen.
     if (patch.timeSlider === false) setSelectedTime(null);
+    // Föhn-Linie aus → ihr Verlaufsbalken schließt mit.
+    if (patch.foehn === false) setPressureOpen(false);
     setMainLayers((prev) => {
       const next = { ...prev, ...patch };
       try {
@@ -193,7 +205,17 @@ export default function WindApp() {
   const [selectedStationCode, setSelectedStationCode] = useState<string | null>(null);
   const handleSelectStation = useCallback((code: string | null) => {
     setSelectedStationCode(code);
-    if (code !== null) setSelectedTime(null);
+    if (code !== null) {
+      setSelectedTime(null);
+      setPressureOpen(false);
+    }
+  }, []);
+  const handlePressureOpen = useCallback((open: boolean) => {
+    setPressureOpen(open);
+    if (open) {
+      setSelectedStationCode(null);
+      setSelectedTime(null);
+    }
   }, []);
 
   // --- Flugmodus ("GO" im Titel, siehe FlightMode.tsx) ---
@@ -204,6 +226,7 @@ export default function WindApp() {
   const enterFlightMode = useCallback(() => {
     setFlightMode(true);
     setSelectedStationCode(null);
+    setPressureOpen(false);
     setSelectedTime(null);
     // Vollbild blendet am Android-Handy auch die Adressleiste aus. iPhones
     // kennen das für Webseiten nicht — dort passiert einfach nichts.
@@ -372,8 +395,10 @@ export default function WindApp() {
   const showTimeSlider = mainLayers.timeSlider;
   const historyFrame = useMemo(
     () =>
-      selectedStationCode || !showTimeSlider ? null : buildTimelineFrame(timeline, deferredTime),
-    [timeline, deferredTime, selectedStationCode, showTimeSlider],
+      selectedStationCode || pressureOpen || !showTimeSlider
+        ? null
+        : buildTimelineFrame(timeline, deferredTime),
+    [timeline, deferredTime, selectedStationCode, pressureOpen, showTimeSlider],
   );
 
   return (
@@ -487,6 +512,8 @@ export default function WindApp() {
           // Handschuhen trifft man leicht aus Versehen, und der
           // Verlaufsbalken würde die halbe Karte verdecken.
           onSelectStation={flightMode ? ignoreStationSelect : handleSelectStation}
+          pressureOpen={pressureOpen && !flightMode}
+          onPressureOpenChange={handlePressureOpen}
           onDataLoaded={setLastUpdated}
           flightMode={flightMode}
           lastUpdated={lastUpdated}
@@ -500,7 +527,7 @@ export default function WindApp() {
           reicht bis zum Seitenende. Über das Ebenen-Menü lässt er sich
           ganz ausblenden (Nov. 2026, Wunsch des Projektbesitzers); dann steht
           auch "Zuletzt aktualisiert" nirgends. */}
-      {inBrowser && selectedStationCode === null && !flightMode && showTimeSlider && (
+      {inBrowser && selectedStationCode === null && !pressureOpen && !flightMode && showTimeSlider && (
         <div className="absolute inset-x-0 bottom-0 z-[1000]">
           <TimeSlider
             slots={slots}

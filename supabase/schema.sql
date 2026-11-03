@@ -138,3 +138,16 @@ as $$
 $$;
 revoke execute on function public.wind_latest() from public, anon, authenticated;
 grant execute on function public.wind_latest() to service_role;
+
+-- Luftdruck der Flughäfen Innsbruck und Bozen (Föhn-Anzeige, gemessen und
+-- ICON-CH1-Prognose). Erklärungen in supabase/druck.sql.
+create table if not exists public.pressure_values (
+  station text not null,
+  kind text not null,
+  valid_at timestamptz not null,
+  qnh_hpa real not null,
+  model_run timestamptz,
+  fetched_at timestamptz not null default now(),
+  primary key (station, kind, valid_at)
+);
+alter table public.pressure_values enable row level security;
