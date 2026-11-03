@@ -517,10 +517,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Projektbesitzers).
 - **Gespeichert** in der eigenen Tabelle `pressure_values`
   (`supabase/druck.sql`, Spalte `kind`: `station`, `metar`, `icon_ch1`):
-  Messungen schreibt der Sammler **nur jede halbe Stunde** (Wunsch des
-  Projektbesitzers, `PRESSURE_EVERY_MINUTES` in `/api/collect`), jeweils die
-  letzten 3 h — die 10-Minuten-Auflösung bleibt, ein neuer Wert kommt bis zu
-  30 min später (Zustand in
+  Messungen schreibt der Sammler, jeweils die letzten 3 h (Zustand in
   `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
   Edge Function (`refreshPressure`, `PRESSURE_MODELS`, eigene Laufprüfung je
   Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
@@ -920,8 +917,8 @@ Projektbesitzers entfernt:
   cacht `src/lib/geosphere.ts` die Messwerte 120 s statt 60 s. Nicht
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht. Seit Nov. 2026 fragt der
-  Sammler zusätzlich jede halbe Stunde den Druck von Innsbruck-Flughafen ab
-  (`src/lib/stationPressure.ts`, 2 Anfragen pro Stunde).
+  Sammler zusätzlich alle 5 min den Druck von Innsbruck-Flughafen ab
+  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde).
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
   10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den

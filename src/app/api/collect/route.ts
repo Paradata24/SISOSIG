@@ -189,12 +189,8 @@ async function collectSource(
 //   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
 //                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts — zum
 //                    Vergleich (dünne graue Linie im Diagramm)
-// NUR JEDE HALBE STUNDE (Wunsch des Projektbesitzers, Nov. 2026; vorher bei
-// jedem 5-Minuten-Lauf): Der Druck ändert sich langsam, und die Flughäfen
-// melden ohnehin nur alle 30–60 min. Jeder dieser Läufe schreibt beides für
-// die letzten 3 h — die 10-Minuten-Auflösung bleibt also erhalten, ein
-// verpasster Lauf oder ein verspäteter Wert füllt sich beim nächsten von
-// selbst auf. Folge: Ein neuer Druckwert erscheint bis zu 30 min später.
+// Jeder Lauf schreibt beides für die letzten 3 h (wenige Zeilen): Ein
+// verpasster Lauf oder ein verspäteter Wert füllt sich so von selbst auf.
 // Ganz getrennt vom Wind — scheitert etwas, wird es nur gemeldet.
 async function collectPressure(
   supabaseUrl: string,
@@ -269,11 +265,6 @@ async function collectPressure(
   };
 }
 
-// Takt der Druckabfrage (siehe collectPressure). Der Cron-Job läuft zu :00,
-// :05, … — abgefragt wird im jeweils ersten Lauf nach :00 und :30.
-const PRESSURE_EVERY_MINUTES = 30;
-const COLLECT_EVERY_MINUTES = 5;
-
 // Alte Zeilen einer Tabelle löschen (Aufräumen, unkritisch). true = geklappt.
 async function deleteOlderThan(
   url: string,
@@ -327,12 +318,11 @@ export async function POST(request: Request) {
   //    collectSource). Eine gescheiterte Quelle hält die übrigen nicht auf.
   //    Der Luftdruck der Flughäfen läuft gleichzeitig mit (collectPressure).
   const now = Date.now();
-  const pressureDue = new Date(now).getUTCMinutes() % PRESSURE_EVERY_MINUTES < COLLECT_EVERY_MINUTES;
   const [runs, pressure] = await Promise.all([
     Promise.all(
       SOURCE_IDS.map((source) => collectSource(source, supabaseUrl, supabaseHeaders, now)),
     ),
-    pressureDue ? collectPressure(supabaseUrl, supabaseHeaders, now) : Promise.resolve(null),
+    collectPressure(supabaseUrl, supabaseHeaders, now),
   ]);
   const perSource = Object.fromEntries(runs.map((r) => [r.source, r.values]));
   const errors = Object.fromEntries(
@@ -347,7 +337,7 @@ export async function POST(request: Request) {
   const statusError = await saveSourceStatus(
     supabaseUrl,
     supabaseHeaders,
-    pressure ? [...runs, pressure] : runs,
+    [...runs, pressure],
     new Date(now).toISOString(),
   );
   if (statusError) {
@@ -361,7 +351,7 @@ export async function POST(request: Request) {
         sources: perSource,
         failedSources,
         errors,
-        pressure: pressure ? { values: pressure.values, error: pressure.error } : "nicht dran (nur alle 30 min)",
+        pressure: { values: pressure.values, error: pressure.error },
         sourceStatusOk: statusError === null,
       },
       { status: 502 },
@@ -402,7 +392,7 @@ export async function POST(request: Request) {
     sources: perSource,
     failedSources,
     errors,
-    pressure: pressure ? { values: pressure.values, error: pressure.error } : "nicht dran (nur alle 30 min)",
+    pressure: { values: pressure.values, error: pressure.error },
     stationListOk: stationListError === null,
     sourceStatusOk: statusError === null,
     cleanupBefore: cutoff,
