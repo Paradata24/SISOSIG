@@ -40,21 +40,33 @@ const LINE_WEIGHT = 5;
 const OUTLINE_WEIGHT = 8;
 const OUTLINE_COLOR = "#18181b";
 
-/** Daten von /api/pressure, solange `enabled`; null = (noch) keine. */
-export function usePressureData(enabled: boolean): PressurePayload | null {
+/**
+ * Daten von /api/pressure, solange `enabled`; data null = (noch) keine.
+ * `failed` = der letzte Abruf ist gescheitert (der Druck-Verlaufsbalken zeigt
+ * dann nicht endlos "wird geladen").
+ */
+export function usePressureData(enabled: boolean): {
+  data: PressurePayload | null;
+  failed: boolean;
+} {
   const [data, setData] = useState<PressurePayload | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     const load = () => {
       fetch("/api/pressure")
         .then(async (res) => {
-          if (!res.ok) return;
+          if (!res.ok) throw new Error(`Status ${res.status}`);
           const payload = (await res.json()) as PressurePayload;
-          if (!cancelled) setData(payload);
+          if (cancelled) return;
+          setData(payload);
+          setFailed(false);
         })
         // Netzaussetzer: die bisherigen Werte bleiben stehen.
-        .catch(() => {});
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
     };
     load();
     const interval = setInterval(() => {
@@ -70,7 +82,7 @@ export function usePressureData(enabled: boolean): PressurePayload | null {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [enabled]);
-  return data;
+  return { data, failed };
 }
 
 /** Gemessene und prognostizierte Differenz-Reihe (Bozen − Innsbruck). */

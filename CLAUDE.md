@@ -495,8 +495,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
   festgelegt** (Nov. 2026; zuerst die Stufen von burnair), dieselben Farben
-  wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis 2
-  grün, unter 3 gelb, 3 bis unter 4 orange, ab 4 rot (`FOEHN_COLOR_SCALE`, gilt
+  wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis
+  1,5 grün, bis 2,5 gelb, bis 3 orange, darüber rot (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
   (`PRESSURE_STALE_AFTER_MS`). **Quellen** (METAR, ICON-CH1) stehen unter
   „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des
@@ -514,7 +514,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
   Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
   48 h gemessen (schwarz) + Prognose (grau gestrichelt), Farbstreifen der
-  Stufen; dabei verschwindet der Zeitbalken wie bei einer Station
+  Stufen, **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
+  mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**

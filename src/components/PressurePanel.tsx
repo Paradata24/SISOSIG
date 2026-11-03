@@ -20,7 +20,7 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // (schwarz, gemessen) und die ICON-CH1-Prognose (grau gestrichelt) bis zu
 // 33 h voraus. Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
-// Karte (dieselben Farben wie die Windskala, ab 4 hPa rot). Die Quellen
+// Karte (dieselben Farben wie die Windskala, über 3 hPa rot). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt), aber eigenständig — das
@@ -31,9 +31,17 @@ const TIME_LABEL_H = 18;
 const PAD_LEFT = 30; // Platz für die hPa-Zahlen
 const PAD_RIGHT = 8;
 const PAD_TOP = 6;
-// Kleinste Ausdehnung der y-Achse (± hPa): Ruhige Tage bleiben vergleichbar,
-// die 4-hPa-Stufe ist immer zu sehen.
-const Y_MIN_RANGE = 6;
+// Mitwachsende y-Achse wie im Wind-Verlaufsbalken (Wunsch des
+// Projektbesitzers, Nov. 2026): Oben (Süd höher) und unten (Nord höher)
+// reicht sie je mindestens Y_MIN_EXTENT_HPA weit — so ist die Grenze zu Rot
+// (3 hPa) immer zu sehen und ruhige Tage bleiben vergleichbar. Darüber wächst
+// jede Seite für sich in ganzen hPa (Y_STEP_HPA), bis der höchste bzw.
+// tiefste Wert (Messung oder Prognose) mit Y_HEADROOM_HPA Luft hineinpasst.
+// Eine Seite ohne große Werte bleibt also schmal, statt gespiegelt
+// mitzuwachsen.
+const Y_MIN_EXTENT_HPA = 3;
+const Y_STEP_HPA = 1;
+const Y_HEADROOM_HPA = 0.3;
 // Messlücke, ab der die Kurve unterbrochen wird: Bozen meldet stündlich, ein
 // fehlender METAR wird überbrückt, zwei nicht.
 const MEASURED_GAP_MS = 150 * 60 * 1000;
@@ -121,31 +129,35 @@ export default function PressurePanel({
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
     const m = measured.filter(inRange);
     const f = forecast.filter(inRange);
-    const peak = Math.max(Y_MIN_RANGE, ...m.map((p) => Math.abs(p.diff)), ...f.map((p) => Math.abs(p.diff)));
-    const yMax = Math.ceil((peak + 0.5) / 2) * 2;
+    const values = [...m, ...f].map((p) => p.diff);
+    const grow = (extent: number) =>
+      Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
+    const yTop = grow(Math.max(0, ...values));
+    const yBottom = -grow(Math.max(0, ...values.map((v) => -v)));
     const plotW = svgW - PAD_LEFT - PAD_RIGHT;
     const x = (t: number) => PAD_LEFT + ((t - start) / (end - start)) * plotW;
-    const y = (v: number) => PAD_TOP + ((yMax - Math.max(-yMax, Math.min(yMax, v))) / (2 * yMax)) * CHART_H;
-    const tickStep = yMax > 12 ? 4 : 2;
+    const y = (v: number) =>
+      PAD_TOP + ((yTop - Math.max(yBottom, Math.min(yTop, v))) / (yTop - yBottom)) * CHART_H;
+    // Beschriftung: jede hPa, bei großer Spanne jede zweite bzw. vierte.
+    const span = yTop - yBottom;
+    const tickStep = span > 20 ? 4 : span > 10 ? 2 : 1;
     const ticks: number[] = [];
-    for (let v = -yMax; v <= yMax; v += tickStep) ticks.push(v);
+    for (let v = Math.ceil(yBottom / tickStep) * tickStep; v <= yTop; v += tickStep) ticks.push(v);
     // Zeitmarken alle 6 h (Ortszeit), Mitternacht mit Datum.
     const times: number[] = [];
     const first = new Date(start);
     first.setMinutes(0, 0, 0);
     first.setHours(Math.ceil(first.getHours() / 6) * 6);
     for (let t = first.getTime(); t <= end; t += 6 * 60 * 60 * 1000) times.push(t);
-    // Farbstreifen je Stufe, oberhalb und unterhalb der Nulllinie gespiegelt.
+    // Farbstreifen je Stufe, oberhalb und unterhalb der Nulllinie gespiegelt
+    // (jede Seite bis zu ihrem Achsenende).
     const bands: { from: number; to: number; color: string }[] = [];
     let lower = 0;
     for (const step of FOEHN_COLOR_SCALE) {
-      const upper = Math.min(step.upTo, yMax);
-      if (upper > lower) {
-        bands.push({ from: lower, to: upper, color: step.color });
-        bands.push({ from: -upper, to: -lower, color: step.color });
-      }
-      lower = upper;
-      if (lower >= yMax) break;
+      if (lower < yTop) bands.push({ from: lower, to: Math.min(step.upTo, yTop), color: step.color });
+      if (-lower > yBottom) bands.push({ from: Math.max(-step.upTo, yBottom), to: -lower, color: step.color });
+      lower = step.upTo;
+      if (lower >= Math.max(yTop, -yBottom)) break;
     }
     return {
       svgW,
@@ -155,7 +167,6 @@ export default function PressurePanel({
       ticks,
       times,
       bands,
-      yMax,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       nowX: x(now),
