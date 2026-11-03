@@ -62,15 +62,17 @@ const HOUR_MS = 60 * 60 * 1000;
 const Y_MIN_EXTENT_HPA = 3;
 const Y_STEP_HPA = 1;
 const Y_HEADROOM_HPA = 0.3;
-// Die gemessene Druckkurve zeigt nur EINEN Wert je halbe Stunde (zu :00 und
-// :30; Wunsch des Projektbesitzers, Nov. 2026 — mit allen 10-Minuten-Werten
-// war sie zu unruhig). Gespeichert und abgefragt wird weiter alle 10 min;
-// Kopfzeile und Karte zeigen den neuesten Wert.
-const MEASURED_STEP_MINUTES = 30;
-// Messlücke, ab der eine Kurve unterbrochen wird. Druckkurve (halbstündlich):
-// ein fehlender Wert wird überbrückt, zwei nicht. METAR: Bozen meldet
-// stündlich, ein fehlender wird überbrückt, die Nacht (keine Meldungen) nicht.
-const MEASURED_GAP_MS = 75 * 60 * 1000;
+// Die gemessenen Kurven (Druck UND Temperatur) zeigen nur einen Wert alle
+// 20 min (zu :00, :20, :40; Wunsch des Projektbesitzers, Nov. 2026 — mit allen
+// 10-Minuten-Werten waren sie zu unruhig, halbstündlich war ihm zu grob).
+// Gespeichert und abgefragt wird weiter alle 10 min; Kopfzeile und Karte
+// zeigen den neuesten Wert.
+const MEASURED_STEP_MINUTES = 20;
+// Messlücke, ab der eine Kurve unterbrochen wird. Gemessene Kurven (alle
+// 20 min): ein fehlender Wert wird überbrückt, zwei nicht. METAR: Bozen
+// meldet stündlich, ein fehlender wird überbrückt, die Nacht (keine
+// Meldungen) nicht.
+const MEASURED_GAP_MS = 50 * 60 * 1000;
 const METAR_GAP_MS = 150 * 60 * 1000;
 // Vergleichslinie der Flughafen-Meldungen: dünn, hellgrau, punktiert —
 // bewusst zurückhaltend, sie ist nur zum Vergleich da.
@@ -121,7 +123,7 @@ const TIME_TOP = TEMP_TOP + TEMP_H;
 const T_MIN_SPAN_C = 10;
 const T_STEP_C = 5;
 const T_HEADROOM_C = 0.5;
-const TEMP_GAP_MS = 40 * 60 * 1000;
+const TEMP_GAP_MS = MEASURED_GAP_MS;
 const IBK_COLOR = "#18181b";
 const BZ_COLOR = "#b45309";
 const TEMP_WARM_FILL = "#dc2626";
@@ -338,10 +340,9 @@ export default function PressurePanel({
     );
     const end = Math.ceil(Math.max(now + HOUR_MS, lastForecast) / HOUR_MS) * HOUR_MS;
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
-    // Nur die Werte zu :00 und :30 (siehe MEASURED_STEP_MINUTES).
-    const m = measured.filter(
-      (p) => inRange(p) && new Date(p.time).getUTCMinutes() % MEASURED_STEP_MINUTES === 0,
-    );
+    // Nur die Werte zu :00, :20, :40 (siehe MEASURED_STEP_MINUTES).
+    const onStep = (t: number) => new Date(t).getUTCMinutes() % MEASURED_STEP_MINUTES === 0;
+    const m = measured.filter((p) => inRange(p) && onStep(p.time));
     const f = forecast.filter(inRange);
     const mt = metar.filter(inRange);
     const e = ecmwf.filter(inRange);
@@ -363,13 +364,13 @@ export default function PressurePanel({
     for (let v = Math.ceil(yBottom / tickStep) * tickStep; v <= yTop; v += tickStep) ticks.push(v);
     // Temperatur-Diagramm darunter, eigene mitwachsende Achse in °C.
     const inRangeS = ([t]: [number, number]) => t >= start && t <= end;
-    const tN = tempNorth.filter(inRangeS);
-    const tS = tempSouth.filter(inRangeS);
+    const tN = tempNorth.filter((p) => inRangeS(p) && onStep(p[0]));
+    const tS = tempSouth.filter((p) => inRangeS(p) && onStep(p[0]));
     // Prognose nur ab "jetzt" (die Vergangenheit zeigt die Messung).
     const lastHour = now - HOUR_MS;
     const tNf = tempNorthForecast.filter(([t]) => t >= lastHour && t <= end);
     const tSf = tempSouthForecast.filter(([t]) => t >= lastHour && t <= end);
-    const bandM = tempDiff.filter(inRange);
+    const bandM = tempDiff.filter((p) => inRange(p) && onStep(p.time));
     const bandF = tempDiffForecast.filter((p) => p.time >= lastHour && p.time <= end);
     const tAll = [...tN, ...tS, ...tNf, ...tSf].map(([, v]) => v);
     let tLow = tAll.length ? Math.floor((Math.min(...tAll) - T_HEADROOM_C) / T_STEP_C) * T_STEP_C : 0;
