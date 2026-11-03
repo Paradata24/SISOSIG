@@ -36,9 +36,14 @@ const CHART_H = 150;
 // Zwei Zeilen unter dem Diagramm: Stunde, darunter an Mitternacht das Datum.
 const TIME_LABEL_H = 30;
 const PAD_TOP = 6;
-// Breite einer Stunde (px). 30 px lassen Platz für "14" und machen 10-min-
-// Schwankungen sichtbar; 48 h + 72 h ECMWF ergeben gut 3.600 px zum Wischen.
-const PX_PER_HOUR = 30;
+// Breite einer Stunde (px): so breit wie ein Wert-Quadrat im
+// Wind-Verlaufsbalken (Wunsch des Projektbesitzers, Nov. 2026: Stunden viel
+// enger als zuerst mit 30 px). Am Handy sind so gut 20 h auf einmal zu sehen,
+// 48 h + 72 h ECMWF ergeben knapp 2.000 px zum Wischen.
+const PX_PER_HOUR = 16;
+// Beschriftet wird jede dritte Stunde (00, 03, 06 …) — jede Stunde stieße bei
+// 16 px aneinander. Rasterlinien gibt es trotzdem für jede Stunde.
+const LABEL_EVERY_HOURS = 3;
 // Rand links/rechts im Diagramm, damit die äußersten Stundenzahlen nicht
 // abgeschnitten werden.
 const PAD_X = 10;
@@ -340,20 +345,22 @@ export default function PressurePanel({
                     x2={chart.x(t)}
                     y1={PAD_TOP}
                     y2={PAD_TOP + CHART_H + (midnight ? 4 : 0)}
-                    stroke={midnight ? "#71717a" : hour % 6 === 0 ? "#d4d4d8" : "#ececee"}
+                    stroke={midnight ? "#71717a" : hour % LABEL_EVERY_HOURS === 0 ? "#d4d4d8" : "#f0f0f2"}
                     strokeWidth={1}
                   />
-                  <text
-                    x={chart.x(t)}
-                    y={PAD_TOP + CHART_H + 12}
-                    textAnchor="middle"
-                    fontSize={10}
-                    fill={midnight ? "#18181b" : "#71717a"}
-                    fontWeight={midnight ? 600 : 400}
-                    className="tabular-nums"
-                  >
-                    {String(hour).padStart(2, "0")}
-                  </text>
+                  {hour % LABEL_EVERY_HOURS === 0 && (
+                    <text
+                      x={chart.x(t)}
+                      y={PAD_TOP + CHART_H + 12}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fill={midnight ? "#18181b" : "#71717a"}
+                      fontWeight={midnight ? 600 : 400}
+                      className="tabular-nums"
+                    >
+                      {String(hour).padStart(2, "0")}
+                    </text>
+                  )}
                   {midnight && (
                     <text
                       x={chart.x(t) + 2}

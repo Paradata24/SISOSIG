@@ -534,7 +534,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   48 h gemessen (schwarz, 10-min-Werte), METAR (dünn grau punktiert) +
   Prognose (grau gestrichelt), Farbstreifen der
   Stufen, **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
-  Ziehen mit der Maus, `PX_PER_HOUR`; beim Öffnen „jetzt“ in der Mitte,
+  Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
+  Wind-Verlaufsbalken, beschriftet jede 3. Stunde; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
