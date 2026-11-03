@@ -42,3 +42,10 @@ create table if not exists public.pressure_values (
 -- Wie bei den anderen Tabellen: Row Level Security an, OHNE Policies — nur
 -- der service_role Key (Sammler, API-Routen, Edge Function) kommt heran.
 alter table public.pressure_values enable row level security;
+
+-- Seit Nov. 2026 (Wunsch des Projektbesitzers): Temperatur und
+-- Luftfeuchtigkeit der beiden Wetterstationen (nur bei kind = 'station',
+-- sonst leer) — für die Temperatur-Differenz Innsbruck − Bozen im
+-- Druck-Verlaufsbalken. Ein zweites Ausführen schadet nicht.
+alter table public.pressure_values add column if not exists temp_c real;
+alter table public.pressure_values add column if not exists humidity_pct real;

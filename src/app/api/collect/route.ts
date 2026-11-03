@@ -183,7 +183,9 @@ async function collectSource(
 // zwei Arten in der Tabelle pressure_values:
 //   kind 'station' = QNH alle 10 min, selbst gerechnet aus den Wetterstationen
 //                    Innsbruck-Flughafen (GeoSphere) und Bozen (Land),
-//                    src/lib/stationPressure.ts — die Hauptkurve
+//                    src/lib/stationPressure.ts — die Hauptkurve; dazu
+//                    Temperatur und Feuchte der Stationen (temp_c,
+//                    humidity_pct)
 //   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
 //                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts — zum
 //                    Vergleich (dünne graue Linie im Diagramm)
@@ -206,7 +208,17 @@ async function collectPressure(
   if (metar.status === "fulfilled") {
     if (metar.value.length === 0) errors.push("METAR: keine Meldung erhalten");
     for (const p of metar.value) {
-      rows.push({ station: p.station, kind: "metar", valid_at: p.observedAt, qnh_hpa: p.qnhHpa, fetched_at: fetchedAt });
+      // temp_c/humidity_pct mit leer: Supabase verlangt bei mehreren Zeilen
+      // in einem Schreibvorgang überall dieselben Spalten.
+      rows.push({
+        station: p.station,
+        kind: "metar",
+        valid_at: p.observedAt,
+        qnh_hpa: p.qnhHpa,
+        temp_c: null,
+        humidity_pct: null,
+        fetched_at: fetchedAt,
+      });
     }
   } else {
     console.error("Luftdruck (METAR) nicht abrufbar:", metar.reason);
@@ -215,7 +227,15 @@ async function collectPressure(
   if (stations.status === "fulfilled") {
     errors.push(...stations.value.errors);
     for (const p of stations.value.values) {
-      rows.push({ station: p.station, kind: "station", valid_at: p.measuredAt, qnh_hpa: p.qnhHpa, fetched_at: fetchedAt });
+      rows.push({
+        station: p.station,
+        kind: "station",
+        valid_at: p.measuredAt,
+        qnh_hpa: p.qnhHpa,
+        temp_c: p.tempC,
+        humidity_pct: p.humidityPct,
+        fetched_at: fetchedAt,
+      });
     }
   } else {
     console.error("Luftdruck (Stationen) nicht abrufbar:", stations.reason);

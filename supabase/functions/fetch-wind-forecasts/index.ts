@@ -749,6 +749,11 @@ interface PressureRow {
   kind: string;
   valid_at: string;
   qnh_hpa: number;
+  // Lufttemperatur 2 m (°C) an der Flughafenhöhe — für das
+  // Temperatur-Diagramm im Druck-Verlaufsbalken (Nov. 2026). Kostet nichts
+  // extra (zweite Werte-Reihe derselben Anfrage). Spalte temp_c aus
+  // supabase/druck.sql — muss VOR dem Deploy angelegt sein.
+  temp_c: number | null;
   model_run: string | null;
   fetched_at: string;
 }
@@ -766,7 +771,7 @@ async function fetchPressureForecast(
     longitude: stations.map((s) => s.lng).join(","),
     elevation: stations.map((s) => s.elevationM).join(","),
     models: model.api,
-    hourly: "surface_pressure",
+    hourly: "surface_pressure,temperature_2m",
     past_hours: String(PAST_HOURS),
     forecast_hours: String(model.hours),
     timeformat: "unixtime",
@@ -795,14 +800,17 @@ async function fetchPressureForecast(
     const times = Array.isArray(hourly?.time) ? (hourly.time as Array<number | null>) : undefined;
     if (!hourly || !times) return;
     const surface = hourlySeries(hourly, "surface_pressure", model.api);
+    const temperature = hourlySeries(hourly, "temperature_2m", model.api);
     times.forEach((t, k) => {
       const value = surface?.[k];
       if (typeof t !== "number" || typeof value !== "number") return;
+      const temp = temperature?.[k];
       rows.push({
         station: station.code,
         kind: model.kind,
         valid_at: new Date(t * 1000).toISOString(),
         qnh_hpa: round1(qnhFromSurface(value, station.elevationM)),
+        temp_c: typeof temp === "number" ? round1(temp) : null,
         model_run: modelRunIso,
         fetched_at: fetchedAt,
       });

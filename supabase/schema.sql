@@ -148,6 +148,9 @@ create table if not exists public.pressure_values (
   qnh_hpa real not null,
   model_run timestamptz,
   fetched_at timestamptz not null default now(),
+  -- Temperatur und Luftfeuchtigkeit der Wetterstationen (nur kind 'station').
+  temp_c real,
+  humidity_pct real,
   primary key (station, kind, valid_at)
 );
 alter table public.pressure_values enable row level security;

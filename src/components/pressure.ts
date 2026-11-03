@@ -95,6 +95,16 @@ export function usePressureSeries(data: PressurePayload | null): {
   metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   ecmwf: PressureDiffPoint[];
+  /** Temperatur-Differenz Innsbruck − Bozen (°C); negativ = Innsbruck kälter. */
+  tempDiff: PressureDiffPoint[];
+  /** Dasselbe aus der ICON-CH1-Prognose (stündlich). */
+  tempDiffForecast: PressureDiffPoint[];
+  /** Gemessene Temperaturen je Seite (°C), aufsteigend. */
+  tempNorth: Array<[number, number]>;
+  tempSouth: Array<[number, number]>;
+  /** ICON-CH1-Temperatur je Seite (°C). */
+  tempNorthForecast: Array<[number, number]>;
+  tempSouthForecast: Array<[number, number]>;
 } {
   return useMemo(
     () => ({
@@ -107,6 +117,22 @@ export function usePressureSeries(data: PressurePayload | null): {
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
         : [],
+      // ΔT = Innsbruck − Bozen (Wunsch des Projektbesitzers: Innsbruck kälter
+      // → negativ). pairPressureSeries rechnet "zweites minus erstes" —
+      // deshalb hier Bozen zuerst. Ältere Antworten haben das Feld nicht.
+      tempDiff: data?.temperature
+        ? pairPressureSeries(data.temperature[FOEHN_PAIR.south], data.temperature[FOEHN_PAIR.north])
+        : [],
+      tempDiffForecast: data?.forecastTemperature
+        ? pairPressureSeries(
+            data.forecastTemperature[FOEHN_PAIR.south],
+            data.forecastTemperature[FOEHN_PAIR.north],
+          )
+        : [],
+      tempNorth: data?.temperature?.[FOEHN_PAIR.north] ?? [],
+      tempSouth: data?.temperature?.[FOEHN_PAIR.south] ?? [],
+      tempNorthForecast: data?.forecastTemperature?.[FOEHN_PAIR.north] ?? [],
+      tempSouthForecast: data?.forecastTemperature?.[FOEHN_PAIR.south] ?? [],
       // Ältere Antworten (vor ECMWF) haben das Feld nicht.
       ecmwf: data?.ecmwf
         ? pairPressureSeries(data.ecmwf[FOEHN_PAIR.north], data.ecmwf[FOEHN_PAIR.south])

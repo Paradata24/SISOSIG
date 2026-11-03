@@ -46,14 +46,37 @@ const BOZEN = { scode: "83200MS", elevationM: 245 };
 // Gültige Werte (QNH in hPa); alles außerhalb wäre ein Messfehler.
 const QNH_MIN_HPA = 940;
 const QNH_MAX_HPA = 1070;
+// Ebenso für Temperatur (°C) und Luftfeuchtigkeit (%).
+const TEMP_MIN_C = -40;
+const TEMP_MAX_C = 45;
 
-/** Ein selbst gerechneter QNH. */
+function tempOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= TEMP_MIN_C && value <= TEMP_MAX_C
+    ? round1(value)
+    : null;
+}
+
+function humidityOrNull(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
+    ? Math.round(value)
+    : null;
+}
+
+/**
+ * Ein selbst gerechneter QNH, dazu Temperatur und Luftfeuchtigkeit derselben
+ * Station und Messzeit (seit Nov. 2026, Wunsch des Projektbesitzers: für die
+ * Temperatur-Differenz Innsbruck − Bozen im Druck-Verlaufsbalken; die
+ * Feuchte wird vorerst nur gespeichert). null, wenn der Dienst den Wert
+ * nicht lieferte.
+ */
 export interface StationPressure {
   /** Flughafen-Seite (LOWI = Innsbruck, LIPB = Bozen). */
   station: PressureStationId;
   /** Messzeit, ISO (UTC). */
   measuredAt: string;
   qnhHpa: number;
+  tempC: number | null;
+  humidityPct: number | null;
 }
 
 /** QNH aus dem Druck in Stationshöhe nach der Normatmosphäre der ICAO (wie die Flughäfen). */
@@ -96,7 +119,8 @@ function bolzanoDate(ms: number): string {
 /** Innsbruck: QNH aus dem Stationsdruck von GeoSphere seit `sinceMs`. */
 async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPressure[]> {
   const params = new URLSearchParams({
-    parameters: "P",
+    // P = Luftdruck, TL = Lufttemperatur, RF = relative Feuchte (je 10 min).
+    parameters: "P,TL,RF",
     station_ids: INNSBRUCK.geosphereId,
     start: new Date(sinceMs).toISOString().slice(0, 16),
     end: new Date(now).toISOString().slice(0, 16),
@@ -108,10 +132,15 @@ async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPres
   if (!res.ok) throw new Error(`GeoSphere antwortete mit Status ${res.status}`);
   const body = (await res.json()) as {
     timestamps?: string[];
-    features?: Array<{ properties?: { parameters?: { P?: { data?: Array<number | null> } } } }>;
+    features?: Array<{
+      properties?: { parameters?: Record<string, { data?: Array<number | null> } | undefined> };
+    }>;
   };
   const times = body.timestamps ?? [];
-  const values = body.features?.[0]?.properties?.parameters?.P?.data ?? [];
+  const parameters = body.features?.[0]?.properties?.parameters ?? {};
+  const values = parameters.P?.data ?? [];
+  const temps = parameters.TL?.data ?? [];
+  const humidity = parameters.RF?.data ?? [];
   const result: StationPressure[] = [];
   times.forEach((time, i) => {
     const p = values[i];
@@ -119,7 +148,13 @@ async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPres
     if (typeof p !== "number" || Number.isNaN(t)) return;
     const qnh = qnhFromStation(p, INNSBRUCK.elevationM);
     if (!plausible(qnh)) return;
-    result.push({ station: "LOWI", measuredAt: new Date(t).toISOString(), qnhHpa: round1(qnh) });
+    result.push({
+      station: "LOWI",
+      measuredAt: new Date(t).toISOString(),
+      qnhHpa: round1(qnh),
+      tempC: tempOrNull(temps[i]),
+      humidityPct: humidityOrNull(humidity[i]),
+    });
   });
   return result;
 }
@@ -150,9 +185,11 @@ async function fetchBolzanoSeries(sensor: string, sinceMs: number, now: number):
 
 /** Bozen: QNH aus reduziertem Druck und Temperatur der Station 83200MS seit `sinceMs`. */
 async function fetchBozen(sinceMs: number, now: number): Promise<StationPressure[]> {
-  const [reduced, temperature] = await Promise.all([
+  // Feuchte (LF) ist nur ein Zusatz: Fehlt sie, bleibt der Rest.
+  const [reduced, temperature, humidity] = await Promise.all([
     fetchBolzanoSeries("LD.RED", sinceMs, now),
     fetchBolzanoSeries("LT", sinceMs, now),
+    fetchBolzanoSeries("LF", sinceMs, now).catch(() => new Map<string, number>()),
   ]);
   const result: StationPressure[] = [];
   for (const [iso, red] of reduced) {
@@ -160,7 +197,13 @@ async function fetchBozen(sinceMs: number, now: number): Promise<StationPressure
     if (temp === undefined) continue; // ohne Temperatur keine saubere Rückrechnung
     const qnh = qnhFromStation(stationFromReduced(red, temp, BOZEN.elevationM), BOZEN.elevationM);
     if (!plausible(qnh)) continue;
-    result.push({ station: "LIPB", measuredAt: iso, qnhHpa: round1(qnh) });
+    result.push({
+      station: "LIPB",
+      measuredAt: iso,
+      qnhHpa: round1(qnh),
+      tempC: tempOrNull(temp),
+      humidityPct: humidityOrNull(humidity.get(iso)),
+    });
   }
   return result.sort((a, b) => a.measuredAt.localeCompare(b.measuredAt));
 }

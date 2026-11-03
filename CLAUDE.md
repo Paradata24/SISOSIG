@@ -531,15 +531,40 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   einzige Ebene **von Haus aus an** (gemerkt als `foehn`). Linie zwischen
   den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
   Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
-  48 h gemessen (schwarz, 10-min-Werte), METAR (dünn grau punktiert) +
-  Prognose (grau gestrichelt), Farbstreifen der
-  Stufen, **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
+  48 h gemessen (schwarz; Druck- und Temperaturkurven **nur ein Wert alle
+  20 min** zu :00/:20/:40 — Wunsch des Projektbesitzers,
+  `MEASURED_STEP_MINUTES`; gespeichert wird weiter alle 10 min, Kopfzeile und
+  Karte zeigen den neuesten Wert), METAR
+  (dünn grau punktiert) +
+  Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
+  Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
+  einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
+  Stufengrenzen als dünne farbige Linien in der Farbe der Stufe, die dort
+  beginnt (vorher blasse Streifen über den ganzen Hintergrund; bewusst
+  durchgezogen, nicht gestrichelt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 3. Stunde; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
+- **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
+  Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
+  Zeitachse. Gemessene Temperaturen beider Stationen als Linien (IBK
+  schwarz, BZ braun), die **Fläche zwischen den Linien = ΔT Innsbruck −
+  Bozen**: rot, wo Innsbruck wärmer ist, blau, wo kälter (erste Fassung
+  zeigte nur ΔT um eine Nulllinie). Nach „jetzt“ die **ICON-CH1-Temperatur**
+  beider Stationen gestrichelt, Fläche blasser (`temperature_2m` in derselben
+  Anfrage der Edge Function, Spalte `temp_c` der Prognosezeilen). ΔT und
+  beide Temperaturen in der Kopfzeile. Bewusst NICHT höhenbereinigt
+  (Innsbruck ~330 m höher, normal ~2 °C kälter). Temperatur und Feuchte der
+  Stationen (`TL`/`RF` bei GeoSphere, `LT`/`LF` in Bozen) speichert der
+  Sammler in `temp_c`/`humidity_pct` (`kind = 'station'`); die Feuchte wird
+  noch nicht angezeigt.
+- **Lesbarkeit der Druckkurve** (Nov. 2026, Vorschlag auf Wunsch des
+  Projektbesitzers): Prognosen vor „jetzt“ blass (`FORECAST_PAST_OPACITY`),
+  senkrechte Rasterlinien nur alle 3 h, blassere Stufenlinien, hPa-Zahlen
+  ab 7 hPa Spanne nur jede zweite, kurze Legende mit Linienmustern.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
