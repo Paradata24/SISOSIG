@@ -1,5 +1,6 @@
 import { DATABASE_TIMEOUT_MS } from "./wind";
 import { SOURCE_IDS, type SourceId } from "./sources";
+import type { PRESSURE_STATUS_NAME } from "./pressure";
 
 // Zustand jeder Datenquelle in der Datenbank (Punkt 14 der Code-Durchsicht,
 // Nov. 2026): Tabelle wind_status (supabase/ein-sammler.sql).
@@ -18,9 +19,14 @@ import { SOURCE_IDS, type SourceId } from "./sources";
 // für eine spätere Überwachung (Punkt 12): Alles, was regelmäßig laufen muss,
 // steht an einer Stelle.
 
-/** Ergebnis eines Sammel-Laufs für eine Quelle. */
+/**
+ * Ergebnis eines Sammel-Laufs für eine Quelle. Neben den Windquellen auch der
+ * Luftdruck der Flughäfen ("druck", PRESSURE_STATUS_NAME in src/lib/pressure.ts)
+ * — der zählt aber nicht als Windquelle (kein gelber Hinweis, nicht in
+ * collectorIsSilent).
+ */
 export interface SourceOutcome {
-  source: SourceId;
+  source: SourceId | typeof PRESSURE_STATUS_NAME;
   /** Zahl der Messwerte, die gespeichert werden sollten. */
   values: number;
   /** null = alles gut; sonst, was schiefging (Abruf, keine Station, Speichern). */

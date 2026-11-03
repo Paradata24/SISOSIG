@@ -54,7 +54,9 @@
 // Mehr als MAX_STATIONS_PER_RUN Stationen fragt ein Anstoß deshalb nicht ab;
 // der Rest folgt beim nächsten Anstoß (siehe dort).
 // Der Höhenwind (ICON-D2, s. u.) kostet je Lauf nur 1 Aufruf pro Station
-// (2 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag.
+// (2 Werte-Reihen), bei 2 Stationen also 16 Aufrufe am Tag. Ebenso der
+// Luftdruck der Flughäfen Innsbruck und Bozen (Föhn-Anzeige, s. u.): 2
+// Standorte × 8 Läufe = 16 Aufrufe am Tag.
 //
 // --- GESCHEITERTE STATIONEN NACHHOLEN (Nov. 2026, Punkt 13) ---
 // Scheitert beim Abruf eines neuen Laufs ein Teil der Blöcke (Zeitlimit,
@@ -161,6 +163,32 @@ const UPPER_WIND_STATIONS: Record<string, { lat: number; lng: number; pressureHP
 const UPPER_MODEL_DB = "icon_d2_upper";
 const UPPER_MODEL_API = "dwd_icon_d2";
 const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.json`;
+
+// --- LUFTDRUCK DER FLUGHÄFEN (ICON-CH1, Nov. 2026, Wunsch des Projektbesitzers) ---
+// Für die Föhn-Anzeige (Druckdifferenz Bozen − Innsbruck, src/lib/pressure.ts)
+// die Druckprognose von ICON-CH1 an den Flughäfen Innsbruck (LOWI) und Bozen
+// (LIPB). Gemessen wird dort der QNH aus der Flugwetter-Meldung (METAR,
+// gespeichert vom Sammler). Damit Messung und Prognose vergleichbar sind,
+// rechnet diese Funktion den Druck AM BODEN (surface_pressure, von Open-Meteo
+// auf die angegebene Flughafenhöhe bezogen) nach derselben Regel in den QNH
+// um wie die Flughäfen (Normatmosphäre, siehe qnhFromSurface). Der Druck auf
+// Meereshöhe des Modells (pressure_msl) rechnet anders und lag am 03.11.2026
+// in Innsbruck rund 2 hPa über dem METAR; der so gerechnete QNH traf ihn auf
+// wenige Zehntel.
+// Länger als der Wind (33 statt 12 h, so weit rechnet ICON-CH1): Für Föhn
+// ist auch der nächste Tag interessant. Kostet trotzdem nur 1 Aufruf je
+// Standort (gezählt wird erst ab 2 Wochen Zeitraum).
+// Gespeichert in der eigenen Tabelle pressure_values (supabase/druck.sql) als
+// kind = 'icon_ch1'. Eigene Laufprüfung wie beim Höhenwind (refreshPressure):
+// Fehlt die Prognose, kommt sie beim nächsten Cron-Anstoß.
+// Kopie von PRESSURE_STATIONS aus src/lib/pressure.ts (Deno kann dort nicht
+// importieren) — bei einer Änderung beide Stellen anfassen.
+const PRESSURE_STATIONS: Record<string, { lat: number; lng: number; elevationM: number }> = {
+  LOWI: { lat: 47.2602, lng: 11.3439, elevationM: 581 }, // Innsbruck Flughafen
+  LIPB: { lat: 46.4603, lng: 11.3264, elevationM: 240 }, // Bozen Flughafen
+};
+const PRESSURE_KIND = "icon_ch1";
+const PRESSURE_FORECAST_HOURS = 33;
 
 // Metadaten des Modells bei Open-Meteo: wann der neueste Lauf gestartet und
 // wann er bereitgestellt wurde (Unix-Sekunden). Statische Datei, zählt nicht
@@ -696,6 +724,127 @@ async function refreshUpperWind(
   }
 }
 
+// QNH aus dem Druck am Boden (hPa) und der Höhe (m) nach der Normatmosphäre
+// der ICAO — dieselbe Regel, nach der die Flughäfen ihren QNH melden.
+function qnhFromSurface(surfaceHpa: number, elevationM: number): number {
+  return Math.pow(Math.pow(surfaceHpa, 0.190263) + 8.417286e-5 * elevationM, 1 / 0.190263);
+}
+
+interface PressureRow {
+  station: string;
+  kind: string;
+  valid_at: string;
+  qnh_hpa: number;
+  model_run: string | null;
+  fetched_at: string;
+}
+
+// Druckprognose (ICON-CH1) für die Flughäfen in PRESSURE_STATIONS, als QNH.
+async function fetchPressureForecast(
+  fetchedAt: string,
+  modelRunIso: string | null,
+): Promise<PressureRow[]> {
+  const codes = Object.keys(PRESSURE_STATIONS);
+  const stations = codes.map((code) => ({ code, ...PRESSURE_STATIONS[code] }));
+  const params = new URLSearchParams({
+    latitude: stations.map((s) => s.lat).join(","),
+    longitude: stations.map((s) => s.lng).join(","),
+    elevation: stations.map((s) => s.elevationM).join(","),
+    models: MODEL_API,
+    hourly: "surface_pressure",
+    past_hours: String(PAST_HOURS),
+    forecast_hours: String(PRESSURE_FORECAST_HOURS),
+    timeformat: "unixtime",
+  });
+  const res = await fetch(`${OPEN_METEO_BASE}/v1/forecast?${params}`, {
+    signal: AbortSignal.timeout(OPEN_METEO_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    throw new Error(`Open-Meteo (Luftdruck) antwortete mit Status ${res.status}: ${await res.text()}`);
+  }
+  const data: unknown = await res.json();
+  if (data && typeof data === "object" && (data as { error?: boolean }).error) {
+    throw new Error(`Open-Meteo (Luftdruck) meldet Fehler: ${(data as { reason?: string }).reason}`);
+  }
+  const locations = (Array.isArray(data) ? data : [data]) as OpenMeteoLocation[];
+  if (locations.length !== stations.length) {
+    throw new Error(
+      `Open-Meteo (Luftdruck) lieferte ${locations.length} Standorte, erwartet waren ${stations.length}`,
+    );
+  }
+
+  const rows: PressureRow[] = [];
+  locations.forEach((loc, i) => {
+    const station = stations[i];
+    const hourly = loc.hourly;
+    const times = Array.isArray(hourly?.time) ? (hourly.time as Array<number | null>) : undefined;
+    if (!hourly || !times) return;
+    const surface = hourlySeries(hourly, "surface_pressure", MODEL_API);
+    times.forEach((t, k) => {
+      const value = surface?.[k];
+      if (typeof t !== "number" || typeof value !== "number") return;
+      rows.push({
+        station: station.code,
+        kind: PRESSURE_KIND,
+        valid_at: new Date(t * 1000).toISOString(),
+        qnh_hpa: round1(qnhFromSurface(value, station.elevationM)),
+        model_run: modelRunIso,
+        fetched_at: fetchedAt,
+      });
+    });
+  });
+  return rows;
+}
+
+// Druckprognose auffrischen — wie refreshUpperWind unabhängig vom Wind, mit
+// eigener Laufprüfung (über die ICON-CH1-Metadaten, die handleRequest schon
+// gelesen hat). Ein Fehler hier (z. B. Tabelle pressure_values fehlt noch)
+// betrifft nur den Luftdruck und wird in der Antwort gemeldet.
+async function refreshPressure(
+  supabaseUrl: string,
+  headers: Record<string, string>,
+  run: { runIso: string; availableMs: number } | null,
+  force: boolean,
+): Promise<Record<string, unknown>> {
+  try {
+    if (!force) {
+      let last: number | null = null;
+      const res = await fetch(
+        `${supabaseUrl}/rest/v1/pressure_values?kind=eq.${PRESSURE_KIND}` +
+          `&select=fetched_at&order=fetched_at.desc&limit=1`,
+        { headers, signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS) },
+      );
+      if (res.ok) {
+        const found = (await res.json()) as Array<{ fetched_at?: string }>;
+        const t = found[0]?.fetched_at ? Date.parse(found[0].fetched_at) : NaN;
+        last = Number.isNaN(t) ? null : t;
+      }
+      const upToDate =
+        last !== null &&
+        (run ? last >= run.availableMs : Date.now() - last < MIN_REFETCH_WITHOUT_META_MS);
+      if (upToDate) return { skipped: true, modelRun: run?.runIso ?? null };
+    }
+    const rows = await fetchPressureForecast(new Date().toISOString(), run?.runIso ?? null);
+    if (rows.length === 0) return { saved: 0, error: "Keine Druckwerte erhalten" };
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
+      {
+        method: "POST",
+        headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(rows),
+        signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
+      },
+    );
+    if (!res.ok) {
+      return { saved: 0, error: `Supabase-Upsert schlug fehl (Status ${res.status}): ${await res.text()}` };
+    }
+    return { saved: rows.length, modelRun: run?.runIso ?? null };
+  } catch (err) {
+    console.error("Luftdruck (ICON-CH1):", err);
+    return { saved: 0, error: (err as Error).message };
+  }
+}
+
 // Neuester Lauf eines Modells laut Open-Meteo (Voreinstellung: ICON-CH1):
 // Startzeit (nur für die Antwort) und Zeitpunkt der Bereitstellung. null,
 // wenn die Datei nicht lesbar ist.
@@ -794,6 +943,8 @@ export async function handleRequest(request: Request): Promise<Response> {
   const upperWind = await refreshUpperWind(supabaseUrl, supabaseHeaders, force);
 
   const modelRun = await loadModelRun();
+  // Luftdruck der Flughäfen (Föhn-Anzeige), ebenfalls unabhängig vom Wind.
+  const pressure = await refreshPressure(supabaseUrl, supabaseHeaders, modelRun, force);
   if (!force) {
     const lastFetchedMs = await loadLastFetchedMs(supabaseUrl, supabaseHeaders);
     if (lastFetchedMs !== null) {
@@ -813,6 +964,7 @@ export async function handleRequest(request: Request): Promise<Response> {
           lastFetched: new Date(lastFetchedMs).toISOString(),
           retry,
           upperWind,
+          pressure,
         });
       }
     }
@@ -918,6 +1070,7 @@ export async function handleRequest(request: Request): Promise<Response> {
     deferred: deferred.length,
     statusOk,
     upperWind,
+    pressure,
     cleanupBefore: cutoff,
     cleanupOk,
   });

@@ -36,6 +36,11 @@ import { useKk7Tiles } from "@/components/flight/kk7";
 import { useAspectLayer, useLeeLayer } from "@/components/terrain";
 import WindRosePicker from "@/components/WindRosePicker";
 import { TERRAIN_MIN_ZOOM } from "@/lib/terrain";
+import { usePressureData, usePressureLine, usePressureSeries } from "@/components/pressure";
+
+// Druck-Verlaufsbalken der Föhn-Linie: wie der Wind-Verlaufsbalken erst
+// geladen, wenn er gebraucht wird (eigenes kleines Paket).
+const PressurePanel = dynamic(() => import("@/components/PressurePanel"), { ssr: false });
 
 // Der Verlaufsbalken wird ERST GELADEN, WENN ER GEBRAUCHT WIRD (also beim
 // ersten Klick auf eine Station) und steckt deshalb in einem eigenen
@@ -760,6 +765,8 @@ export default function WindMap({
   onViewportStationsChange,
   selectedStationCode,
   onSelectStation,
+  pressureOpen,
+  onPressureOpenChange,
   onDataLoaded,
   flightMode,
   lastUpdated,
@@ -790,6 +797,13 @@ export default function WindMap({
   selectedStationCode: string | null;
   /** Station öffnen (Code) bzw. schließen (null). Muss eine feste Referenz sein. */
   onSelectStation: (stationCode: string | null) => void;
+  /**
+   * Druck-Verlaufsbalken der Föhn-Linie offen (Zustand in WindApp, weil dann
+   * wie bei einer geöffneten Station der Zeitbalken verschwindet).
+   */
+  pressureOpen: boolean;
+  /** Druck-Verlaufsbalken öffnen/schließen. Muss eine feste Referenz sein. */
+  onPressureOpenChange: (open: boolean) => void;
   /**
    * Meldet jeden erfolgreichen Abruf der Live-Werte (Zeitpunkt). WindApp zeigt
    * ihn als "Zuletzt aktualisiert" unter dem Rad. Muss eine feste Referenz sein.
@@ -999,6 +1013,21 @@ export default function WindMap({
     };
   }, [onDataLoaded]);
 
+  // Föhn-Linie Innsbruck–Bozen (Druckdifferenz der Flughäfen,
+  // src/components/pressure.ts): nur auf der Hauptseite und wenn im
+  // Ebenen-Menü an. Zeigt den Wert zum Zeitpunkt des Zeitbalkens.
+  const foehnEnabled = !flightMode && mainLayers.foehn;
+  const pressureData = usePressureData(foehnEnabled);
+  const pressureSeries = usePressureSeries(pressureData);
+  const openPressure = useCallback(() => onPressureOpenChange(true), [onPressureOpenChange]);
+  usePressureLine(
+    leafletMap,
+    foehnEnabled,
+    pressureSeries.measured,
+    historyFrame?.time ?? null,
+    openPressure,
+  );
+
   // Zoom-Obergrenze je Modus. MapContainer übernimmt maxZoom nur beim ersten
   // Aufbau, deshalb hier nachziehen.
   useEffect(() => {
@@ -1124,6 +1153,15 @@ export default function WindMap({
           // zur Seite) — seit Okt. 2026 gibt es keinen Aktualisieren-Knopf
           // mehr, der das früher angestoßen hat.
           refreshToken={lastUpdated?.getTime() ?? 0}
+        />
+      )}
+      {pressureOpen && foehnEnabled && (
+        <PressurePanel
+          measured={pressureSeries.measured}
+          forecast={pressureSeries.forecast}
+          modelRun={pressureData?.modelRun ?? null}
+          loading={pressureData === null}
+          onClose={() => onPressureOpenChange(false)}
         />
       )}
     </div>

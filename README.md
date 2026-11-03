@@ -199,6 +199,15 @@ Antwort) an und ergänzt die Sicht `wind_stations_latest` um eine Spalte;
 gelöscht oder verändert wird nichts. Fehlt es, läuft die Karte im Notbetrieb
 (siehe oben), und der Sammler meldet `"sourceStatusOk": false`.
 
+**Föhn-Anzeige (Nov. 2026), einmalig bei einer bestehenden Datenbank:**
+`supabase/druck.sql` auf dieselbe Weise ausführen (in der Datenbank des
+Projekts schon geschehen). Es legt die Tabelle `pressure_values` an (Luftdruck
+der Flughäfen Innsbruck und Bozen: gemessen aus dem METAR und die
+ICON-CH1-Prognose); gelöscht oder verändert wird nichts. **Danach** die Edge
+Function `fetch-wind-forecasts` neu deployen (sie schreibt die Druckprognose).
+Fehlt die Tabelle, meldet der Sammler `"pressure": {"error": …}`, der Wind
+läuft unverändert weiter.
+
 Angestoßen wird die Route von **Supabase Cron** (früher lief das über einen
 GitHub-Actions-Workflow; der ist entfernt, damit nicht doppelt geschrieben
 wird). Jeder Aufruf muss den Header `Authorization: Bearer <CRON_SECRET>`
@@ -473,6 +482,12 @@ der Edge Function nichts. Details:
   Cron-Anstoß (16 Aufrufe am Tag). Weitere Stationen: `UPPER_WIND_STATIONS`
   in `src/lib/wind.ts` (Druckfläche) **und** in der Edge Function (mit
   Koordinaten) ergänzen, dann die Funktion neu deployen.
+- **Luftdruck der Flughäfen (Föhn-Anzeige, Nov. 2026)** für Innsbruck (LOWI)
+  und Bozen (LIPB): ICON-CH1-Druck am Boden, nach der Normatmosphäre in den
+  QNH umgerechnet (wie die Flughäfen ihn melden), letzte 12 h + nächste 33 h,
+  in der Tabelle `pressure_values` (`kind = 'icon_ch1'`). Eigene Laufprüfung
+  wie beim Höhenwind (16 Aufrufe am Tag). Die Koordinaten stehen in
+  `PRESSURE_STATIONS` in `src/lib/pressure.ts` **und** in der Edge Function.
 - **Wann gibt es neue Daten?** ICON-CH1 rechnet **alle 3 Stunden** neu
   (Läufe um 00, 03, 06, … UTC). Bei Open-Meteo steht ein Lauf rund
   **2 h 20 min** nach dem Start bereit, also etwa um 02:20, 05:20, 08:20, …

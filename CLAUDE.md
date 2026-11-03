@@ -127,6 +127,10 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken; mit `?hours=8` nur die letzten 8 h (Punkt 27), gerechnet immer mit 3 h Vorlauf |
 | `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
+| `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Vorzeichen (Bozen − Innsbruck), Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
+| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (nur Server: Sammler und Notbetrieb von `/api/pressure`) |
+| `src/app/api/pressure/route.ts` | Luftdruck der Flughäfen (48 h gemessen + ICON-CH1-Prognose) aus `pressure_values`; Notbetrieb direkt beim METAR-Dienst |
+| `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
 | `src/app/page.tsx` / `layout.tsx` | Seitengerüst, Schrift, Hell-/Dunkelmodus-Schalter (Klasse am `<html>`) |
@@ -478,6 +482,36 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   steht je Quelle in `SOURCE_INTERVAL_MINUTES` (`src/lib/wind.ts`); im
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
+**Föhn-Anzeige: Druckdifferenz Bozen − Innsbruck (Nov. 2026, Wunsch des Projektbesitzers)**
+- Vorbild: die „Live-Druckdifferenzen" der burnair Map (Quelle dort nicht
+  öffentlich). **Daten von den Flughäfen** (Wunsch des Projektbesitzers):
+  QNH aus dem METAR von Innsbruck (LOWI, alle 30 min) und Bozen (LIPB,
+  stündlich), über das Aviation Weather Center der NOAA (frei, ohne
+  Schlüssel; `src/lib/metar.ts`). Beide Seiten rechnen nach derselben Regel
+  (Normatmosphäre) — die Landesdienste rechnen verschieden (GeoSphere lag am
+  03.11.2026 1,6 hPa über dem METAR), deshalb bewusst nicht gemischt. Bozen
+  hat im Landesnetz keine Wetterstation am Flughafen. Nachteil: nur ganze hPa.
+- **Vorzeichen Bozen − Innsbruck:** positiv = Süd höher (Südföhn-Lage),
+  negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
+  Schild vom hohen zum tiefen Druck. Farbstufen wie bei burnair (bis 1 hPa
+  weiß, bis 2 gelb, bis 4 orange, bis 8 rot, darüber schwarz;
+  `FOEHN_COLOR_SCALE`), grau ab 2 h ohne Messung (`PRESSURE_STALE_AFTER_MS`).
+- **Gespeichert** in der eigenen Tabelle `pressure_values`
+  (`supabase/druck.sql`): Messungen schreibt der Sammler (Zustand in
+  `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
+  Edge Function (`refreshPressure`, eigene Laufprüfung über die
+  ICON-CH1-Metadaten, 33 h voraus). Die Prognose ist der ICON-CH1-Druck **am
+  Boden**, nach derselben Regel in den QNH umgerechnet (`qnhFromSurface`) —
+  nicht `pressure_msl`, das lag in Innsbruck ~2 hPa daneben.
+  `/api/pressure` hat einen Notbetrieb direkt beim METAR-Dienst.
+- **Anzeige:** nur Hauptseite, im Ebenen-Menü „Föhn (Druck BZ–IBK)", als
+  einzige Ebene **von Haus aus an** (gemerkt als `foehn`). Linie zwischen
+  den Flughäfen, in der Mitte ein Schild (über den Windpfeilen), folgt dem
+  Zeitbalken. Antippen öffnet den Druck-Verlaufsbalken (`PressurePanel`):
+  48 h gemessen (schwarz) + Prognose (grau gestrichelt), Farbstreifen der
+  Stufen; dabei verschwindet der Zeitbalken wie bei einer Station
+  (`pressureOpen` in `WindApp`).
+
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
   GO"; Okt. 2026, Wunsch des Projektbesitzers, vorher nur ein blaues „GO").
@@ -814,7 +848,8 @@ Projektbesitzers entfernt:
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  der Zeitfenster-Konstanten und von `UPPER_WIND_STATIONS` (mit Koordinaten).
+  der Zeitfenster-Konstanten, von `UPPER_WIND_STATIONS` (mit Koordinaten) und
+  von `PRESSURE_STATIONS` (Flughäfen, `src/lib/pressure.ts`).
   Wird `HISTORY_HOURS` / `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in
   `src/lib/wind.ts` geändert, muss die Edge Function mitgezogen werden (und
   danach im Supabase-Dashboard neu deployt). Die früheren Kopien von
@@ -851,7 +886,7 @@ Projektbesitzers entfernt:
   `supabase/` (Spalte `source`, `measured_at`-Index, Aufräumskripte, seit
   Okt. 2026 `datenbank-aufraeumen.sql`, `collect-cron-tresor.sql`,
   `stationsliste.sql` und `zeitbalken-funktion.sql`, seit Nov. 2026
-  `ein-sammler.sql`) — bei
+  `ein-sammler.sql` und `druck.sql`) — bei
   einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
   bzw. `collect-cron.sql`. In der Datenbank des Projekts sind alle ausgeführt.
 - **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`
@@ -871,7 +906,8 @@ Projektbesitzers entfernt:
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
   Anfrage kosten erst ab 10 Reihen extra. Stand Nov. 2026: ~650 Stationen
   (alle Stationen der Karte, seit Punkt 14) × 8 Modellläufe ≈ 5.200 am Tag,
-  plus 16 für den Höhenwind (2 Stationen × 8); das Nachholen gescheiterter
+  plus 16 für den Höhenwind (2 Stationen × 8) und 16 für den Luftdruck der
+  Flughäfen (2 × 8); das Nachholen gescheiterter
   Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
   pro Minute** (und 5.000 pro Stunde): Der erste Lauf mit allen 657 Stationen
   (01.11.2026) bekam für die letzten 57 Status 429. Deshalb fragt ein Anstoß
