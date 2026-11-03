@@ -88,6 +88,11 @@ export interface PressurePayload {
    * aufsteigend.
    */
   stations: Record<PressureStationId, Array<[number, number]>>;
+  /**
+   * Lufttemperatur (°C) derselben Wetterstationen, alle 10 min — für die
+   * Temperatur-Differenz Innsbruck − Bozen (seit Nov. 2026).
+   */
+  temperature: Record<PressureStationId, Array<[number, number]>>;
   /** Zum Vergleich: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
   metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */

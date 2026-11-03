@@ -1163,6 +1163,7 @@ export default function WindMap({
           forecast={pressureSeries.forecast}
           modelRun={pressureData?.modelRun ?? null}
           ecmwf={pressureSeries.ecmwf}
+          tempDiff={pressureSeries.tempDiff}
           ecmwfRun={pressureData?.ecmwfRun ?? null}
           loading={pressureData === null && !pressureFailed}
           onClose={() => onPressureOpenChange(false)}

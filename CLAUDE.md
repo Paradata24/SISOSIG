@@ -540,6 +540,16 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
+- **Temperatur-Differenz ΔT = Innsbruck − Bozen** (Nov. 2026, Wunsch des
+  Projektbesitzers; negativ = Innsbruck kälter): eigenes, flacheres Diagramm
+  unter dem Druck auf derselben Zeitachse, Fläche zur Nulllinie rot
+  (Innsbruck wärmer) bzw. blau (kälter), aktueller Wert in der Kopfzeile
+  (`TEMP_*` in `PressurePanel`). Bewusst die echte, NICHT höhenbereinigte
+  Differenz (Innsbruck liegt ~330 m höher, ΔT um −2 °C ist normal).
+  Temperatur und Luftfeuchtigkeit der beiden Stationen (`TL`/`RF` bei
+  GeoSphere, `LT`/`LF` in Bozen) speichert der Sammler in den Spalten
+  `temp_c`/`humidity_pct` von `pressure_values` (nur `kind = 'station'`); die
+  Feuchte wird noch nicht angezeigt. Eine ΔT-Prognose gibt es noch nicht.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I

@@ -20,7 +20,9 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // schwarz die 10-Minuten-Werte der Stationen (Hauptkurve), dünn grau
 // punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
 // Projektbesitzers) — und die Prognosen ICON-CH1 (grau gestrichelt, 33 h
-// voraus) und ECMWF (blau gestrichelt, 72 h voraus, seit Nov. 2026). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
+// voraus) und ECMWF (blau gestrichelt, 72 h voraus, seit Nov. 2026).
+// Darunter ein zweites, flacheres Diagramm: Temperatur-Differenz Innsbruck −
+// Bozen (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
 // Karte (dieselben Farben wie die Windskala, über 3 hPa rot). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
@@ -77,6 +79,65 @@ const ECMWF_COLOR = "#2563eb";
 const MEASURED_COLOR = "#18181b";
 const BAND_OPACITY = 0.3;
 
+// --- Temperatur-Differenz ΔT = Innsbruck − Bozen (Nov. 2026, Wunsch des
+// Projektbesitzers) ---
+// Eigenes, flacheres Diagramm UNTER dem Druck, auf derselben Zeitachse
+// (verschiebt sich mit). Negativ = Innsbruck kälter. Allein wegen der Höhe
+// (Innsbruck ~330 m höher) liegt ΔT normal um −2 °C; auffällig wird es, wenn
+// Innsbruck wärmer wird (typisch Südföhn) oder deutlich kälter. Gezeigt wird
+// bewusst die echte, nicht höhenbereinigte Differenz. Fläche zur Nulllinie:
+// rot = Innsbruck wärmer, blau = Innsbruck kälter.
+const TEMP_GAP = 10; // Abstand zwischen Druck- und Temperatur-Diagramm
+const TEMP_H = 72;
+const TEMP_TOP = PAD_TOP + CHART_H + TEMP_GAP;
+const TIME_TOP = TEMP_TOP + TEMP_H;
+// Mitwachsende Achse wie beim Druck: je Seite mindestens 4 °C, dann in
+// 2-°C-Schritten.
+const T_MIN_EXTENT_C = 4;
+const T_STEP_C = 2;
+const T_HEADROOM_C = 0.5;
+const TEMP_GAP_MS = 40 * 60 * 1000;
+const TEMP_WARM_FILL = "#dc2626";
+const TEMP_COLD_FILL = "#2563eb";
+const TEMP_FILL_OPACITY = 0.2;
+
+/** Zahl mit Vorzeichen und einer Nachkommastelle, z. B. "−1,6". */
+function formatSigned(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  const text = Math.abs(rounded).toLocaleString("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return rounded > 0 ? `+${text}` : rounded < 0 ? `−${text}` : text;
+}
+
+// Fläche zwischen Kurve und Nulllinie, je zusammenhängendem Stück ein
+// geschlossener Pfad (Lücken wie bei der Linie).
+function buildAreaPath(
+  points: PressureDiffPoint[],
+  x: (t: number) => number,
+  y: (v: number) => number,
+  maxGapMs: number,
+): string {
+  let d = "";
+  let segment: PressureDiffPoint[] = [];
+  const flush = () => {
+    if (segment.length >= 2) {
+      d += `M${x(segment[0].time).toFixed(1)} ${y(0).toFixed(1)}`;
+      for (const p of segment) d += `L${x(p.time).toFixed(1)} ${y(p.diff).toFixed(1)}`;
+      d += `L${x(segment[segment.length - 1].time).toFixed(1)} ${y(0).toFixed(1)}Z`;
+    }
+    segment = [];
+  };
+  for (const p of points) {
+    const prev = segment[segment.length - 1];
+    if (prev && p.time - prev.time > maxGapMs) flush();
+    segment.push(p);
+  }
+  flush();
+  return d;
+}
+
 /** QNH mit einer Nachkommastelle, z. B. "1019,6". */
 function formatHpa(value: number): string {
   return value.toLocaleString("de-DE", {
@@ -116,6 +177,7 @@ export default function PressurePanel({
   modelRun,
   ecmwf,
   ecmwfRun,
+  tempDiff,
   loading,
   onClose,
 }: {
@@ -128,6 +190,8 @@ export default function PressurePanel({
   /** ECMWF-Prognose (blau gestrichelt). */
   ecmwf: PressureDiffPoint[];
   ecmwfRun: string | null;
+  /** Temperatur-Differenz Innsbruck − Bozen (°C). */
+  tempDiff: PressureDiffPoint[];
   /** true = noch keine Daten geladen. */
   loading: boolean;
   onClose: () => void;
@@ -159,6 +223,7 @@ export default function PressurePanel({
   }, []);
   // Fehlen die Stationswerte, die Flughafen-Meldungen (wie auf der Karte).
   const current = pressureDiffAt(measured, now) ?? pressureDiffAt(metar, now);
+  const currentTemp = pressureDiffAt(tempDiff, now);
 
   const chart = useMemo(() => {
     // Volle Stunden: links 48 h zurück, rechts bis zum Ende der längsten
@@ -188,6 +253,19 @@ export default function PressurePanel({
     const tickStep = span > 20 ? 4 : span > 10 ? 2 : 1;
     const ticks: number[] = [];
     for (let v = Math.ceil(yBottom / tickStep) * tickStep; v <= yTop; v += tickStep) ticks.push(v);
+    // Temperatur-Diagramm darunter, eigene mitwachsende Achse.
+    const td = tempDiff.filter(inRange);
+    const tValues = td.map((p) => p.diff);
+    const growT = (extent: number) =>
+      Math.max(T_MIN_EXTENT_C, Math.ceil((extent + T_HEADROOM_C) / T_STEP_C) * T_STEP_C);
+    const tTop = growT(Math.max(0, ...tValues));
+    const tBottom = -growT(Math.max(0, ...tValues.map((v) => -v)));
+    const ty = (v: number) =>
+      TEMP_TOP + ((tTop - Math.max(tBottom, Math.min(tTop, v))) / (tTop - tBottom)) * TEMP_H;
+    // Das Diagramm ist flach: ab 8 °C Spanne nur jede 4. Grad-Linie.
+    const tTickStep = tTop - tBottom > 16 ? 8 : tTop - tBottom > 8 ? 4 : 2;
+    const tTicks: number[] = [];
+    for (let v = Math.ceil(tBottom / tTickStep) * tTickStep; v <= tTop; v += tTickStep) tTicks.push(v);
     // Jede volle Stunde (Ortszeit; bei Zeitzonen mit halben Stunden passt
     // das nicht, für die Alpen egal).
     const times: number[] = [];
@@ -213,9 +291,13 @@ export default function PressurePanel({
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
+      ty,
+      tTicks,
+      tempPath: buildPath(td, x, ty, TEMP_GAP_MS),
+      tempAreaPath: buildAreaPath(td, x, ty, TEMP_GAP_MS),
       nowX: x(now),
     };
-  }, [now, measured, metar, forecast, ecmwf]);
+  }, [now, measured, metar, forecast, ecmwf, tempDiff]);
 
   // Beim ersten Zeichnen "jetzt" in die Mitte schieben.
   useEffect(() => {
@@ -225,7 +307,7 @@ export default function PressurePanel({
     scrolledToNow.current = true;
   }, [chart, measured.length, forecast.length]);
 
-  const svgH = PAD_TOP + CHART_H + TIME_LABEL_H;
+  const svgH = TIME_TOP + TIME_LABEL_H;
   const currentColor = current ? foehnColor(current.diff) : null;
 
   return (
@@ -272,6 +354,12 @@ export default function PressurePanel({
               {formatPressureDiff(current.diff)}
             </span>
             <span className="text-zinc-500 dark:text-zinc-400">{describeFoehn(current.diff)}</span>
+            {currentTemp && (
+              <span>
+                ΔT IBK−BZ{" "}
+                <strong className="tabular-nums">{formatSigned(currentTemp.diff)} °C</strong>
+              </span>
+            )}
           </>
         ) : (
           <span className="text-zinc-500">{loading ? "Druckwerte werden geladen…" : "Kein aktueller Messwert"}</span>
@@ -286,6 +374,15 @@ export default function PressurePanel({
               key={tick}
               className="absolute right-1 -translate-y-1/2 tabular-nums"
               style={{ top: chart.y(tick) }}
+            >
+              {tick > 0 ? `+${tick}` : tick < 0 ? `−${-tick}` : "0"}
+            </span>
+          ))}
+          {chart.tTicks.map((tick) => (
+            <span
+              key={`t${tick}`}
+              className="absolute right-1 -translate-y-1/2 tabular-nums"
+              style={{ top: chart.ty(tick) }}
             >
               {tick > 0 ? `+${tick}` : tick < 0 ? `−${-tick}` : "0"}
             </span>
@@ -334,6 +431,29 @@ export default function PressurePanel({
                 strokeWidth={tick === 0 ? 1.2 : 1}
               />
             ))}
+            {/* Temperatur-Diagramm: Gitter, Fläche (rot oberhalb, blau
+                unterhalb der Nulllinie), Linie. */}
+            <defs>
+              <clipPath id="dt-warm">
+                <rect x={0} y={TEMP_TOP} width={chart.svgW} height={chart.ty(0) - TEMP_TOP} />
+              </clipPath>
+              <clipPath id="dt-cold">
+                <rect x={0} y={chart.ty(0)} width={chart.svgW} height={TEMP_TOP + TEMP_H - chart.ty(0)} />
+              </clipPath>
+            </defs>
+            {chart.tTicks.map((tick) => (
+              <line
+                key={`tg${tick}`}
+                x1={0}
+                x2={chart.svgW}
+                y1={chart.ty(tick)}
+                y2={chart.ty(tick)}
+                stroke={tick === 0 ? "#18181b" : "#e4e4e7"}
+                strokeWidth={tick === 0 ? 1.2 : 1}
+              />
+            ))}
+            <path d={chart.tempAreaPath} fill={TEMP_WARM_FILL} opacity={TEMP_FILL_OPACITY} clipPath="url(#dt-warm)" />
+            <path d={chart.tempAreaPath} fill={TEMP_COLD_FILL} opacity={TEMP_FILL_OPACITY} clipPath="url(#dt-cold)" />
             {chart.times.map((t) => {
               const date = new Date(t);
               const hour = date.getHours();
@@ -343,15 +463,23 @@ export default function PressurePanel({
                   <line
                     x1={chart.x(t)}
                     x2={chart.x(t)}
+                    y1={TEMP_TOP}
+                    y2={TIME_TOP + (midnight ? 4 : 0)}
+                    stroke={midnight ? "#71717a" : hour % LABEL_EVERY_HOURS === 0 ? "#d4d4d8" : "#f0f0f2"}
+                    strokeWidth={1}
+                  />
+                  <line
+                    x1={chart.x(t)}
+                    x2={chart.x(t)}
                     y1={PAD_TOP}
-                    y2={PAD_TOP + CHART_H + (midnight ? 4 : 0)}
+                    y2={PAD_TOP + CHART_H}
                     stroke={midnight ? "#71717a" : hour % LABEL_EVERY_HOURS === 0 ? "#d4d4d8" : "#f0f0f2"}
                     strokeWidth={1}
                   />
                   {hour % LABEL_EVERY_HOURS === 0 && (
                     <text
                       x={chart.x(t)}
-                      y={PAD_TOP + CHART_H + 12}
+                      y={TIME_TOP + 12}
                       textAnchor="middle"
                       fontSize={10}
                       fill={midnight ? "#18181b" : "#71717a"}
@@ -364,7 +492,7 @@ export default function PressurePanel({
                   {midnight && (
                     <text
                       x={chart.x(t) + 2}
-                      y={PAD_TOP + CHART_H + 25}
+                      y={TIME_TOP + 25}
                       textAnchor="start"
                       fontSize={10}
                       fill="#18181b"
@@ -381,11 +509,12 @@ export default function PressurePanel({
               x1={chart.nowX}
               x2={chart.nowX}
               y1={PAD_TOP}
-              y2={PAD_TOP + CHART_H}
+              y2={TIME_TOP}
               stroke="#18181b"
               strokeWidth={1}
               strokeDasharray="2 2"
             />
+            <path d={chart.tempPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
             {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
@@ -406,6 +535,18 @@ export default function PressurePanel({
           style={{ top: PAD_TOP + CHART_H - 15 }}
         >
           ▼ Nord höher (Nordföhn)
+        </span>
+        <span
+          className="pointer-events-none absolute left-9 bg-white/70 px-0.5 text-[10px] text-zinc-600"
+          style={{ top: TEMP_TOP + 1 }}
+        >
+          ΔT Innsbruck − Bozen (°C) · ▲ IBK wärmer
+        </span>
+        <span
+          className="pointer-events-none absolute left-9 bg-white/70 px-0.5 text-[10px] text-zinc-600"
+          style={{ top: TEMP_TOP + TEMP_H - 15 }}
+        >
+          ▼ IBK kälter
         </span>
       </div>
 

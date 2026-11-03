@@ -12,6 +12,7 @@ import {
 // Luftdruck (QNH) bei den Flughäfen Innsbruck und Bozen für die Föhn-Anzeige
 // (src/lib/pressure.ts), alles aus der Tabelle pressure_values:
 //   stations  QNH alle 10 min aus den Wetterstationen (Hauptkurve)
+//   temperature  Lufttemperatur derselben Stationen (für ΔT Innsbruck − Bozen)
 //   metar     QNH aus den Flugwetter-Meldungen (Vergleichslinie)
 //   forecast  ICON-CH1-Prognose
 //   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
@@ -42,6 +43,7 @@ interface PressureRow {
   valid_at: string;
   qnh_hpa: number;
   model_run: string | null;
+  temp_c: number | null;
 }
 
 function emptySeries(): Series {
@@ -56,7 +58,7 @@ async function readKind(kind: string, sinceIso: string): Promise<PressureRow[]> 
     `${supabaseUrl}/rest/v1/pressure_values` +
       `?kind=eq.${kind}&valid_at=gte.${encodeURIComponent(sinceIso)}` +
       `&order=valid_at.asc&limit=${MAX_ROWS}` +
-      `&select=station,valid_at,qnh_hpa,model_run`,
+      `&select=station,valid_at,qnh_hpa,model_run,temp_c`,
     {
       headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
       cache: "no-store",
@@ -68,19 +70,24 @@ async function readKind(kind: string, sinceIso: string): Promise<PressureRow[]> 
 }
 
 /** Zeilen einer Art in Reihen je Flughafen; null, wenn die Datenbank nicht antwortet. */
-async function readSeries(kind: string, sinceIso: string): Promise<{ series: Series; modelRun: string | null } | null> {
+async function readSeries(
+  kind: string,
+  sinceIso: string,
+): Promise<{ series: Series; temperature: Series; modelRun: string | null } | null> {
   try {
     const series = emptySeries();
+    const temperature = emptySeries();
     let modelRun: string | null = null;
     for (const row of await readKind(kind, sinceIso)) {
       const station = PRESSURE_STATION_IDS.find((id) => id === row.station);
       const time = Date.parse(row.valid_at);
       if (!station || Number.isNaN(time) || typeof row.qnh_hpa !== "number") continue;
       series[station].push([time, row.qnh_hpa]);
+      if (typeof row.temp_c === "number") temperature[station].push([time, row.temp_c]);
       // Jüngster Lauf (ältere Stunden stammen teils aus früheren Läufen).
       if (row.model_run && (!modelRun || row.model_run > modelRun)) modelRun = row.model_run;
     }
-    return { series, modelRun };
+    return { series, temperature, modelRun };
   } catch (err) {
     console.error(`Luftdruck (${kind}) aus der Datenbank nicht lesbar:`, err);
     return null;
@@ -120,6 +127,7 @@ export async function GET() {
   ]);
 
   let stations = stationsDb?.series ?? emptySeries();
+  let temperature = stationsDb?.temperature ?? emptySeries();
   let metar = metarDb?.series ?? emptySeries();
   let fallback = false;
 
@@ -131,6 +139,10 @@ export async function GET() {
         const { values } = await fetchStationPressure(since);
         if (values.length === 0) return;
         stations = toSeries(values.map((v) => ({ station: v.station, at: v.measuredAt, qnh: v.qnhHpa })), since);
+        temperature = toSeries(
+          values.flatMap((v) => (v.tempC === null ? [] : [{ station: v.station, at: v.measuredAt, qnh: v.tempC }])),
+          since,
+        );
         fallback = true;
       } catch (err) {
         console.error("Luftdruck (Stationen) im Notbetrieb nicht abrufbar:", err);
@@ -160,6 +172,7 @@ export async function GET() {
 
   const payload: PressurePayload = {
     stations,
+    temperature,
     metar,
     forecast,
     modelRun: forecastDb?.modelRun ?? null,
