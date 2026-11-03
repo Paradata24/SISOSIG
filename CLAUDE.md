@@ -496,7 +496,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
   festgelegt** (Nov. 2026; zuerst die Stufen von burnair), dieselben Farben
   wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis 2
-  grün, bis 2,5 gelb, unter 3 orange, ab 3 rot (`FOEHN_COLOR_SCALE`, gilt
+  grün, unter 3 gelb, 3 bis unter 4 orange, ab 4 rot (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
   (`PRESSURE_STALE_AFTER_MS`). **Quellen** (METAR, ICON-CH1) stehen unter
   „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des

@@ -135,16 +135,17 @@ export function pressureDiffAt(series: PressureDiffPoint[], time: number): Press
  * zuerst die Stufen von burnair): dieselben fünf Farben wie die Windskala
  * (WIND_COLOR_SCALE in src/lib/wind.ts), in harten Stufen, für positive und
  * negative Werte gleich:
- *   bis 0,5 hPa blau · bis 2 grün · bis 2,5 gelb · unter 3 orange · ab 3 rot
- * Die gemessenen Werte sind ganzzahlig (METAR), dort gibt es also nur blau
- * (0), grün (1–2) und rot (ab 3); gelb und orange kommen in der Prognose vor.
+ *   bis 0,5 hPa blau · bis 2 grün · unter 3 gelb · 3 bis unter 4 orange · ab 4 rot
+ * (zweite Fassung des Projektbesitzers; die erste hatte gelb bis 2,5 und rot
+ * schon ab 3). Die gemessenen Werte sind ganzzahlig (METAR): 0 blau, 1–2
+ * grün, 3 orange, ab 4 rot; gelb kommt nur in der Prognose vor.
  * `upTo` = höchster Betrag der Stufe, `inclusive` = ob er noch dazugehört.
  */
 export const FOEHN_COLOR_SCALE: Array<{ upTo: number; inclusive: boolean; color: string; text: string }> = [
   { upTo: 0.5, inclusive: true, color: WIND_COLOR_SCALE[0].color, text: "#18181b" }, // blau
   { upTo: 2, inclusive: true, color: WIND_COLOR_SCALE[1].color, text: "#18181b" }, // grün
-  { upTo: 2.5, inclusive: true, color: WIND_COLOR_SCALE[2].color, text: "#18181b" }, // gelb
-  { upTo: 3, inclusive: false, color: WIND_COLOR_SCALE[3].color, text: "#18181b" }, // orange
+  { upTo: 3, inclusive: false, color: WIND_COLOR_SCALE[2].color, text: "#18181b" }, // gelb
+  { upTo: 4, inclusive: false, color: WIND_COLOR_SCALE[3].color, text: "#18181b" }, // orange
   { upTo: Infinity, inclusive: false, color: WIND_COLOR_SCALE[4].color, text: "#18181b" }, // rot
 ];
 

@@ -20,7 +20,7 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // (schwarz, gemessen) und die ICON-CH1-Prognose (grau gestrichelt) bis zu
 // 33 h voraus. Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Hintergrundstreifen zeigen die Farbstufen der
-// Karte (dieselben Farben wie die Windskala, ab 3 hPa rot). Die Quellen
+// Karte (dieselben Farben wie die Windskala, ab 4 hPa rot). Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt), aber eigenständig — das
