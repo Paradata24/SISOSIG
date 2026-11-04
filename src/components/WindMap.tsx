@@ -1105,8 +1105,13 @@ export default function WindMap({
           <StationFilterPicker value={stationFilter} onChange={onStationFilterChange} />
         )}
         {flightMode && (
-          // Gleiches Aussehen wie das Filter-Schild, nur ohne Dreieck (nicht antippbar).
-          <div className="border border-black bg-white px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm">
+          // Gleiches Aussehen wie das Filter-Schild, nur ohne Dreieck (nicht
+          // antippbar): gelb, sobald ein Filter aktiv ist, nur bei "Alle" weiß.
+          <div
+            className={`border border-black px-2 py-0.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm ${
+              stationFilter !== "all" ? "bg-amber-300" : "bg-white"
+            }`}
+          >
             {getStationFilterMapLabel(stationFilter)}
           </div>
         )}

@@ -143,7 +143,16 @@ function formatHourLabel(date: Date): string {
 
 // Knopf-Stil wie die Knöpfe im Titelbalken: eckig, schwarzer Rand.
 const BUTTON_CLASS =
-  "flex h-10 shrink-0 items-center justify-center border border-black bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-white dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
+  "flex h-10 shrink-0 items-center justify-center border border-black text-zinc-900";
+// Farbe des Knopfs "Aktuell": GELB, solange das Rad NICHT auf "Aktuell"
+// steht (Wunsch des Projektbesitzers, Nov. 2026 — wie das Filter-Schild oben
+// auf der Karte, das bei aktivem Filter gelb ist), damit man nicht übersieht,
+// dass die Karte gerade einen älteren Zeitpunkt zeigt. Auf "Aktuell" weiß und
+// blass (disabled). Getrennt von BUTTON_CLASS, weil sich zwei bg-Klassen am
+// selben Knopf nicht verlässlich überstimmen.
+const BUTTON_PAST_CLASS = "bg-amber-300 hover:bg-amber-200";
+const BUTTON_CURRENT_CLASS =
+  "bg-white hover:bg-zinc-100 disabled:opacity-30 disabled:hover:bg-white dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800";
 
 export default function TimeSlider({
   slots,
@@ -517,7 +526,7 @@ export default function TimeSlider({
           type="button"
           onClick={() => goTo(lastIndex, 160)}
           disabled={current}
-          className={`${BUTTON_CLASS} px-2.5 text-sm font-medium`}
+          className={`${BUTTON_CLASS} ${current ? BUTTON_CURRENT_CLASS : BUTTON_PAST_CLASS} px-2.5 text-sm font-medium`}
         >
           Aktuell
         </button>

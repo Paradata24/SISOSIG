@@ -56,14 +56,23 @@ export default function StationFilterPicker({
     // pointer-events-auto: Die umgebende Spalte in WindMap ist bewusst
     // durchlässig (Fehlermeldung), nur das Schild und die Liste fangen Tipps ab.
     <div ref={rootRef} className="pointer-events-auto relative">
-      {/* Stil wie die Knöpfe im Titel-Balken (eckig, schwarzer Rahmen, weiß).
-          Das kleine Dreieck zeigt, dass man das Schild antippen kann. */}
+      {/* Stil wie die Knöpfe im Titel-Balken (eckig, schwarzer Rahmen).
+          Das kleine Dreieck zeigt, dass man das Schild antippen kann.
+          Hintergrund GELB, sobald ein Filter aktiv ist (alles außer "Alle"),
+          damit man nicht übersieht, dass Stationen ausgeblendet sind; nur bei
+          "Alle" weiß (Wunsch des Projektbesitzers, Nov. 2026 — eine Station
+          schien zu fehlen, weil noch ein gemerkter Höhenfilter aktiv war).
+          Gleiche Regel beim Info-Schild im Flugmodus (WindMap). */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-label={`Stationsfilter: ${getStationFilterLabel(value)}`}
-        className={`flex h-8 items-center gap-1.5 border border-black px-2.5 text-xs ${open ? "bg-amber-300" : "bg-white hover:bg-zinc-100"} font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`}
+        className={`flex h-8 items-center gap-1.5 border border-black px-2.5 text-xs font-semibold tracking-wide whitespace-nowrap text-zinc-900 shadow-sm ${
+          value !== "all"
+            ? "bg-amber-300 hover:bg-amber-200"
+            : `${open ? "bg-zinc-100" : "bg-white"} hover:bg-zinc-100 dark:border-zinc-100 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:bg-zinc-800`
+        }`}
       >
         {getStationFilterMapLabel(value)}
         <svg

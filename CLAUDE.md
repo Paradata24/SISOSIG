@@ -313,6 +313,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     ein **Info-Schild** mit dem aktiven Filter (`WindMap`, nicht antippbar;
     Wunsch des Projektbesitzers) — umgestellt wird dort im Menü; Fehlermeldungen
     stehen immer oben mittig auf der Karte, unter dem Schild.
+    **Das Schild selbst ist gelb, sobald ein Filter aktiv ist** (alles außer
+    „Alle“, Hauptseite und Flugmodus; nur bei „Alle“ weiß — Wunsch des
+    Projektbesitzers, Nov. 2026: ein gemerkter Höhenfilter ließ eine Station
+    scheinbar fehlen).
   - **Ebenen-Menü oben rechts im Titel-Balken** (Nov. 2026, Wunsch des
     Projektbesitzers): Knopf mit drei Strichen („Sandwich-Knopf", wie die
     Menü-Taste im Flugmodus), klappt die **Ebenen** auf — KK7-Thermikkarte
@@ -415,7 +419,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     am Handy laut Projektbesitzer nicht gut benutzbar.
   - Farben **schwarz/grau wie die Knöpfe im Titel-Balken**, kein Grün (Wunsch des
     Projektbesitzers). Der Zustand „jetzt" heißt **„Aktuell"**, nicht „Live" oder
-    „Jetzt".
+    „Jetzt". **Ausnahme:** Der Knopf „Aktuell" ist **gelb**, solange das Rad
+    nicht auf „Aktuell" steht (Nov. 2026, Wunsch des Projektbesitzers, wie das
+    gelbe Filter-Schild bei aktivem Filter).
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
     und alle 10 min geladen (früher erst beim ersten Anfassen).
   - **Sparsam laden (Punkt 27, Nov. 2026, auf Wunsch des Projektbesitzers):**
