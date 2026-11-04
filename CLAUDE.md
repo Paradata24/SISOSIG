@@ -419,7 +419,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     am Handy laut Projektbesitzer nicht gut benutzbar.
   - Farben **schwarz/grau wie die Knöpfe im Titel-Balken**, kein Grün (Wunsch des
     Projektbesitzers). Der Zustand „jetzt" heißt **„Aktuell"**, nicht „Live" oder
-    „Jetzt".
+    „Jetzt". **Ausnahme:** Der Knopf „Aktuell" ist **gelb**, solange das Rad
+    nicht auf „Aktuell" steht (Nov. 2026, Wunsch des Projektbesitzers, wie das
+    gelbe Filter-Schild bei aktivem Filter).
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
     und alle 10 min geladen (früher erst beim ersten Anfassen).
   - **Sparsam laden (Punkt 27, Nov. 2026, auf Wunsch des Projektbesitzers):**
