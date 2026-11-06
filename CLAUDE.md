@@ -90,7 +90,8 @@ direktes Aufrufen der API-Routen (`curl`).
 
 Next.js (App Router) + Leaflet-Karte, Daten aus dem Bozner Wetterdienst, dem
 OpenWindMap/Pioupiou-Netz, den SLF-IMIS-Stationen (Schweiz), MeteoSchweiz
-(alle SwissMetNet-Stationen) und GeoSphere Austria (TAWES)
+(alle SwissMetNet-Stationen), GeoSphere Austria (TAWES) und Meteotrentino
+(alle 46 Windstationen der Provinz Trient)
 sowie einzelnen Stationen des Lawinenwarndienstes Tirol und des DWD, Historie
 und Prognose in Supabase.
 
@@ -116,6 +117,7 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/lib/meteoswiss.ts` | Alle MeteoSchweiz-Stationen mit Wind (eine CSV-Datei, 10-min-Werte) |
 | `src/lib/lwdtirol.ts` | Ausgewählte Stationen des Lawinenwarndienstes Tirol (`LWD_TIROL_STATIONS`, derzeit Hafelekar) |
 | `src/lib/dwd.ts` | Ausgewählte DWD-Stationen (`DWD_STATIONS`, derzeit Zugspitze; liest ZIP-Dateien selbst) |
+| `src/lib/meteotrentino.ts` | Alle 46 Windstationen von Meteotrentino (Provinz Trient; eine Anfrage je Station, ohne Alpen-Umriss-Prüfung) |
 | `src/lib/sources.ts` | Liste ALLER Quellen (Punkt 17): je Quelle der Abruf für den Sammler und für den Notbetrieb von `/api/wind` — eine neue Quelle ist hier ein Eintrag |
 | `src/app/api/wind/route.ts` | Aktuelle Werte aller Stationen aus der Datenbank (Funktion `wind_latest`), fehlende Quellen in einer Kopfzeile, CDN-Caching; Notbetrieb direkt bei den Quellen, wenn Datenbank oder Sammler ausfallen |
 | `src/app/api/collect/route.ts` | Einzige Stelle, die mit den Wetterdiensten spricht: schreibt Messwerte je Quelle getrennt nach Supabase (POST, per `CRON_SECRET` geschützt), pflegt Stationsliste und Zustand der Quellen |
@@ -222,7 +224,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Projektbesitzers, Okt. 2026; vorher 2 h): `STALE_AFTER_MINUTES` in
   `src/lib/wind.ts`. Grundregel 30 min; Quellen, die schon im Normalbetrieb
   später oder seltener liefern, haben mehr (Bozen 35, MeteoSchweiz 40,
-  LWD Tirol 50, SLF 55, DWD 75 — an echten Daten gemessen, Begründung dort).
+  LWD Tirol 50, SLF 55, DWD 75 — an echten Daten gemessen, Begründung dort;
+  Meteotrentino 35 ist erst geschätzt und noch an echten Daten nachzuprüfen).
   Nicht pauschal auf 30 setzen, sonst blinken diese Stationen vor jedem neuen
   Wert grau.
 - **Zeitlimits für alle Abrufe** (`SOURCE_TIMEOUT_MS` 8 s,
@@ -859,6 +862,12 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Windanzeiger-Stationen bleiben immer, auch außerhalb des Umrisses
   (MeteoSchweiz **Chasseral** und **La Dôle** liegen im Jura). Steht in
   `meteoswiss.ts`.
+- **Ausnahme Meteotrentino (Nov. 2026):** Alle 46 Windstationen der Provinz
+  Trient bleiben, ohne Prüfung gegen den Umriss (Wunsch des Projektbesitzers:
+  „alle 46“). Der Umriss schneidet sonst sechs Stationen im Süden ab
+  (Torbole am Gardasee, Rovereto, Ala, Tremalzo, Malga Zugna, Passo Pian delle
+  Fugazze). Steht in `meteotrentino.ts`; den Umriss selbst nicht deswegen
+  ändern.
 
 **Wahrscheinliche Messfehler (Okt. 2026)**
 - Wunsch des Projektbesitzers: Liefert eine Station auffällige Werte, steht sie
@@ -968,7 +977,9 @@ Projektbesitzers entfernt:
   je **Station** einer Anfrage (1 Aufruf, solange ≤10 Werte-Reihen und ≤2
   Wochen — laut Quellcode von Open-Meteo); weitere Modelle in derselben
   Anfrage kosten erst ab 10 Reihen extra. Stand Nov. 2026: ~650 Stationen
-  (alle Stationen der Karte, seit Punkt 14) × 8 Modellläufe ≈ 5.200 am Tag,
+  (alle Stationen der Karte, seit Punkt 14; mit den 46 von Meteotrentino
+  ~700, der Rest eines Laufs kommt beim nächsten Anstoß) × 8 Modellläufe ≈
+  5.200 (mit Meteotrentino ≈ 5.600) am Tag,
   plus 16 für den Höhenwind (2 Stationen × 8) und 24 für den Luftdruck der
   Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4); das Nachholen gescheiterter
   Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
@@ -987,7 +998,7 @@ Projektbesitzers entfernt:
   (Vercel-Vorschau) oder indem der Projektbesitzer eine Test-Adresse im
   Browser öffnet. Fehlerantworten (502/500) sind dort
   normal. Mit `WIND_API_BASE_URL`, `PIOUPIOU_API_BASE_URL`, `SLF_API_BASE_URL`,
-  `GEOSPHERE_API_BASE_URL` und `OPEN_METEO_BASE_URL` lässt sich auf einen
+  `GEOSPHERE_API_BASE_URL`, `METEOTRENTINO_API_BASE_URL` und `OPEN_METEO_BASE_URL` lässt sich auf einen
   lokalen Mock umbiegen.
 
 ## Quellenangaben (Lizenzpflicht)

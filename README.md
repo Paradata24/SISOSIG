@@ -829,6 +829,20 @@ Sammlers.
   75 Minuten ohne neuen Wert. Ab dem 25.09.2026 lieferte der DWD eine Zeit
   lang keine Werte, spätestens seit dem 25.10.2026 wieder.
   Umbiegen: `DWD_CDC_BASE_URL`.
+- **Meteotrentino** (Provinz Trient, `src/lib/meteotrentino.ts`, Codes
+  `meteotrentino-<Landescode>`, z. B. `meteotrentino-T0010` = Levico): **alle**
+  noch laufenden Stationen mit Windsensor, derzeit **46** (Nov. 2026). Quelle:
+  der offene Webdienst `dati.meteotrentino.it/service.asmx`, ohne Anmeldung
+  (Stationsliste `listaStazioniJson`, Sensorliste `sensoriStazioniGeoJson`, Werte
+  `datiRealtimeUnaStazione`). Für alle Stationen auf einmal gibt es nur einen
+  Dienst mit Zugangsschlüssel, deshalb **eine Anfrage je Station** (je ~15 KB,
+  16 gleichzeitig, zusammen ~3 s). Wind in m/s (→ km/h), Messtakt 10 min, der
+  Sammler speichert die Werte der letzten 3 Stunden. Lizenz „Creative Commons
+  con attribuzione" (CC BY), die Nennung steht im Verlaufsbalken
+  (`SOURCE_INFO`). Die Alpen-Umriss-Prüfung gilt hier bewusst NICHT (sonst
+  fielen sechs Stationen im Süden weg, z. B. Torbole am Gardasee). Stationen
+  mit Windstille melden keine Richtung und sind dann grau.
+  Umbiegen: `METEOTRENTINO_API_BASE_URL`.
 - **Bälmeten** (Paradeltaclub Uri, OpenWindMap-Station 1535, Code
   `pioupiou-1535`): kommt seit Okt. 2026 mit allen OpenWindMap-Stationen im
   Alpenraum. Die Höhe (2414 m) steht fest in `ALTITUDE_OVERRIDES` in

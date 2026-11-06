@@ -5,6 +5,7 @@ import { fetchGeoSphereStations } from "./geosphere";
 import { fetchMeteoSwissStations } from "./meteoswiss";
 import { fetchLwdTirolStations } from "./lwdtirol";
 import { fetchDwdReadingsSince, fetchDwdStations } from "./dwd";
+import { fetchMeteoTrentinoReadingsSince, fetchMeteoTrentinoStations } from "./meteotrentino";
 import type { WindStation } from "./wind";
 
 // ALLE Datenquellen an einer Stelle (Punkt 17 der Code-Durchsicht, Nov. 2026).
@@ -146,6 +147,16 @@ export const WIND_SOURCES: Record<SourceId, WindSource> = {
       withStations(
         fetchDwdReadingsSince(sinceMs).then((r) => fromReadings(r, "dwd")),
         fetchDwdStations(),
+      ),
+  },
+  meteotrentino: {
+    live: fetchMeteoTrentinoStations,
+    // Messwerte der letzten 3 h und Stationen aus demselben Abruf (die beiden
+    // Funktionen teilen sich den Zwischenspeicher in meteotrentino.ts).
+    collect: (sinceMs) =>
+      withStations(
+        fetchMeteoTrentinoReadingsSince(sinceMs).then((r) => fromReadings(r, "meteotrentino")),
+        fetchMeteoTrentinoStations(),
       ),
   },
 };
