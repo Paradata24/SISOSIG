@@ -531,7 +531,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Edge Function (`refreshPressure`, `PRESSURE_MODELS`, eigene Laufprüfung je
   Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
   auf Wunsch des Projektbesitzers **ECMWF IFS** (`ecmwf_ifs`, 9 km, 72 h
-  voraus, blau gestrichelt). Beide als Druck **am Boden** geholt und nach
+  voraus, violett gestrichelt — nicht blau, Blau/Rot gehören den Flächen). Beide als Druck **am Boden** geholt und nach
   derselben Regel in den QNH umgerechnet (`qnhFromSurface`) — nicht
   `pressure_msl`, das lag in Innsbruck ~2 hPa daneben. ECMWF gibt es NUR hier
   beim Druck, nicht beim Wind (siehe „Prognosemodelle“).
@@ -548,9 +548,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
-  Stufengrenzen als dünne farbige Linien in der Farbe der Stufe, die dort
-  beginnt (vorher blasse Streifen über den ganzen Hintergrund; bewusst
-  durchgezogen, nicht gestrichelt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
+  Stufen der Farbskala als **schmaler Farbstreifen links neben den
+  hPa-Zahlen** (`scaleBands`; bis 6. Nov. 2026 fünf farbige Linien quer durchs
+  Diagramm, beim Aufräumen ersetzt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 3. Stunde; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
@@ -560,20 +560,25 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
 - **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
   Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
   Zeitachse. Gemessene Temperaturen beider Stationen als Linien (IBK
-  schwarz, BZ braun), die **Fläche zwischen den Linien = ΔT Innsbruck −
-  Bozen**: rot, wo Innsbruck wärmer ist, blau, wo kälter (erste Fassung
+  schwarz, BZ braun), die **Fläche zwischen den Linien = ΔT Bozen −
+  Innsbruck** (seit 6. Nov. 2026 gezählt wie der Druck, vorher umgekehrt):
+  rot, wo Bozen wärmer ist, blau, wo Innsbruck wärmer ist (erste Fassung
   zeigte nur ΔT um eine Nulllinie). Nach „jetzt“ die **ICON-CH1-Temperatur**
   beider Stationen gestrichelt, Fläche blasser (`temperature_2m` in derselben
   Anfrage der Edge Function, Spalte `temp_c` der Prognosezeilen). ΔT und
-  beide Temperaturen in der Kopfzeile. Bewusst NICHT höhenbereinigt
+  beide Temperaturen stehen in der Titelzeile des Temperatur-Diagramms. Bewusst NICHT höhenbereinigt
   (Innsbruck ~330 m höher, normal ~2 °C kälter). Temperatur und Feuchte der
   Stationen (`TL`/`RF` bei GeoSphere, `LT`/`LF` in Bozen) speichert der
   Sammler in `temp_c`/`humidity_pct` (`kind = 'station'`); die Feuchte wird
   noch nicht angezeigt.
-- **Lesbarkeit der Druckkurve** (Nov. 2026, Vorschlag auf Wunsch des
-  Projektbesitzers): Prognosen vor „jetzt“ blass (`FORECAST_PAST_OPACITY`),
-  senkrechte Rasterlinien nur alle 3 h, blassere Stufenlinien, hPa-Zahlen
-  ab 7 hPa Spanne nur jede zweite, kurze Legende mit Linienmustern.
+- **Lesbarkeit des Druck-Verlaufsbalkens** (Nov. 2026, zweimal auf Wunsch
+  des Projektbesitzers aufgeräumt, zuletzt am 6. Nov.): Kopfzeile nur zwei
+  Zeilen (großes Differenz-Schild, Satz zur Lage, rechts die Druckwerte);
+  jedes Diagramm hat eine **eigene Titelzeile mit Legende** (nichts liegt auf
+  den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
+  „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
+  deshalb nicht mehr; senkrechte Rasterlinien nur alle 3 h, hPa-Zahlen ab
+  7 hPa Spanne nur jede zweite.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I

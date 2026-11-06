@@ -20,12 +20,21 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // schwarz die 10-Minuten-Werte der Stationen (Hauptkurve), dünn grau
 // punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
 // Projektbesitzers) — und die Prognosen ICON-CH1 (grau gestrichelt, 33 h
-// voraus) und ECMWF (blau gestrichelt, 72 h voraus, seit Nov. 2026).
-// Darunter ein zweites, flacheres Diagramm: Temperatur-Differenz Innsbruck −
-// Bozen (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
+// voraus) und ECMWF (violett gestrichelt, 72 h voraus, seit Nov. 2026).
+// Darunter ein zweites, flacheres Diagramm: Temperatur Innsbruck und Bozen
+// (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
 // ist rot (oberhalb) bzw. blau (unterhalb), die Farbstufen der Karte stehen
-// als farbige Linien im weißen Hintergrund (siehe AREA_* / STEP_LINE_*). Die Quellen
+// als schmaler Farbstreifen neben den hPa-Zahlen (siehe AREA_* / scaleBands).
+//
+// AUFRÄUMEN (Nov. 2026, Wunsch des Projektbesitzers, "Anzeige noch etwas
+// unübersichtlich"): Kopfzeile nur zwei Zeilen (großes Differenz-Schild); jedes
+// Diagramm hat seine EIGENE Titelzeile mit Legende (nichts liegt mehr auf den
+// Kurven); die Prognose-Zone rechts von "jetzt" ist grau hinterlegt, dafür
+// gibt es die blassen Prognose-Linien vor "jetzt" nicht mehr; ECMWF ist
+// violett (Blau und Rot gehören den Flächen); die Stufen der Farbskala stehen
+// als Streifen am Rand statt als fünf Linien quer durchs Diagramm; die
+// Temperatur-Differenz zählt wie der Druck Bozen − Innsbruck. Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt). Die Zeitachse ist STÜNDLICH
@@ -82,40 +91,45 @@ const FORECAST_GAP_MS = 90 * 60 * 1000;
 // Wie die Prognose im Wind-Verlaufsbalken (CH1_COLOR, FORECAST_DASH).
 const FORECAST_COLOR = "#52525b";
 const FORECAST_DASH = "5 3";
-// ECMWF (seit Nov. 2026, Wunsch des Projektbesitzers): blau gestrichelt, damit
-// es sich klar vom grauen ICON-CH1 abhebt. Reicht 72 h voraus, ICON-CH1 33 h.
-const ECMWF_COLOR = "#2563eb";
+// ECMWF (seit Nov. 2026, Wunsch des Projektbesitzers): gestrichelt, damit es
+// sich klar vom grauen ICON-CH1 abhebt; seit dem Aufräumen (Nov. 2026)
+// VIOLETT statt blau, weil Blau und Rot den Flächen gehören (Nord höher /
+// Süd höher bzw. Innsbruck wärmer / Bozen wärmer). Reicht 72 h voraus,
+// ICON-CH1 33 h.
+const ECMWF_COLOR = "#7c3aed";
 const MEASURED_COLOR = "#18181b";
-// LESBARKEIT (Nov. 2026, Vorschlag auf Wunsch des Projektbesitzers, die
-// Druckkurve war "etwas unübersichtlich"): Vor "jetzt" zählt die Messung —
-// die Prognosen sind dort nur blass zu sehen (zum Vergleich, wie gut sie
-// lagen), nach "jetzt" kräftig. Dazu senkrechte Rasterlinien nur alle 3 h,
-// blassere Stufenlinien, ruhigere hPa-Beschriftung und eine kurze Legende
-// mit Linienmustern statt eines langen Satzes.
-const FORECAST_PAST_OPACITY = 0.3;
+// LESBARKEIT: Senkrechte Rasterlinien nur alle 3 h, ruhigere hPa-Beschriftung,
+// kurze Legende mit Linienmustern in der Titelzeile des Diagramms. Vor "jetzt"
+// zählt allein die Messung (die blassen Prognose-Linien dort gibt es seit dem
+// Aufräumen im Nov. 2026 nicht mehr); rechts von "jetzt" ist der Hintergrund
+// grau und mit "Prognose" beschriftet.
+const FORECAST_ZONE_FILL = "#f4f4f5";
 // Fläche zwischen gemessener Kurve und Nulllinie zweifarbig wie im
 // ΔT-Diagramm: rot oberhalb (Süd höher), blau unterhalb (Nord höher) —
 // nach einer Skizze des Projektbesitzers (Nov. 2026; vorher waren die Stufen
 // als blasse Streifen über den ganzen Hintergrund gelegt). Der Hintergrund
-// ist weiß, die Stufengrenzen stehen als dünne farbige Linien darin
-// (STEP_LINE_*): jede in der Farbe der Stufe, die dort beginnt.
+// ist weiß; die Stufen der Farbskala (wie im Schild auf der Karte) stehen als
+// schmaler Streifen links neben den hPa-Zahlen (`scaleBands`, SCALE_STRIP_OPACITY).
 const AREA_OPACITY = 0.35;
 const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
-const STEP_LINE_WIDTH = 1;
-const STEP_LINE_OPACITY = 0.6;
+const SCALE_STRIP_OPACITY = 0.9;
 
 // --- Temperatur Innsbruck und Bozen (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
 // mit). Gezeigt werden die gemessenen Temperaturen beider Stationen als
 // Linien (Innsbruck schwarz, Bozen braun) — die Fläche ZWISCHEN den beiden
-// Linien ist die Temperatur-Differenz ΔT = Innsbruck − Bozen: rot, wo
-// Innsbruck wärmer ist, blau, wo Innsbruck kälter ist. (Erste Fassung zeigte
+// Linien ist die Temperatur-Differenz. Seit Nov. 2026 gezählt wie beim Druck:
+// Bozen − Innsbruck (vorher umgekehrt, das verwirrte): rot, wo Bozen (Süden)
+// wärmer ist, blau, wo Innsbruck wärmer ist. (buildBandPaths rechnet intern aus
+// Innsbrucks Sicht: "warm" = Innsbruck wärmer.) (Erste Fassung zeigte
 // nur ΔT um eine Nulllinie; der Projektbesitzer wollte auch die gemessenen
 // Temperaturen sehen.) Nach "jetzt" die ICON-CH1-Prognose beider Stationen
 // gestrichelt, die Fläche dazwischen blasser. Allein wegen der Höhe
 // (Innsbruck ~330 m höher) ist Innsbruck normal ~2 °C kälter.
-const TEMP_GAP = 10; // Abstand zwischen Druck- und Temperatur-Diagramm
+// Abstand zwischen Druck- und Temperatur-Diagramm: darin steht die Titelzeile
+// des Temperatur-Diagramms (zwei kleine Zeilen).
+const TEMP_GAP = 34;
 const TEMP_H = 100;
 const TEMP_TOP = PAD_TOP + CHART_H + TEMP_GAP;
 const TIME_TOP = TEMP_TOP + TEMP_H;
@@ -126,8 +140,8 @@ const T_HEADROOM_C = 0.5;
 const TEMP_GAP_MS = MEASURED_GAP_MS;
 const IBK_COLOR = "#18181b";
 const BZ_COLOR = "#b45309";
-const TEMP_WARM_FILL = "#dc2626";
-const TEMP_COLD_FILL = "#2563eb";
+const TEMP_BZ_WARMER_FILL = "#dc2626";
+const TEMP_IBK_WARMER_FILL = "#2563eb";
 const TEMP_FILL_OPACITY = 0.25;
 const TEMP_FORECAST_FILL_OPACITY = 0.1;
 
@@ -184,13 +198,11 @@ function buildBandPaths(
   return { warm, cold };
 }
 
-// Prognose in "vor jetzt" (blass) und "ab jetzt" (kräftig) teilen; der
-// letzte Punkt vor jetzt gehört zu beiden, damit die Linie nicht abreißt.
-function splitAtNow(points: PressureDiffPoint[], now: number): [PressureDiffPoint[], PressureDiffPoint[]] {
-  const past = points.filter((p) => p.time <= now);
-  const last = past[past.length - 1];
-  const future = points.filter((p) => p.time > now || p === last);
-  return [past, future];
+// Prognose ab "jetzt" (die Vergangenheit zeigt die Messung); der letzte Punkt
+// vor jetzt bleibt dabei, damit die Linie nicht erst nach "jetzt" beginnt.
+function forecastFromNow(points: PressureDiffPoint[], now: number): PressureDiffPoint[] {
+  const last = points.filter((p) => p.time <= now).pop();
+  return points.filter((p) => p.time > now || p === last);
 }
 
 /** Zahl mit Vorzeichen und einer Nachkommastelle, z. B. "−1,6". */
@@ -346,9 +358,10 @@ export default function PressurePanel({
     const f = forecast.filter(inRange);
     const mt = metar.filter(inRange);
     const e = ecmwf.filter(inRange);
-    const values = [...m, ...mt, ...f, ...e].map((p) => p.diff);
-    const [fPast, fFuture] = splitAtNow(f, now);
-    const [ePast, eFuture] = splitAtNow(e, now);
+    const fFuture = forecastFromNow(f, now);
+    const eFuture = forecastFromNow(e, now);
+    // Die Achse richtet sich nur nach dem, was gezeichnet wird.
+    const values = [...m, ...mt, ...fFuture, ...eFuture].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -389,15 +402,21 @@ export default function PressurePanel({
     // das nicht, für die Alpen egal).
     const times: number[] = [];
     for (let t = start; t <= end; t += HOUR_MS) times.push(t);
-    // Stufengrenzen als Linien, oberhalb und unterhalb der Nulllinie
-    // gespiegelt (soweit die Achse reicht), in der Farbe der Stufe, die dort
-    // beginnt (bei 0,5 grün, 1,5 gelb, 2,5 orange, 3 rot).
-    const stepLines: { at: number; color: string }[] = [];
+    // Farbstreifen der Stufen neben den hPa-Zahlen, oberhalb und unterhalb der
+    // Nulllinie gespiegelt (soweit die Achse reicht): blau bis 0,5, grün bis
+    // 1,5, gelb bis 2,5, orange bis 3, darüber rot.
+    const scaleBands: { top: number; height: number; color: string }[] = [];
     FOEHN_COLOR_SCALE.forEach((step, i) => {
-      const next = FOEHN_COLOR_SCALE[i + 1];
-      if (!next || !Number.isFinite(step.upTo)) return;
-      if (step.upTo < yTop) stepLines.push({ at: step.upTo, color: next.color });
-      if (-step.upTo > yBottom) stepLines.push({ at: -step.upTo, color: next.color });
+      const lo = i === 0 ? 0 : FOEHN_COLOR_SCALE[i - 1].upTo;
+      const hi = step.upTo;
+      if (lo < yTop) {
+        const top = y(Math.min(hi, yTop));
+        scaleBands.push({ top, height: y(lo) - top, color: step.color });
+      }
+      if (-lo > yBottom) {
+        const top = y(-lo);
+        scaleBands.push({ top, height: y(Math.max(-hi, yBottom)) - top, color: step.color });
+      }
     });
     return {
       svgW,
@@ -405,13 +424,11 @@ export default function PressurePanel({
       y,
       ticks,
       times,
-      stepLines,
+      scaleBands,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
-      forecastPastPath: buildPath(fPast, x, y, FORECAST_GAP_MS),
       forecastPath: buildPath(fFuture, x, y, FORECAST_GAP_MS),
-      ecmwfPastPath: buildPath(ePast, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(eFuture, x, y, FORECAST_GAP_MS),
       ty,
       tTicks,
@@ -463,46 +480,62 @@ export default function PressurePanel({
         </button>
       </header>
 
-      {/* Aktuelle Werte: beide Flughäfen (QNH) und die Differenz. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-1 text-xs text-zinc-700 dark:text-zinc-200">
+      {/* Aktuelle Lage in einer Zeile: großes Differenz-Schild, was es
+          bedeutet, rechts klein die beiden Druckwerte (QNH). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 text-xs text-zinc-700 dark:text-zinc-200">
         {current ? (
           <>
-            <span>
-              {south.short} <strong className="tabular-nums">{formatHpa(current.south)}</strong> hPa
-            </span>
-            <span>
-              {north.short} <strong className="tabular-nums">{formatHpa(current.north)}</strong> hPa
-            </span>
             <span
-              className="border border-black px-1.5 py-0.5 font-bold tabular-nums"
+              className="border border-black px-2 py-1 text-base font-bold tabular-nums"
               style={{ background: currentColor?.color, color: currentColor?.text }}
             >
               {formatPressureDiff(current.diff)}
             </span>
-            <span className="text-zinc-500 dark:text-zinc-400">{describeFoehn(current.diff)}</span>
-            {currentTemp && (
-              <span>
-                ΔT IBK−BZ{" "}
-                <strong className="tabular-nums">{formatSigned(currentTemp.diff)} °C</strong>
-                <span className="text-zinc-500 dark:text-zinc-400">
-                  {" "}
-                  ({north.short} {formatHpa(currentTemp.south)} · {south.short} {formatHpa(currentTemp.north)} °C)
-                </span>
-              </span>
-            )}
+            <span className="text-sm text-zinc-600 first-letter:uppercase dark:text-zinc-300">
+              {describeFoehn(current.diff)}
+            </span>
+            <span className="ml-auto text-zinc-500 dark:text-zinc-400">
+              {south.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(current.south)}</strong>
+              {" · "}
+              {north.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(current.north)}</strong> hPa
+            </span>
           </>
         ) : (
           <span className="text-zinc-500">{loading ? "Druckwerte werden geladen…" : "Kein aktueller Messwert"}</span>
         )}
       </div>
 
+      {/* Titelzeile des Druck-Diagramms, darunter seine Legende. */}
+      <div className="flex flex-wrap items-center gap-x-3 px-3 pb-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+        <span className="font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Druck (hPa)</span>
+        <span className="whitespace-nowrap">▲ Süd höher · ▼ Nord höher</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400">
+        <LegendItem color={MEASURED_COLOR} width={2}>gemessen</LegendItem>
+        <LegendItem color={METAR_COLOR} width={1.5} dash={METAR_DASH}>Flughäfen</LegendItem>
+        <LegendItem color={FORECAST_COLOR} width={1.8} dash={FORECAST_DASH}>
+          ICON-CH1{modelRun && <> {formatClock(Date.parse(modelRun))}</>}
+        </LegendItem>
+        <LegendItem color={ECMWF_COLOR} width={1.6} dash={FORECAST_DASH}>
+          ECMWF{ecmwfRun && <> {formatClock(Date.parse(ecmwfRun))}</>}
+        </LegendItem>
+      </div>
+
       <div className="relative flex pr-1" style={{ height: svgH }}>
         {/* Feste hPa-Spalte links, wandert beim Verschieben nicht mit. */}
         <div className="relative w-8 shrink-0 text-[10px] text-zinc-500 dark:text-zinc-400" aria-hidden="true">
+          {/* Farbstreifen der Stufen (wie im Schild auf der Karte). */}
+          {chart.scaleBands.map((band, i) => (
+            <span
+              key={`b${i}`}
+              className="absolute right-0 w-1"
+              style={{ top: band.top, height: band.height, background: band.color, opacity: SCALE_STRIP_OPACITY }}
+            />
+          ))}
           {chart.ticks.map((tick) => (
             <span
               key={tick}
-              className="absolute right-1 -translate-y-1/2 tabular-nums"
+              className="absolute right-2 -translate-y-1/2 tabular-nums"
               style={{ top: chart.y(tick) }}
             >
               {tick > 0 ? `+${tick}` : tick < 0 ? `−${-tick}` : "0"}
@@ -511,7 +544,7 @@ export default function PressurePanel({
           {chart.tTicks.map((tick) => (
             <span
               key={`t${tick}`}
-              className="absolute right-1 -translate-y-1/2 tabular-nums"
+              className="absolute right-2 -translate-y-1/2 tabular-nums"
               style={{ top: chart.ty(tick) }}
             >
               {tick < 0 ? `−${-tick}` : tick}°
@@ -549,6 +582,11 @@ export default function PressurePanel({
                 <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + CHART_H - chart.y(0)} />
               </clipPath>
             </defs>
+            {/* Prognose-Zone: rechts von "jetzt" grau hinterlegt. */}
+            <rect x={chart.nowX} y={PAD_TOP} width={Math.max(0, chart.svgW - chart.nowX)} height={TIME_TOP - PAD_TOP} fill={FORECAST_ZONE_FILL} />
+            <text x={chart.nowX + 5} y={PAD_TOP + 10} fontSize={10} fill="#71717a">
+              Prognose ▸
+            </text>
             <path d={chart.measuredAreaPath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-above)" />
             <path d={chart.measuredAreaPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-below)" />
             {chart.ticks.map((tick) => (
@@ -562,21 +600,9 @@ export default function PressurePanel({
                 strokeWidth={tick === 0 ? 1.2 : 1}
               />
             ))}
-            {/* Stufengrenzen als farbige Linien (über dem Gitter). */}
-            {chart.stepLines.map((line) => (
-              <line
-                key={`s${line.at}`}
-                x1={0}
-                x2={chart.svgW}
-                y1={chart.y(line.at)}
-                y2={chart.y(line.at)}
-                stroke={line.color}
-                strokeWidth={STEP_LINE_WIDTH}
-                opacity={STEP_LINE_OPACITY}
-              />
-            ))}
             {/* Temperatur-Diagramm: Gitter, Fläche zwischen den Kurven
-                (rot = Innsbruck wärmer, blau = kälter; Prognose blasser). */}
+                (rot = Bozen wärmer, blau = Innsbruck wärmer; Prognose blasser).
+                "warm"/"cold" in buildBandPaths = Innsbruck wärmer/kälter. */}
             {chart.tTicks.map((tick) => (
               <line
                 key={`tg${tick}`}
@@ -588,10 +614,10 @@ export default function PressurePanel({
                 strokeWidth={1}
               />
             ))}
-            <path d={chart.band.warm} fill={TEMP_WARM_FILL} opacity={TEMP_FILL_OPACITY} />
-            <path d={chart.band.cold} fill={TEMP_COLD_FILL} opacity={TEMP_FILL_OPACITY} />
-            <path d={chart.bandForecast.warm} fill={TEMP_WARM_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
-            <path d={chart.bandForecast.cold} fill={TEMP_COLD_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
+            <path d={chart.band.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            <path d={chart.band.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            <path d={chart.bandForecast.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
+            <path d={chart.bandForecast.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
             {chart.times.map((t) => {
               const date = new Date(t);
               const hour = date.getHours();
@@ -662,11 +688,7 @@ export default function PressurePanel({
             <path d={chart.ibkForecastPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
             <path d={chart.bzPath} fill="none" stroke={BZ_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
             <path d={chart.ibkPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
-            {/* Druck-Prognosen: vor "jetzt" blass, danach kräftig. */}
-            <g opacity={FORECAST_PAST_OPACITY}>
-              <path d={chart.ecmwfPastPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
-              <path d={chart.forecastPastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
-            </g>
+            {/* Druck-Prognosen: nur ab "jetzt". */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
             {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
@@ -674,43 +696,38 @@ export default function PressurePanel({
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
         </div>
-        {/* Seitenangabe fest links über dem Diagramm (wandert nicht mit):
-            oberhalb der Nulllinie Süd höher, darunter Nord höher. */}
-        <span
-          className="pointer-events-none absolute left-9 bg-white/70 px-0.5 text-[10px] text-zinc-600"
-          style={{ top: PAD_TOP + 1 }}
+        {/* Titelzeile des Temperatur-Diagramms, fest links (wandert nicht mit),
+            in der Lücke zwischen den beiden Diagrammen. */}
+        <div
+          className="pointer-events-none absolute left-9 bg-white/85 px-0.5 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
+          style={{ top: PAD_TOP + CHART_H + 3 }}
         >
-          ▲ Süd höher (Südföhn)
-        </span>
-        <span
-          className="pointer-events-none absolute left-9 bg-white/70 px-0.5 text-[10px] text-zinc-600"
-          style={{ top: PAD_TOP + CHART_H - 15 }}
-        >
-          ▼ Nord höher (Nordföhn)
-        </span>
-        <span
-          className="pointer-events-none absolute left-9 bg-white/70 px-0.5 text-[10px] text-zinc-600"
-          style={{ top: TEMP_TOP + 1 }}
-        >
-          Temperatur{" "}
-          <span className="font-semibold" style={{ color: IBK_COLOR }}>━ IBK</span>{" "}
-          <span className="font-semibold" style={{ color: BZ_COLOR }}>━ BZ</span> · Fläche:{" "}
-          <span style={{ color: TEMP_WARM_FILL }}>IBK wärmer</span> /{" "}
-          <span style={{ color: TEMP_COLD_FILL }}>kälter</span>
-        </span>
+          <div className="flex flex-wrap items-center gap-x-2.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Temperatur (°C)</span>
+            <span className="font-semibold" style={{ color: IBK_COLOR }}>
+              ━ {north.short}
+              {currentTemp && <> {formatHpa(currentTemp.south)}°</>}
+            </span>
+            <span className="font-semibold" style={{ color: BZ_COLOR }}>
+              ━ {south.short}
+              {currentTemp && <> {formatHpa(currentTemp.north)}°</>}
+            </span>
+            {currentTemp && (
+              <span>
+                {south.short}−{north.short}{" "}
+                <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatSigned(-currentTemp.diff)} °C</strong>
+              </span>
+            )}
+          </div>
+          <div>
+            Fläche: <span style={{ color: TEMP_BZ_WARMER_FILL }}>■ {south.short} wärmer</span>{" "}
+            <span style={{ color: TEMP_IBK_WARMER_FILL }}>■ {north.short} wärmer</span>
+          </div>
+        </div>
       </div>
 
-      {/* Kurze Legende mit Linienmustern (Lesbarkeit, Nov. 2026). */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 pb-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-        <LegendItem color={MEASURED_COLOR} width={2}>gemessen</LegendItem>
-        <LegendItem color={METAR_COLOR} width={1.5} dash={METAR_DASH}>Flughäfen</LegendItem>
-        <LegendItem color={FORECAST_COLOR} width={1.8} dash={FORECAST_DASH}>
-          ICON-CH1{modelRun && <> {formatClock(Date.parse(modelRun))}</>}
-        </LegendItem>
-        <LegendItem color={ECMWF_COLOR} width={1.6} dash={FORECAST_DASH}>
-          ECMWF{ecmwfRun && <> {formatClock(Date.parse(ecmwfRun))}</>}
-        </LegendItem>
-      </div>
+      {/* Luft unter der Zeitachse. */}
+      <div className="h-2" />
     </section>
   );
 }

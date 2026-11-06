@@ -119,9 +119,10 @@ export function usePressureSeries(data: PressurePayload | null): {
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
         : [],
-      // ΔT = Innsbruck − Bozen (Wunsch des Projektbesitzers: Innsbruck kälter
-      // → negativ). pairPressureSeries rechnet "zweites minus erstes" —
-      // deshalb hier Bozen zuerst. Ältere Antworten haben das Feld nicht.
+      // Intern ΔT = Innsbruck − Bozen. pairPressureSeries rechnet "zweites
+      // minus erstes" — deshalb hier Bozen zuerst. Angezeigt wird seit Nov.
+      // 2026 Bozen − Innsbruck (wie beim Druck): PressurePanel dreht das
+      // Vorzeichen und die Farben. Ältere Antworten haben das Feld nicht.
       tempDiff: data?.temperature
         ? pairPressureSeries(data.temperature[FOEHN_PAIR.south], data.temperature[FOEHN_PAIR.north])
         : [],
