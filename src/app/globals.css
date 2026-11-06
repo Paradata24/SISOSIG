@@ -99,11 +99,17 @@ body {
 .foehn-marker {
   background: none;
   border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
+/* Mittig auf dem Ankerpunkt des Leaflet-Kastens (= Mitte der Linie): Das
+   Schild wird mit left/top 50 % und translate selbst zentriert. Früher
+   sorgte dafür "display: flex" am Kasten, das leaflet.css aber mit
+   "display: block" überstimmt hat — das Schild saß dadurch am linken Rand des
+   Kastens und damit links neben der Linie. */
 .foehn-schild {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: center;
   gap: 3px;
