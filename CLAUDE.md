@@ -878,7 +878,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
 - Regeln in `src/lib/plausibility.ts`: (1) Mittelwind, Böe und Richtung
   ≥ 90 min exakt gleich (nur ab 3 km/h — Windstille ist kein Fehler),
   (2) Richtung ≥ 3 h auf das Grad gleich bei ≥ 5 km/h (nicht für Pioupiou und
-  DWD, die liefern nur grobe Richtungsschritte), (3) physikalisch unmögliche
+  DWD, die liefern nur grobe Richtungsschritte; Meteotrentino ist dabei, im
+  Nov. 2026 an 48 h Daten der 46 Stationen geprüft: 13.069 Messungen, nichts
+  markiert, längste gleiche Richtung 20 min), (3) physikalisch unmögliche
   Einzelwerte (z. B. Böe deutlich kleiner als Mittelwind).
 - Die Grenzwerte sind an 2 Tagen echter Daten geprüft (keine Fehlalarme).
   **Nicht verschärfen ohne erneute Prüfung an echten Daten.**
