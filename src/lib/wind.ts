@@ -20,9 +20,18 @@ export interface WindStation {
    * IMIS-Stationen des SLF (Schweiz, siehe src/lib/slf.ts), GeoSphere
    * Austria (früher ZAMG, siehe src/lib/geosphere.ts), MeteoSchweiz
    * (src/lib/meteoswiss.ts), der Lawinenwarndienst Tirol (src/lib/lwdtirol.ts)
-   * oder der Deutsche Wetterdienst (src/lib/dwd.ts)
+   * der Deutsche Wetterdienst (src/lib/dwd.ts) oder Meteotrentino
+   * (Provinz Trient, src/lib/meteotrentino.ts)
    */
-  source: "bolzano" | "openwindmap" | "slf" | "geosphere" | "meteoswiss" | "lwdtirol" | "dwd";
+  source:
+    | "bolzano"
+    | "openwindmap"
+    | "slf"
+    | "geosphere"
+    | "meteoswiss"
+    | "lwdtirol"
+    | "dwd"
+    | "meteotrentino";
   /**
    * Gesetzt, wenn die Werte wahrscheinlich ein Messfehler sind (z. B. stundenlang
    * exakt dieselben Werte). Kommt NICHT von /api/wind, sondern wird erst im
@@ -75,6 +84,12 @@ export const SOURCE_INFO: Record<
     label: "Datenbasis: Deutscher Wetterdienst",
     url: "https://www.dwd.de/DE/leistungen/opendata/opendata.html",
   },
+  // Lizenz "Creative Commons con attribuzione" (CC BY) — die Nennung ist Pflicht,
+  // nicht entfernen.
+  meteotrentino: {
+    label: "Provincia autonoma di Trento – Meteotrentino (CC BY)",
+    url: "https://www.meteotrentino.it",
+  },
 };
 
 /**
@@ -98,6 +113,7 @@ export const SOURCE_INTERVAL_MINUTES: Record<WindStation["source"], number> = {
   meteoswiss: 10,
   lwdtirol: 10,
   dwd: 10,
+  meteotrentino: 10,
 };
 
 /**
@@ -117,6 +133,7 @@ export const SOURCE_SHORT_LABEL: Record<WindStation["source"], string> = {
   meteoswiss: "MeteoSchweiz",
   lwdtirol: "LWD Tirol",
   dwd: "DWD (Zugspitze)",
+  meteotrentino: "Meteotrentino",
 };
 
 /** Liest die Kopfzeile MISSING_SOURCES_HEADER; unbekannte Einträge fallen weg. */
@@ -156,6 +173,9 @@ export function listSourceLabels(sources: WindStation["source"][]): string {
  *  - slf 55: nur ein Wert pro halbe Stunde (siehe SOURCE_INTERVAL_MINUTES).
  *  - dwd 75: Der DWD stellt nur alle 30 min eine neue Datei bereit, deren
  *    jüngster Wert dann schon 25–30 min alt ist.
+ *  - meteotrentino 35: Messung alle 10 min, beim Abruf (Nov. 2026, 46
+ *    Stationen) war der neueste Wert 3–15 min alt. Wie Bozen, weil einzelne
+ *    Messungen ausfallen können. An mehr echten Daten nachprüfen.
  */
 export const STALE_AFTER_MINUTES: Record<WindStation["source"], number> = {
   bolzano: 35,
@@ -165,6 +185,7 @@ export const STALE_AFTER_MINUTES: Record<WindStation["source"], number> = {
   meteoswiss: 40,
   lwdtirol: 50,
   dwd: 75,
+  meteotrentino: 35,
 };
 
 /**

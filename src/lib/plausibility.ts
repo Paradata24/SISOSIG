@@ -60,13 +60,16 @@ const VANE_MIN_SPEED_KMH = 5;
 // Nur für Quellen, die die Richtung fein (auf 1°) liefern. Pioupiou meldet nur
 // 16 Richtungen (22,5°-Schritte), der DWD 10°-Schritte — dort bleibt die Richtung
 // bei gleichmäßigem Wind auch ohne Fehler stundenlang im selben Schritt (in den
-// Testdaten z. B. Bälmeten fast 12 h auf 135°).
+// Testdaten z. B. Bälmeten fast 12 h auf 135°). Meteotrentino liefert die
+// Richtung auf 1° genau (ganze Grad) und ist deshalb dabei (Nov. 2026, an 48 h
+// echter Daten der 46 Stationen geprüft, siehe CLAUDE.md).
 const VANE_CHECK_SOURCES = new Set<WindStation["source"]>([
   "bolzano",
   "slf",
   "geosphere",
   "meteoswiss",
   "lwdtirol",
+  "meteotrentino",
 ]);
 
 // --- Regel 3: "unplausibler Wert" ---
