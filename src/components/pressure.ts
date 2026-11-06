@@ -36,8 +36,10 @@ const LINE_PANE_Z = 410;
 const LABEL_PANE = "foehnschild";
 const LABEL_PANE_Z = 650;
 
-const LINE_WEIGHT = 5;
-const OUTLINE_WEIGHT = 8;
+// Dicke der Föhn-Linie in Pixeln (Nov. 2026 um etwa ein Drittel dünner
+// gemacht, Wunsch des Projektbesitzers; vorher 5 und 8).
+const LINE_WEIGHT = 3.5;
+const OUTLINE_WEIGHT = 5.5;
 const OUTLINE_COLOR = "#18181b";
 
 /**
