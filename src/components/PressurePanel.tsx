@@ -663,6 +663,9 @@ export default function PressurePanel({
               const date = new Date(t);
               const hour = date.getHours();
               const midnight = hour === 0;
+              // Tag statt "00" unter dem Druck-Diagramm; unter dem Temperatur-
+              // Diagramm steht dasselbe Datum zusätzlich unter der "00".
+              const dayLabel = date.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
               return (
                 <g key={t}>
                   {/* Senkrechte Linien nur alle 2 h (Lesbarkeit), Mitternacht kräftiger. */}
@@ -696,7 +699,7 @@ export default function PressurePanel({
                       fontWeight={midnight ? 600 : 400}
                       className="tabular-nums"
                     >
-                      {String(hour).padStart(2, "0")}
+                      {midnight ? dayLabel : String(hour).padStart(2, "0")}
                     </text>
                   )}
                   {hour % LABEL_EVERY_HOURS === 0 && (
@@ -721,7 +724,7 @@ export default function PressurePanel({
                       fill="#18181b"
                       fontWeight={600}
                     >
-                      {date.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" })}
+                      {dayLabel}
                     </text>
                   )}
                 </g>

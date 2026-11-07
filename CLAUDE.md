@@ -584,7 +584,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
   Innsbruck wärmer) steht (nichts liegt auf den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
-  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h.
+  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; unter dem
+  Druck-Diagramm steht um Mitternacht der **Tag („Sa., 7.11.“) statt „00“**,
+  unter dem Temperatur-Diagramm „00“ und darunter der Tag.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
