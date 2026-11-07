@@ -147,6 +147,13 @@ const SCALE_STRIP_OPACITY = 0.9;
 // Projektbesitzers, 7. Nov. 2026.
 const STEP_LINE_COLOR = "#d4d4d8";
 const STEP_LINE_WIDTH = 1;
+// Hervorgehobene Farbsprünge bei ±1,5 und ±2,5 hPa (7. Nov. 2026, Wunsch des
+// Projektbesitzers): dicker und gestrichelt, etwas dunkler grau (weiter grau,
+// nicht bunt). Die übrigen Farbsprünge (±0,5, ±3) bleiben dünn.
+const STRONG_STEP_HPA = [1.5, 2.5];
+const STRONG_STEP_LINE_COLOR = "#a1a1aa";
+const STRONG_STEP_LINE_WIDTH = 1.6;
+const STRONG_STEP_LINE_DASH = "6 4";
 // Mindestabstand (px) zweier Zahlen links; liegen zwei Farbsprünge enger
 // beieinander (große Achsenspanne), fällt die Zahl der weiter außen liegenden
 // weg (die Linie bleibt); die "0" weicht den Farbsprüngen.
@@ -453,13 +460,18 @@ export default function PressurePanel({
     // Linien an den Farbsprüngen (oberhalb und unterhalb der Nulllinie), grau.
     // Beschriftet wird von innen nach außen, soweit der Platz reicht
     // (STEP_LABEL_MIN_GAP_PX).
-    const stepLines: { y: number; label: string; showLabel: boolean }[] = [];
+    const stepLines: { y: number; label: string; showLabel: boolean; strong: boolean }[] = [];
     FOEHN_COLOR_SCALE.forEach((step, i) => {
       const next = FOEHN_COLOR_SCALE[i + 1];
       if (!next || !Number.isFinite(step.upTo)) return;
       for (const at of [step.upTo, -step.upTo]) {
         if (at < yTop && at > yBottom) {
-          stepLines.push({ y: y(at), label: formatSigned(at), showLabel: true });
+          stepLines.push({
+            y: y(at),
+            label: formatSigned(at),
+            showLabel: true,
+            strong: STRONG_STEP_HPA.includes(Math.abs(at)),
+          });
         }
       }
     });
@@ -658,8 +670,9 @@ export default function PressurePanel({
                 x2={chart.svgW}
                 y1={line.y}
                 y2={line.y}
-                stroke={STEP_LINE_COLOR}
-                strokeWidth={STEP_LINE_WIDTH}
+                stroke={line.strong ? STRONG_STEP_LINE_COLOR : STEP_LINE_COLOR}
+                strokeWidth={line.strong ? STRONG_STEP_LINE_WIDTH : STEP_LINE_WIDTH}
+                strokeDasharray={line.strong ? STRONG_STEP_LINE_DASH : undefined}
               />
             ))}
             <line x1={0} x2={chart.svgW} y1={chart.y(0)} y2={chart.y(0)} stroke="#18181b" strokeWidth={1.2} />

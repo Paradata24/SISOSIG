@@ -550,7 +550,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
   hPa-Zahlen**; **waagrechte Linien nur auf den Farbsprüngen**
-  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt) plus die Nulllinie — die
+  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt; **±1,5 und ±2,5 dicker
+  und gestrichelt**, 7. Nov. 2026, `STRONG_STEP_HPA`) plus die Nulllinie — die
   Gitterlinien bei ganzen hPa sind weg; **die hPa-Zahlen links stehen genau auf
   den Farbsprüngen** (`stepLines`, „+0,5“ … „−3,0“, die „0“ weicht ihnen),
   nichts steht rechts (Wunsch des Projektbesitzers, 7. Nov. 2026), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
