@@ -561,8 +561,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`);
   **Höhe des Druck-Diagramms passt sich dem Bildschirm an** (7. Nov. 2026,
-  Wunsch des Projektbesitzers: ~30 % der Fensterhöhe, mindestens 150 px,
-  höchstens 320 px; `useChartHeight`, iPhone ~250 px); dabei verschwindet der Zeitbalken wie bei einer Station
+  Wunsch des Projektbesitzers, am selben Tag nochmals vergrößert: ~40 % der
+  Fensterhöhe, mindestens 180 px, höchstens 420 px; `useChartHeight`, iPhone
+  ~340 px); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
 - **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
   Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben

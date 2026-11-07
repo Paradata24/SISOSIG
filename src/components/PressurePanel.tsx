@@ -48,14 +48,15 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // hPa-Zahlen links stehen fest und wandern nicht mit.
 
 // Höhe des Druck-Diagramms passt sich dem Bildschirm an (7. Nov. 2026,
-// Wunsch des Projektbesitzers: mehr Platz für die y-Achse): etwa 30 % der
-// Fensterhöhe (CHART_SHARE_OF_SCREEN), mindestens die früheren 150 px
-// (CHART_MIN_H, kleine Handys), höchstens CHART_MAX_H (großer Bildschirm am
-// Computer). Normales iPhone (~850 px) → ~250 px, also ~40 px je hPa statt 25.
+// Wunsch des Projektbesitzers: mehr Platz für die y-Achse; am selben Tag
+// nochmals vergrößert von 30 % auf 40 %): etwa 40 % der Fensterhöhe
+// (CHART_SHARE_OF_SCREEN), mindestens CHART_MIN_H (kleine Handys; früher fest
+// 150 px), höchstens CHART_MAX_H (großer Bildschirm am Computer). Normales
+// iPhone (~850 px) → ~340 px, also ~55 px je hPa statt anfangs 25.
 // Gerechnet in useChartHeight, beim Drehen/Größenändern neu.
-const CHART_MIN_H = 150;
-const CHART_MAX_H = 320;
-const CHART_SHARE_OF_SCREEN = 0.3;
+const CHART_MIN_H = 180;
+const CHART_MAX_H = 420;
+const CHART_SHARE_OF_SCREEN = 0.4;
 function chartHeightFor(windowHeight: number): number {
   return Math.round(Math.min(CHART_MAX_H, Math.max(CHART_MIN_H, windowHeight * CHART_SHARE_OF_SCREEN)));
 }
