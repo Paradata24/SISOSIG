@@ -44,8 +44,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // hPa-Zahlen links stehen fest und wandern nicht mit.
 
 const CHART_H = 150;
-// Zwei Zeilen unter dem Diagramm: Stunde, darunter an Mitternacht das Datum.
-const TIME_LABEL_H = 30;
+// Eine Zeile unter dem Diagramm: Stunde, an Mitternacht der Tag statt "00".
+const TIME_LABEL_H = 18;
 const PAD_TOP = 6;
 // Breite einer Stunde (px): so breit wie ein Wert-Quadrat im
 // Wind-Verlaufsbalken (Wunsch des Projektbesitzers, Nov. 2026: Stunden viel
@@ -663,8 +663,7 @@ export default function PressurePanel({
               const date = new Date(t);
               const hour = date.getHours();
               const midnight = hour === 0;
-              // Tag statt "00" unter dem Druck-Diagramm; unter dem Temperatur-
-              // Diagramm steht dasselbe Datum zusätzlich unter der "00".
+              // Um Mitternacht steht unter beiden Diagrammen der Tag statt "00".
               const dayLabel = date.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
               return (
                 <g key={t}>
@@ -712,19 +711,7 @@ export default function PressurePanel({
                       fontWeight={midnight ? 600 : 400}
                       className="tabular-nums"
                     >
-                      {String(hour).padStart(2, "0")}
-                    </text>
-                  )}
-                  {midnight && (
-                    <text
-                      x={chart.x(t) + 2}
-                      y={TIME_TOP + 25}
-                      textAnchor="start"
-                      fontSize={10}
-                      fill="#18181b"
-                      fontWeight={600}
-                    >
-                      {dayLabel}
+                      {midnight ? dayLabel : String(hour).padStart(2, "0")}
                     </text>
                   )}
                 </g>
