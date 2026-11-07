@@ -97,7 +97,7 @@ const FORECAST_DASH = "5 3";
 // ICON-CH1 33 h.
 const ECMWF_COLOR = "#7c3aed";
 const MEASURED_COLOR = "#18181b";
-// LESBARKEIT: Senkrechte Rasterlinien nur alle 2 h, ruhigere hPa-Beschriftung,
+// LESBARKEIT: Senkrechte Rasterlinien nur alle 2 h, hPa-Zahlen nur auf den Farbsprüngen,
 // kurze Legende mit Linienmustern in der Titelzeile des Diagramms. Vor "jetzt"
 // zählt allein die Messung (die blassen Prognose-Linien dort gibt es seit dem
 // Aufräumen im Nov. 2026 nicht mehr); rechts von "jetzt" ist der Hintergrund
@@ -113,16 +113,17 @@ const AREA_OPACITY = 0.35;
 const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
 const SCALE_STRIP_OPACITY = 0.9;
-// Auf Höhe jeder Farbgrenze (±0,5 / ±1,5 / ±2,5 / ±3 hPa) geht eine dünne
-// waagrechte Linie durchs Diagramm, in der Farbe der Stufe, die dort beginnt;
-// rechts neben dem Diagramm steht jeweils der Wert (fest, wandert nicht mit).
-// Wunsch des Projektbesitzers, Nov. 2026 (vorher gab es nur den Farbstreifen).
+// Waagrechte Linien gibt es NUR auf Höhe der Farbsprünge (±0,5 / ±1,5 / ±2,5 /
+// ±3 hPa) und bei 0 — dünn und GRAU (nicht bunt), alle anderen Gitterlinien
+// (ganze hPa) sind weg. Die hPa-Zahlen links stehen genau auf diesen
+// Farbsprüngen (neben dem Farbstreifen), nicht mehr bei +4/+2/0/−2. Wunsch des
+// Projektbesitzers, 7. Nov. 2026.
+const STEP_LINE_COLOR = "#d4d4d8";
 const STEP_LINE_WIDTH = 1;
-const STEP_LINE_OPACITY = 0.75;
-// Mindestabstand (px) zweier Beschriftungen rechts; liegen zwei Grenzen enger
-// beieinander (große Achsenspanne), fällt die Beschriftung der zweiten weg, die
-// Linie bleibt.
-const STEP_LABEL_MIN_GAP_PX = 9;
+// Mindestabstand (px) zweier Zahlen links; liegen zwei Farbsprünge enger
+// beieinander (große Achsenspanne), fällt die Zahl der weiter außen liegenden
+// weg (die Linie bleibt); die "0" weicht den Farbsprüngen.
+const STEP_LABEL_MIN_GAP_PX = 10;
 
 // --- Temperatur Innsbruck und Bozen (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
@@ -384,11 +385,6 @@ export default function PressurePanel({
     const x = (t: number) => PAD_X + ((t - start) / HOUR_MS) * PX_PER_HOUR;
     const y = (v: number) =>
       PAD_TOP + ((yTop - Math.max(yBottom, Math.min(yTop, v))) / (yTop - yBottom)) * CHART_H;
-    // Beschriftung: jede hPa, bei großer Spanne jede zweite bzw. vierte.
-    const span = yTop - yBottom;
-    const tickStep = span > 20 ? 4 : span > 7 ? 2 : 1;
-    const ticks: number[] = [];
-    for (let v = Math.ceil(yBottom / tickStep) * tickStep; v <= yTop; v += tickStep) ticks.push(v);
     // Temperatur-Diagramm darunter, eigene mitwachsende Achse in °C.
     const inRangeS = ([t]: [number, number]) => t >= start && t <= end;
     const tN = tempNorth.filter((p) => inRangeS(p) && onStep(p[0]));
@@ -432,16 +428,16 @@ export default function PressurePanel({
         scaleBands.push({ top, height: y(Math.max(-hi, yBottom)) - top, color: step.color });
       }
     });
-    // Linien an den Farbgrenzen (oberhalb und unterhalb der Nulllinie), Farbe =
-    // die Stufe, die dort beginnt. Beschriftet wird von innen nach außen,
-    // soweit der Platz reicht (STEP_LABEL_MIN_GAP_PX).
-    const stepLines: { y: number; color: string; label: string; showLabel: boolean }[] = [];
+    // Linien an den Farbsprüngen (oberhalb und unterhalb der Nulllinie), grau.
+    // Beschriftet wird von innen nach außen, soweit der Platz reicht
+    // (STEP_LABEL_MIN_GAP_PX).
+    const stepLines: { y: number; label: string; showLabel: boolean }[] = [];
     FOEHN_COLOR_SCALE.forEach((step, i) => {
       const next = FOEHN_COLOR_SCALE[i + 1];
       if (!next || !Number.isFinite(step.upTo)) return;
       for (const at of [step.upTo, -step.upTo]) {
         if (at < yTop && at > yBottom) {
-          stepLines.push({ y: y(at), color: next.color, label: formatSigned(at), showLabel: true });
+          stepLines.push({ y: y(at), label: formatSigned(at), showLabel: true });
         }
       }
     });
@@ -453,11 +449,13 @@ export default function PressurePanel({
         else lastY = line.y;
       }
     }
+    // Die "0" nur, wenn kein beschrifteter Farbsprung zu nah daneben steht.
+    const showZeroLabel = !stepLines.some((l) => l.showLabel && Math.abs(l.y - y(0)) < STEP_LABEL_MIN_GAP_PX);
     return {
       svgW,
       x,
       y,
-      ticks,
+      showZeroLabel,
       times,
       scaleBands,
       stepLines,
@@ -563,15 +561,24 @@ export default function PressurePanel({
               style={{ top: band.top, height: band.height, background: band.color, opacity: SCALE_STRIP_OPACITY }}
             />
           ))}
-          {chart.ticks.map((tick) => (
-            <span
-              key={tick}
-              className="absolute right-2 -translate-y-1/2 tabular-nums"
-              style={{ top: chart.y(tick) }}
-            >
-              {tick > 0 ? `+${tick}` : tick < 0 ? `−${-tick}` : "0"}
+          {/* hPa-Zahlen genau auf den Farbsprüngen (und die 0). */}
+          {chart.stepLines.map(
+            (line, i) =>
+              line.showLabel && (
+                <span
+                  key={`sl${i}`}
+                  className="absolute right-2 -translate-y-1/2 leading-[10px] tabular-nums"
+                  style={{ top: line.y }}
+                >
+                  {line.label}
+                </span>
+              ),
+          )}
+          {chart.showZeroLabel && (
+            <span className="absolute right-2 -translate-y-1/2 leading-[10px] tabular-nums" style={{ top: chart.y(0) }}>
+              0
             </span>
-          ))}
+          )}
           {chart.tTicks.map((tick) => (
             <span
               key={`t${tick}`}
@@ -620,18 +627,8 @@ export default function PressurePanel({
             </text>
             <path d={chart.measuredAreaPath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-above)" />
             <path d={chart.measuredAreaPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-below)" />
-            {chart.ticks.map((tick) => (
-              <line
-                key={tick}
-                x1={0}
-                x2={chart.svgW}
-                y1={chart.y(tick)}
-                y2={chart.y(tick)}
-                stroke={tick === 0 ? "#18181b" : "#e4e4e7"}
-                strokeWidth={tick === 0 ? 1.2 : 1}
-              />
-            ))}
-            {/* Linien an den Farbgrenzen des Differenz-Schilds (Beschriftung rechts). */}
+            {/* Graue Linien nur auf den Farbsprüngen (Zahlen links), dazu die
+                Nulllinie. */}
             {chart.stepLines.map((line, i) => (
               <line
                 key={`s${i}`}
@@ -639,11 +636,11 @@ export default function PressurePanel({
                 x2={chart.svgW}
                 y1={line.y}
                 y2={line.y}
-                stroke={line.color}
+                stroke={STEP_LINE_COLOR}
                 strokeWidth={STEP_LINE_WIDTH}
-                opacity={STEP_LINE_OPACITY}
               />
             ))}
+            <line x1={0} x2={chart.svgW} y1={chart.y(0)} y2={chart.y(0)} stroke="#18181b" strokeWidth={1.2} />
             {/* Temperatur-Diagramm: Gitter, Fläche zwischen den Kurven
                 (rot = Bozen wärmer, blau = Innsbruck wärmer; Prognose blasser).
                 "warm"/"cold" in buildBandPaths = Innsbruck wärmer/kälter. */}
@@ -752,22 +749,6 @@ export default function PressurePanel({
             <path d={chart.metarPath} fill="none" stroke={METAR_COLOR} strokeWidth={1} strokeDasharray={METAR_DASH} strokeLinecap="round" />
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
-        </div>
-        {/* Rechts fest (wandert nicht mit): die Werte der Farbgrenzen, im Farbton
-            der Stufe wie das Differenz-Schild. */}
-        <div className="relative w-9 shrink-0 text-[9px] leading-[9px]" aria-hidden="true">
-          {chart.stepLines.map(
-            (line, i) =>
-              line.showLabel && (
-                <span
-                  key={`sl${i}`}
-                  className="absolute left-1 -translate-y-1/2 px-0.5 font-semibold tabular-nums text-zinc-900"
-                  style={{ top: line.y, background: line.color }}
-                >
-                  {line.label}
-                </span>
-              ),
-          )}
         </div>
         {/* Titelzeile des Temperatur-Diagramms, fest links (wandert nicht mit),
             in der Lücke zwischen den beiden Diagrammen: links das Δ-Rechteck

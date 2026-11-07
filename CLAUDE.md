@@ -549,11 +549,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
-  hPa-Zahlen** (`scaleBands`) **und als dünne waagrechte Linien** auf Höhe
-  jeder Farbgrenze (±0,5/1,5/2,5/3 hPa, in der Farbe der Stufe, die dort
-  beginnt), **rechts fest beschriftet** mit dem Wert in einem Feld in diesem
-  Farbton (`stepLines`; Wunsch des Projektbesitzers, 7. Nov. 2026 — die
-  Linien waren am 6. Nov. kurz durch den Streifen ersetzt, jetzt gibt es beides), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
+  hPa-Zahlen**; **waagrechte Linien nur auf den Farbsprüngen**
+  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt) plus die Nulllinie — die
+  Gitterlinien bei ganzen hPa sind weg; **die hPa-Zahlen links stehen genau auf
+  den Farbsprüngen** (`stepLines`, „+0,5“ … „−3,0“, die „0“ weicht ihnen),
+  nichts steht rechts (Wunsch des Projektbesitzers, 7. Nov. 2026), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
@@ -584,8 +584,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
   Innsbruck wärmer) steht (nichts liegt auf den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
-  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h, hPa-Zahlen ab
-  7 hPa Spanne nur jede zweite.
+  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
 - Gestartet über den **ganzen Titel als Knopf** („Should I stay or should I
