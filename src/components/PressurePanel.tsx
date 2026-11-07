@@ -709,31 +709,37 @@ export default function PressurePanel({
           </svg>
         </div>
         {/* Titelzeile des Temperatur-Diagramms, fest links (wandert nicht mit),
-            in der Lücke zwischen den beiden Diagrammen. */}
+            in der Lücke zwischen den beiden Diagrammen: links das Δ-Rechteck
+            (wie das Differenz-Schild des Drucks oben, Wunsch des
+            Projektbesitzers, Nov. 2026), daneben Titel, Werte und Farben. */}
         <div
-          className="pointer-events-none absolute left-9 bg-white/85 px-0.5 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
+          className="pointer-events-none absolute left-3 flex items-center gap-2 whitespace-nowrap bg-white/85 pr-1 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
           style={{ top: PAD_TOP + CHART_H + PRESSURE_TIME_H + 3 }}
         >
-          <div className="flex flex-wrap items-center gap-x-2.5">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Temperatur (°C)</span>
-            <span className="font-semibold" style={{ color: IBK_COLOR }}>
-              ━ {north.short}
-              {currentTemp && <> {formatHpa(currentTemp.south)}°</>}
+          {currentTemp && (
+            <span
+              className="border border-black px-2 py-px text-sm font-bold leading-5 tabular-nums text-zinc-900"
+              style={{ background: -currentTemp.diff > 0 ? "#fecaca" : -currentTemp.diff < 0 ? "#bfdbfe" : "#e4e4e7" }}
+            >
+              Δ {formatSigned(-currentTemp.diff)} °C
             </span>
-            <span className="font-semibold" style={{ color: BZ_COLOR }}>
-              ━ {south.short}
-              {currentTemp && <> {formatHpa(currentTemp.north)}°</>}
-            </span>
-            {currentTemp && (
-              <span>
-                Δ{" "}
-                <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatSigned(-currentTemp.diff)} °C</strong>
-              </span>
-            )}
-          </div>
+          )}
           <div>
-            Fläche: <span style={{ color: TEMP_BZ_WARMER_FILL }}>■ {south.short} wärmer</span>{" "}
-            <span style={{ color: TEMP_IBK_WARMER_FILL }}>■ {north.short} wärmer</span>
+            <div className="flex items-center gap-x-2.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Temperatur</span>
+              <span className="font-semibold" style={{ color: IBK_COLOR }}>
+                ━ {north.short}
+                {currentTemp && <> {formatHpa(currentTemp.south)}°</>}
+              </span>
+              <span className="font-semibold" style={{ color: BZ_COLOR }}>
+                ━ {south.short}
+                {currentTemp && <> {formatHpa(currentTemp.north)}°</>}
+              </span>
+            </div>
+            <div>
+              Fläche: <span style={{ color: TEMP_BZ_WARMER_FILL }}>■ {south.short} wärmer</span>{" "}
+              <span style={{ color: TEMP_IBK_WARMER_FILL }}>■ {north.short} wärmer</span>
+            </div>
           </div>
         </div>
       </div>

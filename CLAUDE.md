@@ -577,8 +577,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Satz** wie „kein nennenswertes Gefälle“ — vom Projektbesitzer abgelehnt);
   das Druck-Diagramm hat nur seine Legende (keine Titelzeile „Druck (hPa)“,
   kein „Süd höher/Nord höher“ — abgelehnt), das Temperatur-Diagramm eine
-  Titelzeile mit „Δ“ (= Bozen − Innsbruck) statt „BZ−IBK“ (nichts liegt auf
-  den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
+  Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Bozen − Innsbruck,
+  wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
+  Innsbruck wärmer) steht (nichts liegt auf den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
   deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h, hPa-Zahlen ab
   7 hPa Spanne nur jede zweite.
