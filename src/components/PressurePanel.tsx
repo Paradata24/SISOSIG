@@ -47,30 +47,27 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Öffnen steht "jetzt" in der Mitte (wie im Wind-Verlaufsbalken). Die
 // hPa-Zahlen links stehen fest und wandern nicht mit.
 
-// Höhe des Druck-Diagramms passt sich dem Bildschirm an (7. Nov. 2026,
-// Wunsch des Projektbesitzers: mehr Platz für die y-Achse; am selben Tag
-// nochmals vergrößert von 30 % auf 40 %): etwa 40 % der Fensterhöhe
-// (CHART_SHARE_OF_SCREEN), mindestens CHART_MIN_H (kleine Handys; früher fest
-// 150 px), höchstens CHART_MAX_H (großer Bildschirm am Computer). Normales
-// iPhone (~850 px) → ~340 px, also ~55 px je hPa statt anfangs 25.
-// Gerechnet in useChartHeight, beim Drehen/Größenändern neu.
+// FENSTER BIS ZUM TITEL-BALKEN (7. Nov. 2026, Wunsch des Projektbesitzers,
+// nach zwei Zwischenschritten mit 30 % und 40 % der Bildschirmhöhe): Der
+// Druck-Verlaufsbalken reicht von unten bis an die Unterkante des
+// Titel-Balkens (`topInset`, von WindApp gemessen). Das Temperatur-Diagramm
+// behält seine feste Höhe; das Druck-Diagramm bekommt den ganzen restlichen
+// Platz (useChartHeight misst den Diagramm-Bereich), mindestens CHART_MIN_H —
+// auf sehr kleinen Bildschirmen lässt sich das Fenster dann senkrecht
+// verschieben.
 const CHART_MIN_H = 180;
-const CHART_MAX_H = 420;
-const CHART_SHARE_OF_SCREEN = 0.4;
-function chartHeightFor(windowHeight: number): number {
-  return Math.round(Math.min(CHART_MAX_H, Math.max(CHART_MIN_H, windowHeight * CHART_SHARE_OF_SCREEN)));
-}
-function useChartHeight(): number {
-  const [height, setHeight] = useState(() =>
-    typeof window === "undefined" ? CHART_MIN_H : chartHeightFor(window.innerHeight),
-  );
+function useChartHeight(): [number, (el: HTMLDivElement | null) => void] {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [available, setAvailable] = useState(0);
   useEffect(() => {
-    const update = () => setHeight(chartHeightFor(window.innerHeight));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return height;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setAvailable(el.clientHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  // Alles im Diagramm-Bereich außer dem Druck-Diagramm selbst.
+  const fixed = PAD_TOP + TEMP_GAP + TEMP_H + TIME_LABEL_H;
+  return [Math.max(CHART_MIN_H, available - fixed), setEl];
 }
 // Eine Zeile unter dem Diagramm: Stunde, an Mitternacht der Tag statt "00".
 const TIME_LABEL_H = 18;
@@ -175,9 +172,11 @@ const STEP_LABEL_MIN_GAP_PX = 10;
 // Abstand zwischen Druck- und Temperatur-Diagramm: oben die Stundenzahlen
 // unter dem Druck-Diagramm (PRESSURE_TIME_H, Wunsch des Projektbesitzers,
 // Nov. 2026), darunter die Titelzeile des Temperatur-Diagramms (zwei kleine
-// Zeilen).
-const PRESSURE_TIME_H = 14;
-const TEMP_TITLE_H = 34;
+// Zeilen). Seit 7. Nov. 2026 mit mehr Luft (Wunsch des Projektbesitzers;
+// vorher 14 + 34 px): TEMP_TITLE_PAD_PX über und unter der Titelzeile.
+const PRESSURE_TIME_H = 18;
+const TEMP_TITLE_PAD_PX = 10;
+const TEMP_TITLE_H = 34 + 2 * TEMP_TITLE_PAD_PX;
 const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
 // Lage des Temperatur-Diagramms und der Zeitachse hängt an der Höhe des
@@ -332,7 +331,10 @@ export default function PressurePanel({
   tempSouthForecast,
   loading,
   onClose,
+  topInset,
 }: {
+  /** Höhe des Titel-Balkens (px): bis dorthin reicht das Fenster. */
+  topInset: number;
   /** 10-Minuten-Werte der Stationen (Hauptkurve). */
   measured: PressureDiffPoint[];
   /** Flugwetter-Meldungen der Flughäfen (Vergleichslinie). */
@@ -377,7 +379,7 @@ export default function PressurePanel({
 
   // "Jetzt" beim Öffnen bzw. bei neuen Daten (die kommen alle 10 min).
   const [now, setNow] = useState(() => Date.now());
-  const chartH = useChartHeight();
+  const [chartH, chartAreaRef] = useChartHeight();
   const tempTop = PAD_TOP + chartH + TEMP_GAP;
   const timeTop = tempTop + TEMP_H;
   useEffect(() => {
@@ -525,7 +527,8 @@ export default function PressurePanel({
   return (
     <section
       aria-label="Föhn: Druckdifferenz Bozen − Innsbruck"
-      className="absolute inset-x-0 bottom-0 z-[1100] border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
+      className="absolute inset-x-0 bottom-0 z-[1100] flex flex-col overflow-y-auto border-t border-zinc-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_16px_rgba(0,0,0,0.18)] dark:border-zinc-700 dark:bg-zinc-900"
+      style={{ top: topInset > 0 ? topInset : "env(safe-area-inset-top)" }}
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
@@ -585,7 +588,9 @@ export default function PressurePanel({
         </LegendItem>
       </div>
 
-      <div className="relative flex pr-1" style={{ height: svgH }}>
+      {/* Diagramm-Bereich: füllt den Rest des Fensters (siehe useChartHeight). */}
+      <div ref={chartAreaRef} className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex shrink-0 pr-1" style={{ height: svgH }}>
         {/* Feste hPa-Spalte links, wandert beim Verschieben nicht mit. */}
         <div className="relative w-8 shrink-0 text-[10px] text-zinc-500 dark:text-zinc-400" aria-hidden="true">
           {/* Farbstreifen der Stufen (wie im Schild auf der Karte). */}
@@ -783,7 +788,7 @@ export default function PressurePanel({
             Projektbesitzers, Nov. 2026), daneben Titel, Werte und Farben. */}
         <div
           className="pointer-events-none absolute left-3 flex items-center gap-2 whitespace-nowrap bg-white/85 pr-1 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
-          style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + 3 }}
+          style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX }}
         >
           {currentTemp && (
             <span
@@ -813,8 +818,10 @@ export default function PressurePanel({
         </div>
       </div>
 
+      </div>
+
       {/* Luft unter der Zeitachse. */}
-      <div className="h-2" />
+      <div className="h-2 shrink-0" />
     </section>
   );
 }
