@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  describeFoehn,
   FOEHN_COLOR_SCALE,
   FOEHN_PAIR,
   foehnColor,
@@ -53,9 +52,9 @@ const PAD_TOP = 6;
 // enger als zuerst mit 30 px). Am Handy sind so gut 20 h auf einmal zu sehen,
 // 48 h + 72 h ECMWF ergeben knapp 2.000 px zum Wischen.
 const PX_PER_HOUR = 16;
-// Beschriftet wird jede dritte Stunde (00, 03, 06 …) — jede Stunde stieße bei
+// Beschriftet wird jede zweite Stunde (00, 02, 04 …) — jede Stunde stieße bei
 // 16 px aneinander. Rasterlinien gibt es trotzdem für jede Stunde.
-const LABEL_EVERY_HOURS = 3;
+const LABEL_EVERY_HOURS = 2;
 // Rand links/rechts im Diagramm, damit die äußersten Stundenzahlen nicht
 // abgeschnitten werden.
 const PAD_X = 10;
@@ -98,7 +97,7 @@ const FORECAST_DASH = "5 3";
 // ICON-CH1 33 h.
 const ECMWF_COLOR = "#7c3aed";
 const MEASURED_COLOR = "#18181b";
-// LESBARKEIT: Senkrechte Rasterlinien nur alle 3 h, ruhigere hPa-Beschriftung,
+// LESBARKEIT: Senkrechte Rasterlinien nur alle 2 h, ruhigere hPa-Beschriftung,
 // kurze Legende mit Linienmustern in der Titelzeile des Diagramms. Vor "jetzt"
 // zählt allein die Messung (die blassen Prognose-Linien dort gibt es seit dem
 // Aufräumen im Nov. 2026 nicht mehr); rechts von "jetzt" ist der Hintergrund
@@ -127,9 +126,13 @@ const SCALE_STRIP_OPACITY = 0.9;
 // Temperaturen sehen.) Nach "jetzt" die ICON-CH1-Prognose beider Stationen
 // gestrichelt, die Fläche dazwischen blasser. Allein wegen der Höhe
 // (Innsbruck ~330 m höher) ist Innsbruck normal ~2 °C kälter.
-// Abstand zwischen Druck- und Temperatur-Diagramm: darin steht die Titelzeile
-// des Temperatur-Diagramms (zwei kleine Zeilen).
-const TEMP_GAP = 34;
+// Abstand zwischen Druck- und Temperatur-Diagramm: oben die Stundenzahlen
+// unter dem Druck-Diagramm (PRESSURE_TIME_H, Wunsch des Projektbesitzers,
+// Nov. 2026), darunter die Titelzeile des Temperatur-Diagramms (zwei kleine
+// Zeilen).
+const PRESSURE_TIME_H = 14;
+const TEMP_TITLE_H = 34;
+const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
 const TEMP_TOP = PAD_TOP + CHART_H + TEMP_GAP;
 const TIME_TOP = TEMP_TOP + TEMP_H;
@@ -480,8 +483,9 @@ export default function PressurePanel({
         </button>
       </header>
 
-      {/* Aktuelle Lage in einer Zeile: großes Differenz-Schild, was es
-          bedeutet, rechts klein die beiden Druckwerte (QNH). */}
+      {/* Aktuelle Lage in einer Zeile: großes Differenz-Schild, rechts klein die
+          beiden Druckwerte (QNH). Bewusst ohne erklärenden Satz (Wunsch des
+          Projektbesitzers, Nov. 2026). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 text-xs text-zinc-700 dark:text-zinc-200">
         {current ? (
           <>
@@ -490,9 +494,6 @@ export default function PressurePanel({
               style={{ background: currentColor?.color, color: currentColor?.text }}
             >
               {formatPressureDiff(current.diff)}
-            </span>
-            <span className="text-sm text-zinc-600 first-letter:uppercase dark:text-zinc-300">
-              {describeFoehn(current.diff)}
             </span>
             <span className="ml-auto text-zinc-500 dark:text-zinc-400">
               {south.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(current.south)}</strong>
@@ -624,7 +625,7 @@ export default function PressurePanel({
               const midnight = hour === 0;
               return (
                 <g key={t}>
-                  {/* Senkrechte Linien nur alle 3 h (Lesbarkeit), Mitternacht kräftiger. */}
+                  {/* Senkrechte Linien nur alle 2 h (Lesbarkeit), Mitternacht kräftiger. */}
                   {hour % LABEL_EVERY_HOURS === 0 && (
                     <>
                       <line
@@ -644,6 +645,19 @@ export default function PressurePanel({
                         strokeWidth={1}
                       />
                     </>
+                  )}
+                  {hour % LABEL_EVERY_HOURS === 0 && (
+                    <text
+                      x={chart.x(t)}
+                      y={PAD_TOP + CHART_H + 11}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fill={midnight ? "#18181b" : "#71717a"}
+                      fontWeight={midnight ? 600 : 400}
+                      className="tabular-nums"
+                    >
+                      {String(hour).padStart(2, "0")}
+                    </text>
                   )}
                   {hour % LABEL_EVERY_HOURS === 0 && (
                     <text
@@ -700,7 +714,7 @@ export default function PressurePanel({
             in der Lücke zwischen den beiden Diagrammen. */}
         <div
           className="pointer-events-none absolute left-9 bg-white/85 px-0.5 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
-          style={{ top: PAD_TOP + CHART_H + 3 }}
+          style={{ top: PAD_TOP + CHART_H + PRESSURE_TIME_H + 3 }}
         >
           <div className="flex flex-wrap items-center gap-x-2.5">
             <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Temperatur (°C)</span>

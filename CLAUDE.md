@@ -552,7 +552,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   hPa-Zahlen** (`scaleBands`; bis 6. Nov. 2026 fünf farbige Linien quer durchs
   Diagramm, beim Aufräumen ersetzt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
-  Wind-Verlaufsbalken, beschriftet jede 3. Stunde; beim Öffnen „jetzt“ in der Mitte,
+  Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
   mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
@@ -573,11 +573,12 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   noch nicht angezeigt.
 - **Lesbarkeit des Druck-Verlaufsbalkens** (Nov. 2026, zweimal auf Wunsch
   des Projektbesitzers aufgeräumt, zuletzt am 6. Nov.): Kopfzeile nur zwei
-  Zeilen (großes Differenz-Schild, Satz zur Lage, rechts die Druckwerte);
+  Zeilen (großes Differenz-Schild, rechts die Druckwerte; **kein erklärender
+  Satz** wie „kein nennenswertes Gefälle“ — vom Projektbesitzer abgelehnt);
   jedes Diagramm hat eine **eigene Titelzeile mit Legende** (nichts liegt auf
   den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
-  deshalb nicht mehr; senkrechte Rasterlinien nur alle 3 h, hPa-Zahlen ab
+  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h, hPa-Zahlen ab
   7 hPa Spanne nur jede zweite.
 
 **Flugmodus (Okt. 2026, Wunsch des Projektbesitzers)**
