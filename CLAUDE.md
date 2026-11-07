@@ -550,7 +550,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
   hPa-Zahlen**; **waagrechte Linien nur auf den Farbsprüngen**
-  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt) plus die Nulllinie — die
+  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt; **±1,5 und ±2,5 dicker
+  und gestrichelt**, 7. Nov. 2026, `STRONG_STEP_HPA`) plus die Nulllinie — die
   Gitterlinien bei ganzen hPa sind weg; **die hPa-Zahlen links stehen genau auf
   den Farbsprüngen** (`stepLines`, „+0,5“ … „−3,0“, die „0“ weicht ihnen),
   nichts steht rechts (Wunsch des Projektbesitzers, 7. Nov. 2026), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
@@ -558,7 +559,13 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
   **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
-  mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`); dabei verschwindet der Zeitbalken wie bei einer Station
+  mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`);
+  **das Fenster reicht bis an den Titel-Balken** (7. Nov. 2026, Wunsch des
+  Projektbesitzers, nach Zwischenschritten mit 30 % und 40 % der
+  Bildschirmhöhe): das Druck-Diagramm bekommt den ganzen restlichen Platz
+  (`useChartHeight`, mindestens 180 px), das Temperatur-Diagramm bleibt
+  100 px; zwischen beiden Diagrammen mehr Luft (`PRESSURE_TIME_H`,
+  `TEMP_TITLE_PAD_PX`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
 - **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
   Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
@@ -582,9 +589,15 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   kein „Süd höher/Nord höher“ — abgelehnt), das Temperatur-Diagramm eine
   Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Bozen − Innsbruck,
   wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
-  Innsbruck wärmer) steht (nichts liegt auf den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
-  „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
-  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; um Mitternacht
+  Innsbruck wärmer) steht (nichts liegt auf den Kurven); **seit 7. Nov. 2026
+  aufgebaut wie die Kopfzeile über dem Druck-Diagramm** (Titel „Temperatur
+  Bozen − Innsbruck · Stand: …“, gleich großes
+  Schild, rechts „BZ 9,1 · IBK 5,2 °C“ in 15 px, darunter die Legende in
+  11 px; Wunsch des Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
+  „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)
+  laufen seit 7. Nov. 2026 auch in der Vergangenheit weiter, hinter der
+  Messung** (Wunsch des Projektbesitzers, „wie im Verlaufsbalken“; vorher
+  endeten sie an „jetzt“); senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; um Mitternacht
   steht unter **beiden** Diagrammen der **Tag („Sa., 7.11.“) statt „00“**
   (keine zweite Datumszeile mehr).
 

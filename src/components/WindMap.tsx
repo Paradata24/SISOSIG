@@ -1177,6 +1177,7 @@ export default function WindMap({
           ecmwfRun={pressureData?.ecmwfRun ?? null}
           loading={pressureData === null && !pressureFailed}
           onClose={() => onPressureOpenChange(false)}
+          topInset={topInset}
         />
       )}
     </div>
