@@ -47,7 +47,30 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Öffnen steht "jetzt" in der Mitte (wie im Wind-Verlaufsbalken). Die
 // hPa-Zahlen links stehen fest und wandern nicht mit.
 
-const CHART_H = 150;
+// Höhe des Druck-Diagramms passt sich dem Bildschirm an (7. Nov. 2026,
+// Wunsch des Projektbesitzers: mehr Platz für die y-Achse): etwa 30 % der
+// Fensterhöhe (CHART_SHARE_OF_SCREEN), mindestens die früheren 150 px
+// (CHART_MIN_H, kleine Handys), höchstens CHART_MAX_H (großer Bildschirm am
+// Computer). Normales iPhone (~850 px) → ~250 px, also ~40 px je hPa statt 25.
+// Gerechnet in useChartHeight, beim Drehen/Größenändern neu.
+const CHART_MIN_H = 150;
+const CHART_MAX_H = 320;
+const CHART_SHARE_OF_SCREEN = 0.3;
+function chartHeightFor(windowHeight: number): number {
+  return Math.round(Math.min(CHART_MAX_H, Math.max(CHART_MIN_H, windowHeight * CHART_SHARE_OF_SCREEN)));
+}
+function useChartHeight(): number {
+  const [height, setHeight] = useState(() =>
+    typeof window === "undefined" ? CHART_MIN_H : chartHeightFor(window.innerHeight),
+  );
+  useEffect(() => {
+    const update = () => setHeight(chartHeightFor(window.innerHeight));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return height;
+}
 // Eine Zeile unter dem Diagramm: Stunde, an Mitternacht der Tag statt "00".
 const TIME_LABEL_H = 18;
 const PAD_TOP = 6;
@@ -149,8 +172,8 @@ const PRESSURE_TIME_H = 14;
 const TEMP_TITLE_H = 34;
 const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
-const TEMP_TOP = PAD_TOP + CHART_H + TEMP_GAP;
-const TIME_TOP = TEMP_TOP + TEMP_H;
+// Lage des Temperatur-Diagramms und der Zeitachse hängt an der Höhe des
+// Druck-Diagramms (siehe useChartHeight), deshalb im Baustein gerechnet.
 // Mitwachsende Achse in °C: mindestens 10 °C Spanne, in 5-°C-Schritten.
 const T_MIN_SPAN_C = 10;
 const T_STEP_C = 5;
@@ -346,6 +369,9 @@ export default function PressurePanel({
 
   // "Jetzt" beim Öffnen bzw. bei neuen Daten (die kommen alle 10 min).
   const [now, setNow] = useState(() => Date.now());
+  const chartH = useChartHeight();
+  const tempTop = PAD_TOP + chartH + TEMP_GAP;
+  const timeTop = tempTop + TEMP_H;
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
@@ -380,7 +406,7 @@ export default function PressurePanel({
     const svgW = PAD_X * 2 + ((end - start) / HOUR_MS) * PX_PER_HOUR;
     const x = (t: number) => PAD_X + ((t - start) / HOUR_MS) * PX_PER_HOUR;
     const y = (v: number) =>
-      PAD_TOP + ((yTop - Math.max(yBottom, Math.min(yTop, v))) / (yTop - yBottom)) * CHART_H;
+      PAD_TOP + ((yTop - Math.max(yBottom, Math.min(yTop, v))) / (yTop - yBottom)) * chartH;
     // Temperatur-Diagramm darunter, eigene mitwachsende Achse in °C.
     const inRangeS = ([t]: [number, number]) => t >= start && t <= end;
     const tN = tempNorth.filter((p) => inRangeS(p) && onStep(p[0]));
@@ -400,7 +426,7 @@ export default function PressurePanel({
       else tLow -= T_STEP_C;
     }
     const ty = (v: number) =>
-      TEMP_TOP + ((tHigh - Math.max(tLow, Math.min(tHigh, v))) / (tHigh - tLow)) * TEMP_H;
+      tempTop + ((tHigh - Math.max(tLow, Math.min(tHigh, v))) / (tHigh - tLow)) * TEMP_H;
     const tTickStep = tHigh - tLow > 30 ? 10 : T_STEP_C;
     const tTicks: number[] = [];
     for (let v = Math.ceil(tLow / tTickStep) * tTickStep; v <= tHigh; v += tTickStep) tTicks.push(v);
@@ -470,7 +496,7 @@ export default function PressurePanel({
       bandForecast: buildBandPaths(bandF, x, ty, FORECAST_GAP_MS),
       nowX: x(now),
     };
-  }, [now, measured, metar, forecast, ecmwf, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
+  }, [chartH, tempTop, now, measured, metar, forecast, ecmwf, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
 
   // Beim ersten Zeichnen "jetzt" in die Mitte schieben.
   useEffect(() => {
@@ -480,7 +506,7 @@ export default function PressurePanel({
     scrolledToNow.current = true;
   }, [chart, measured.length, forecast.length]);
 
-  const svgH = TIME_TOP + TIME_LABEL_H;
+  const svgH = timeTop + TIME_LABEL_H;
   const currentColor = current ? foehnColor(current.diff) : null;
 
   return (
@@ -613,11 +639,11 @@ export default function PressurePanel({
                 <rect x={0} y={PAD_TOP} width={chart.svgW} height={chart.y(0) - PAD_TOP} />
               </clipPath>
               <clipPath id="dp-below">
-                <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + CHART_H - chart.y(0)} />
+                <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + chartH - chart.y(0)} />
               </clipPath>
             </defs>
             {/* Prognose-Zone: rechts von "jetzt" grau hinterlegt. */}
-            <rect x={chart.nowX} y={PAD_TOP} width={Math.max(0, chart.svgW - chart.nowX)} height={TIME_TOP - PAD_TOP} fill={FORECAST_ZONE_FILL} />
+            <rect x={chart.nowX} y={PAD_TOP} width={Math.max(0, chart.svgW - chart.nowX)} height={timeTop - PAD_TOP} fill={FORECAST_ZONE_FILL} />
             <text x={chart.nowX + 5} y={PAD_TOP + 10} fontSize={10} fill="#71717a">
               Prognose ▸
             </text>
@@ -670,8 +696,8 @@ export default function PressurePanel({
                       <line
                         x1={chart.x(t)}
                         x2={chart.x(t)}
-                        y1={TEMP_TOP}
-                        y2={TIME_TOP + (midnight ? 4 : 0)}
+                        y1={tempTop}
+                        y2={timeTop + (midnight ? 4 : 0)}
                         stroke={midnight ? "#71717a" : "#e4e4e7"}
                         strokeWidth={1}
                       />
@@ -679,7 +705,7 @@ export default function PressurePanel({
                         x1={chart.x(t)}
                         x2={chart.x(t)}
                         y1={PAD_TOP}
-                        y2={PAD_TOP + CHART_H}
+                        y2={PAD_TOP + chartH}
                         stroke={midnight ? "#71717a" : "#e4e4e7"}
                         strokeWidth={1}
                       />
@@ -688,7 +714,7 @@ export default function PressurePanel({
                   {hour % LABEL_EVERY_HOURS === 0 && (
                     <text
                       x={chart.x(t)}
-                      y={PAD_TOP + CHART_H + 11}
+                      y={PAD_TOP + chartH + 11}
                       textAnchor="middle"
                       fontSize={10}
                       fill={midnight ? "#18181b" : "#71717a"}
@@ -701,7 +727,7 @@ export default function PressurePanel({
                   {hour % LABEL_EVERY_HOURS === 0 && (
                     <text
                       x={chart.x(t)}
-                      y={TIME_TOP + 12}
+                      y={timeTop + 12}
                       textAnchor="middle"
                       fontSize={10}
                       fill={midnight ? "#18181b" : "#71717a"}
@@ -719,7 +745,7 @@ export default function PressurePanel({
               x1={chart.nowX}
               x2={chart.nowX}
               y1={PAD_TOP}
-              y2={TIME_TOP}
+              y2={timeTop}
               stroke="#18181b"
               strokeWidth={1}
               strokeDasharray="2 2"
@@ -743,7 +769,7 @@ export default function PressurePanel({
             Projektbesitzers, Nov. 2026), daneben Titel, Werte und Farben. */}
         <div
           className="pointer-events-none absolute left-3 flex items-center gap-2 whitespace-nowrap bg-white/85 pr-1 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
-          style={{ top: PAD_TOP + CHART_H + PRESSURE_TIME_H + 3 }}
+          style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + 3 }}
         >
           {currentTemp && (
             <span
