@@ -532,7 +532,7 @@ export default function PressurePanel({
     >
       <header className="flex items-center gap-3 px-3 pt-2 pb-1">
         <h2 className="min-w-0 truncate text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Föhn: Druck Bozen − Innsbruck
+          Druck Bozen − Innsbruck
           {current && (
             <span className="font-normal text-zinc-500 dark:text-zinc-400">
               {" "}
