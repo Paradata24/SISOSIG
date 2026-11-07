@@ -113,6 +113,16 @@ const AREA_OPACITY = 0.35;
 const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
 const SCALE_STRIP_OPACITY = 0.9;
+// Auf Höhe jeder Farbgrenze (±0,5 / ±1,5 / ±2,5 / ±3 hPa) geht eine dünne
+// waagrechte Linie durchs Diagramm, in der Farbe der Stufe, die dort beginnt;
+// rechts neben dem Diagramm steht jeweils der Wert (fest, wandert nicht mit).
+// Wunsch des Projektbesitzers, Nov. 2026 (vorher gab es nur den Farbstreifen).
+const STEP_LINE_WIDTH = 1;
+const STEP_LINE_OPACITY = 0.75;
+// Mindestabstand (px) zweier Beschriftungen rechts; liegen zwei Grenzen enger
+// beieinander (große Achsenspanne), fällt die Beschriftung der zweiten weg, die
+// Linie bleibt.
+const STEP_LABEL_MIN_GAP_PX = 9;
 
 // --- Temperatur Innsbruck und Bozen (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
@@ -422,6 +432,27 @@ export default function PressurePanel({
         scaleBands.push({ top, height: y(Math.max(-hi, yBottom)) - top, color: step.color });
       }
     });
+    // Linien an den Farbgrenzen (oberhalb und unterhalb der Nulllinie), Farbe =
+    // die Stufe, die dort beginnt. Beschriftet wird von innen nach außen,
+    // soweit der Platz reicht (STEP_LABEL_MIN_GAP_PX).
+    const stepLines: { y: number; color: string; label: string; showLabel: boolean }[] = [];
+    FOEHN_COLOR_SCALE.forEach((step, i) => {
+      const next = FOEHN_COLOR_SCALE[i + 1];
+      if (!next || !Number.isFinite(step.upTo)) return;
+      for (const at of [step.upTo, -step.upTo]) {
+        if (at < yTop && at > yBottom) {
+          stepLines.push({ y: y(at), color: next.color, label: formatSigned(at), showLabel: true });
+        }
+      }
+    });
+    for (const sign of [-1, 1]) {
+      // Je Seite von der Nulllinie nach außen; Linien sind nach Betrag sortiert.
+      let lastY: number | null = null;
+      for (const line of stepLines.filter((l) => Math.sign(y(0) - l.y) === sign)) {
+        if (lastY !== null && Math.abs(line.y - lastY) < STEP_LABEL_MIN_GAP_PX) line.showLabel = false;
+        else lastY = line.y;
+      }
+    }
     return {
       svgW,
       x,
@@ -429,6 +460,7 @@ export default function PressurePanel({
       ticks,
       times,
       scaleBands,
+      stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
@@ -599,6 +631,19 @@ export default function PressurePanel({
                 strokeWidth={tick === 0 ? 1.2 : 1}
               />
             ))}
+            {/* Linien an den Farbgrenzen des Differenz-Schilds (Beschriftung rechts). */}
+            {chart.stepLines.map((line, i) => (
+              <line
+                key={`s${i}`}
+                x1={0}
+                x2={chart.svgW}
+                y1={line.y}
+                y2={line.y}
+                stroke={line.color}
+                strokeWidth={STEP_LINE_WIDTH}
+                opacity={STEP_LINE_OPACITY}
+              />
+            ))}
             {/* Temperatur-Diagramm: Gitter, Fläche zwischen den Kurven
                 (rot = Bozen wärmer, blau = Innsbruck wärmer; Prognose blasser).
                 "warm"/"cold" in buildBandPaths = Innsbruck wärmer/kälter. */}
@@ -707,6 +752,22 @@ export default function PressurePanel({
             <path d={chart.metarPath} fill="none" stroke={METAR_COLOR} strokeWidth={1} strokeDasharray={METAR_DASH} strokeLinecap="round" />
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
+        </div>
+        {/* Rechts fest (wandert nicht mit): die Werte der Farbgrenzen, im Farbton
+            der Stufe wie das Differenz-Schild. */}
+        <div className="relative w-9 shrink-0 text-[9px] leading-[9px]" aria-hidden="true">
+          {chart.stepLines.map(
+            (line, i) =>
+              line.showLabel && (
+                <span
+                  key={`sl${i}`}
+                  className="absolute left-1 -translate-y-1/2 px-0.5 font-semibold tabular-nums text-zinc-900"
+                  style={{ top: line.y, background: line.color }}
+                >
+                  {line.label}
+                </span>
+              ),
+          )}
         </div>
         {/* Titelzeile des Temperatur-Diagramms, fest links (wandert nicht mit),
             in der Lücke zwischen den beiden Diagrammen: links das Δ-Rechteck
