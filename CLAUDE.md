@@ -583,8 +583,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Bozen − Innsbruck,
   wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
   Innsbruck wärmer) steht (nichts liegt auf den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
-  „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
-  deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; um Mitternacht
+  „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)
+  laufen seit 7. Nov. 2026 auch in der Vergangenheit weiter, hinter der
+  Messung** (Wunsch des Projektbesitzers, „wie im Verlaufsbalken“; vorher
+  endeten sie an „jetzt“); senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; um Mitternacht
   steht unter **beiden** Diagrammen der **Tag („Sa., 7.11.“) statt „00“**
   (keine zweite Datumszeile mehr).
 

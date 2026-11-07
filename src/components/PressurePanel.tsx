@@ -20,6 +20,11 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
 // Projektbesitzers) — und die Prognosen ICON-CH1 (grau gestrichelt, 33 h
 // voraus) und ECMWF (violett gestrichelt, 72 h voraus, seit Nov. 2026).
+// PROGNOSE AUCH IN DER VERGANGENHEIT (7. Nov. 2026, Wunsch des
+// Projektbesitzers, "wie im Verlaufsbalken"): Die gespeicherten Prognosen
+// (ICON-CH1, ECMWF, Temperatur) laufen über die ganzen 48 h, hinter der
+// Messung — so sieht man, wie gut die Prognose getroffen hat. Vorher endeten
+// die Linien links an "jetzt".
 // Darunter ein zweites, flacheres Diagramm: Temperatur Innsbruck und Bozen
 // (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
@@ -29,8 +34,7 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // AUFRÄUMEN (Nov. 2026, Wunsch des Projektbesitzers, "Anzeige noch etwas
 // unübersichtlich"): Kopfzeile nur zwei Zeilen (großes Differenz-Schild); jedes
 // Diagramm hat seine EIGENE Titelzeile mit Legende (nichts liegt mehr auf den
-// Kurven); die Prognose-Zone rechts von "jetzt" ist grau hinterlegt, dafür
-// gibt es die blassen Prognose-Linien vor "jetzt" nicht mehr; ECMWF ist
+// Kurven); die Prognose-Zone rechts von "jetzt" ist grau hinterlegt; ECMWF ist
 // violett (Blau und Rot gehören den Flächen); die Stufen der Farbskala stehen
 // als Streifen am Rand statt als fünf Linien quer durchs Diagramm; die
 // Temperatur-Differenz zählt wie der Druck Bozen − Innsbruck. Die Quellen
@@ -99,9 +103,9 @@ const ECMWF_COLOR = "#7c3aed";
 const MEASURED_COLOR = "#18181b";
 // LESBARKEIT: Senkrechte Rasterlinien nur alle 2 h, hPa-Zahlen nur auf den Farbsprüngen,
 // kurze Legende mit Linienmustern in der Titelzeile des Diagramms. Vor "jetzt"
-// zählt allein die Messung (die blassen Prognose-Linien dort gibt es seit dem
-// Aufräumen im Nov. 2026 nicht mehr); rechts von "jetzt" ist der Hintergrund
-// grau und mit "Prognose" beschriftet.
+// liegen die Prognosen HINTER der Messung (seit 7. Nov. 2026 wieder, siehe
+// oben); rechts von "jetzt" ist der Hintergrund grau und mit "Prognose"
+// beschriftet.
 const FORECAST_ZONE_FILL = "#f4f4f5";
 // Fläche zwischen gemessener Kurve und Nulllinie zweifarbig wie im
 // ΔT-Diagramm: rot oberhalb (Süd höher), blau unterhalb (Nord höher) —
@@ -134,7 +138,7 @@ const STEP_LABEL_MIN_GAP_PX = 10;
 // wärmer ist, blau, wo Innsbruck wärmer ist. (buildBandPaths rechnet intern aus
 // Innsbrucks Sicht: "warm" = Innsbruck wärmer.) (Erste Fassung zeigte
 // nur ΔT um eine Nulllinie; der Projektbesitzer wollte auch die gemessenen
-// Temperaturen sehen.) Nach "jetzt" die ICON-CH1-Prognose beider Stationen
+// Temperaturen sehen.) Über den ganzen Zeitraum die ICON-CH1-Prognose beider Stationen
 // gestrichelt, die Fläche dazwischen blasser. Allein wegen der Höhe
 // (Innsbruck ~330 m höher) ist Innsbruck normal ~2 °C kälter.
 // Abstand zwischen Druck- und Temperatur-Diagramm: oben die Stundenzahlen
@@ -211,13 +215,6 @@ function buildBandPaths(
     }
   }
   return { warm, cold };
-}
-
-// Prognose ab "jetzt" (die Vergangenheit zeigt die Messung); der letzte Punkt
-// vor jetzt bleibt dabei, damit die Linie nicht erst nach "jetzt" beginnt.
-function forecastFromNow(points: PressureDiffPoint[], now: number): PressureDiffPoint[] {
-  const last = points.filter((p) => p.time <= now).pop();
-  return points.filter((p) => p.time > now || p === last);
 }
 
 /** Zahl mit Vorzeichen und einer Nachkommastelle, z. B. "−1,6". */
@@ -373,10 +370,9 @@ export default function PressurePanel({
     const f = forecast.filter(inRange);
     const mt = metar.filter(inRange);
     const e = ecmwf.filter(inRange);
-    const fFuture = forecastFromNow(f, now);
-    const eFuture = forecastFromNow(e, now);
-    // Die Achse richtet sich nur nach dem, was gezeichnet wird.
-    const values = [...m, ...mt, ...fFuture, ...eFuture].map((p) => p.diff);
+    // Die Achse richtet sich nach allem, was gezeichnet wird (auch die
+    // Prognose in der Vergangenheit, damit nichts abgeschnitten wird).
+    const values = [...m, ...mt, ...f, ...e].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -389,12 +385,12 @@ export default function PressurePanel({
     const inRangeS = ([t]: [number, number]) => t >= start && t <= end;
     const tN = tempNorth.filter((p) => inRangeS(p) && onStep(p[0]));
     const tS = tempSouth.filter((p) => inRangeS(p) && onStep(p[0]));
-    // Prognose nur ab "jetzt" (die Vergangenheit zeigt die Messung).
-    const lastHour = now - HOUR_MS;
-    const tNf = tempNorthForecast.filter(([t]) => t >= lastHour && t <= end);
-    const tSf = tempSouthForecast.filter(([t]) => t >= lastHour && t <= end);
+    // Prognose über den ganzen Zeitraum, auch in der Vergangenheit (hinter
+    // der Messung, wie im Wind-Verlaufsbalken).
+    const tNf = tempNorthForecast.filter(inRangeS);
+    const tSf = tempSouthForecast.filter(inRangeS);
     const bandM = tempDiff.filter((p) => inRange(p) && onStep(p.time));
-    const bandF = tempDiffForecast.filter((p) => p.time >= lastHour && p.time <= end);
+    const bandF = tempDiffForecast.filter(inRange);
     const tAll = [...tN, ...tS, ...tNf, ...tSf].map(([, v]) => v);
     let tLow = tAll.length ? Math.floor((Math.min(...tAll) - T_HEADROOM_C) / T_STEP_C) * T_STEP_C : 0;
     let tHigh = tAll.length ? Math.ceil((Math.max(...tAll) + T_HEADROOM_C) / T_STEP_C) * T_STEP_C : T_MIN_SPAN_C;
@@ -462,8 +458,8 @@ export default function PressurePanel({
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
       metarPath: buildPath(mt, x, y, METAR_GAP_MS),
-      forecastPath: buildPath(fFuture, x, y, FORECAST_GAP_MS),
-      ecmwfPath: buildPath(eFuture, x, y, FORECAST_GAP_MS),
+      forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
+      ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       ty,
       tTicks,
       ibkPath: buildSeriesPath(tN, x, ty, TEMP_GAP_MS),
@@ -655,10 +651,11 @@ export default function PressurePanel({
                 strokeWidth={1}
               />
             ))}
-            <path d={chart.band.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
-            <path d={chart.band.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            {/* Prognose-Fläche zuerst (liegt in der Vergangenheit hinter der Messung). */}
             <path d={chart.bandForecast.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
             <path d={chart.bandForecast.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
+            <path d={chart.band.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            <path d={chart.band.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
             {chart.times.map((t) => {
               const date = new Date(t);
               const hour = date.getHours();
@@ -732,7 +729,7 @@ export default function PressurePanel({
             <path d={chart.ibkForecastPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
             <path d={chart.bzPath} fill="none" stroke={BZ_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
             <path d={chart.ibkPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
-            {/* Druck-Prognosen: nur ab "jetzt". */}
+            {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
             {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
