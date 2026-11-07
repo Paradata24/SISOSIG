@@ -549,8 +549,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
-  hPa-Zahlen** (`scaleBands`; bis 6. Nov. 2026 fünf farbige Linien quer durchs
-  Diagramm, beim Aufräumen ersetzt), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
+  hPa-Zahlen** (`scaleBands`) **und als dünne waagrechte Linien** auf Höhe
+  jeder Farbgrenze (±0,5/1,5/2,5/3 hPa, in der Farbe der Stufe, die dort
+  beginnt), **rechts fest beschriftet** mit dem Wert in einem Feld in diesem
+  Farbton (`stepLines`; Wunsch des Projektbesitzers, 7. Nov. 2026 — die
+  Linien waren am 6. Nov. kurz durch den Streifen ersetzt, jetzt gibt es beides), **stündliche Zeitachse, seitlich verschiebbar** (Wischen bzw.
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
