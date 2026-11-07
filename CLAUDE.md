@@ -590,7 +590,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Bozen − Innsbruck,
   wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
   Innsbruck wärmer) steht (nichts liegt auf den Kurven); **seit 7. Nov. 2026
-  aufgebaut wie die Kopfzeile über dem Druck-Diagramm** (gleich großes
+  aufgebaut wie die Kopfzeile über dem Druck-Diagramm** (Titel „Temperatur
+  Bozen − Innsbruck · Stand: …“, gleich großes
   Schild, rechts „BZ 9,1 · IBK 5,2 °C“ in 15 px, darunter die Legende in
   11 px; Wunsch des Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)

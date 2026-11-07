@@ -177,9 +177,10 @@ const STEP_LABEL_MIN_GAP_PX = 10;
 const PRESSURE_TIME_H = 18;
 const TEMP_TITLE_PAD_PX = 8;
 // Höhe der Titelzeile selbst: seit 7. Nov. 2026 aufgebaut wie die Kopfzeile
-// über dem Druck-Diagramm (Wunsch des Projektbesitzers): großes Δ-Schild
-// (34 px), 8 px Abstand, Legende in 11 px (~16 px).
-const TEMP_TITLE_CONTENT_H = 58;
+// über dem Druck-Diagramm (Wunsch des Projektbesitzers): Titel mit Stand
+// (20 px + 4 px Abstand), großes Δ-Schild (34 px), 8 px Abstand, Legende in
+// 11 px (~16 px).
+const TEMP_TITLE_CONTENT_H = 82;
 const TEMP_TITLE_H = TEMP_TITLE_CONTENT_H + 2 * TEMP_TITLE_PAD_PX;
 const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
@@ -796,6 +797,16 @@ export default function PressurePanel({
           className="pointer-events-none absolute inset-x-0 bg-white px-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
           style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX, height: TEMP_TITLE_CONTENT_H }}
         >
+          {/* Titel wie ganz oben beim Druck: "Temperatur Bozen − Innsbruck · Stand: …". */}
+          <h3 className="truncate pb-1 text-sm leading-5 font-semibold text-zinc-900 dark:text-zinc-50">
+            Temperatur Bozen − Innsbruck
+            {currentTemp && (
+              <span className="font-normal text-zinc-500 dark:text-zinc-400">
+                {" "}
+                · Stand: {formatDateTime(currentTemp.time)}
+              </span>
+            )}
+          </h3>
           <div className="flex items-center gap-x-3 pb-2">
             {currentTemp ? (
               <>
@@ -812,7 +823,7 @@ export default function PressurePanel({
                 </span>
               </>
             ) : (
-              <span className="py-1 text-base text-zinc-500">Temperatur: kein aktueller Messwert</span>
+              <span className="py-1 text-base text-zinc-500">Kein aktueller Messwert</span>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
