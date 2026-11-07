@@ -175,8 +175,12 @@ const STEP_LABEL_MIN_GAP_PX = 10;
 // Zeilen). Seit 7. Nov. 2026 mit mehr Luft (Wunsch des Projektbesitzers;
 // vorher 14 + 34 px): TEMP_TITLE_PAD_PX über und unter der Titelzeile.
 const PRESSURE_TIME_H = 18;
-const TEMP_TITLE_PAD_PX = 10;
-const TEMP_TITLE_H = 34 + 2 * TEMP_TITLE_PAD_PX;
+const TEMP_TITLE_PAD_PX = 8;
+// Höhe der Titelzeile selbst: seit 7. Nov. 2026 aufgebaut wie die Kopfzeile
+// über dem Druck-Diagramm (Wunsch des Projektbesitzers): großes Δ-Schild
+// (34 px), 8 px Abstand, Legende in 11 px (~16 px).
+const TEMP_TITLE_CONTENT_H = 58;
+const TEMP_TITLE_H = TEMP_TITLE_CONTENT_H + 2 * TEMP_TITLE_PAD_PX;
 const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
 // Lage des Temperatur-Diagramms und der Zeitachse hängt an der Höhe des
@@ -782,38 +786,45 @@ export default function PressurePanel({
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
         </div>
-        {/* Titelzeile des Temperatur-Diagramms, fest links (wandert nicht mit),
-            in der Lücke zwischen den beiden Diagrammen: links das Δ-Rechteck
-            (wie das Differenz-Schild des Drucks oben, Wunsch des
-            Projektbesitzers, Nov. 2026), daneben Titel, Werte und Farben. */}
+        {/* Titelzeile des Temperatur-Diagramms, fest (wandert nicht mit), in
+            der Lücke zwischen den beiden Diagrammen. Seit 7. Nov. 2026 genau
+            wie die Kopfzeile über dem Druck-Diagramm (Wunsch des
+            Projektbesitzers): links das große Δ-Schild (Bozen − Innsbruck,
+            hellrot = Bozen wärmer, hellblau = Innsbruck wärmer), rechts die
+            beiden Temperaturen in 15 px, darunter die Legende in 11 px. */}
         <div
-          className="pointer-events-none absolute left-3 flex items-center gap-2 whitespace-nowrap bg-white/85 pr-1 text-[10px] leading-[14px] text-zinc-500 dark:bg-zinc-900/85 dark:text-zinc-400"
-          style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX }}
+          className="pointer-events-none absolute inset-x-0 bg-white px-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+          style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX, height: TEMP_TITLE_CONTENT_H }}
         >
-          {currentTemp && (
-            <span
-              className="border border-black px-2 py-px text-sm font-bold leading-5 tabular-nums text-zinc-900"
-              style={{ background: -currentTemp.diff > 0 ? "#fecaca" : -currentTemp.diff < 0 ? "#bfdbfe" : "#e4e4e7" }}
-            >
-              Δ {formatSigned(-currentTemp.diff)} °C
+          <div className="flex items-center gap-x-3 pb-2">
+            {currentTemp ? (
+              <>
+                <span
+                  className="border border-black px-2 py-1 text-base font-bold tabular-nums text-zinc-900"
+                  style={{ background: -currentTemp.diff > 0 ? "#fecaca" : -currentTemp.diff < 0 ? "#bfdbfe" : "#e4e4e7" }}
+                >
+                  Δ {formatSigned(-currentTemp.diff)} °C
+                </span>
+                <span className="ml-auto whitespace-nowrap text-[15px] text-zinc-500 dark:text-zinc-400">
+                  {south.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(currentTemp.north)}</strong>
+                  {" · "}
+                  {north.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(currentTemp.south)}</strong> °C
+                </span>
+              </>
+            ) : (
+              <span className="py-1 text-base text-zinc-500">Temperatur: kein aktueller Messwert</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+            <LegendItem color={BZ_COLOR} width={2}>{south.short}</LegendItem>
+            <LegendItem color={IBK_COLOR} width={2}>{north.short}</LegendItem>
+            <LegendItem color={FORECAST_COLOR} width={1.8} dash={FORECAST_DASH}>ICON-CH1</LegendItem>
+            <span className="whitespace-nowrap">
+              <span style={{ color: TEMP_BZ_WARMER_FILL }}>■</span> {south.short} wärmer
             </span>
-          )}
-          <div>
-            <div className="flex items-center gap-x-2.5">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Temperatur</span>
-              <span className="font-semibold" style={{ color: IBK_COLOR }}>
-                ━ {north.short}
-                {currentTemp && <> {formatHpa(currentTemp.south)}°</>}
-              </span>
-              <span className="font-semibold" style={{ color: BZ_COLOR }}>
-                ━ {south.short}
-                {currentTemp && <> {formatHpa(currentTemp.north)}°</>}
-              </span>
-            </div>
-            <div>
-              Fläche: <span style={{ color: TEMP_BZ_WARMER_FILL }}>■ {south.short} wärmer</span>{" "}
-              <span style={{ color: TEMP_IBK_WARMER_FILL }}>■ {north.short} wärmer</span>
-            </div>
+            <span className="whitespace-nowrap">
+              <span style={{ color: TEMP_IBK_WARMER_FILL }}>■</span> {north.short} wärmer
+            </span>
           </div>
         </div>
       </div>
