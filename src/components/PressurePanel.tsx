@@ -117,7 +117,7 @@ const SCALE_STRIP_OPACITY = 0.9;
 // --- Temperatur Innsbruck und Bozen (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
 // mit). Gezeigt werden die gemessenen Temperaturen beider Stationen als
-// Linien (Innsbruck schwarz, Bozen braun) — die Fläche ZWISCHEN den beiden
+// Linien (Innsbruck blau, Bozen braun) — die Fläche ZWISCHEN den beiden
 // Linien ist die Temperatur-Differenz. Seit Nov. 2026 gezählt wie beim Druck:
 // Bozen − Innsbruck (vorher umgekehrt, das verwirrte): rot, wo Bozen (Süden)
 // wärmer ist, blau, wo Innsbruck wärmer ist. (buildBandPaths rechnet intern aus
@@ -141,7 +141,8 @@ const T_MIN_SPAN_C = 10;
 const T_STEP_C = 5;
 const T_HEADROOM_C = 0.5;
 const TEMP_GAP_MS = MEASURED_GAP_MS;
-const IBK_COLOR = "#18181b";
+// Innsbruck blau (Wunsch des Projektbesitzers, Nov. 2026; vorher schwarz).
+const IBK_COLOR = "#2563eb";
 const BZ_COLOR = "#b45309";
 const TEMP_BZ_WARMER_FILL = "#dc2626";
 const TEMP_IBK_WARMER_FILL = "#2563eb";
@@ -495,7 +496,7 @@ export default function PressurePanel({
             >
               {formatPressureDiff(current.diff)}
             </span>
-            <span className="ml-auto text-zinc-500 dark:text-zinc-400">
+            <span className="ml-auto text-[15px] text-zinc-500 dark:text-zinc-400">
               {south.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(current.south)}</strong>
               {" · "}
               {north.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(current.north)}</strong> hPa
@@ -506,11 +507,8 @@ export default function PressurePanel({
         )}
       </div>
 
-      {/* Titelzeile des Druck-Diagramms, darunter seine Legende. */}
-      <div className="flex flex-wrap items-center gap-x-3 px-3 pb-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-        <span className="font-semibold uppercase tracking-wide text-zinc-800 dark:text-zinc-100">Druck (hPa)</span>
-        <span className="whitespace-nowrap">▲ Süd höher · ▼ Nord höher</span>
-      </div>
+      {/* Legende des Druck-Diagramms. Ohne Titelzeile "Druck (hPa)" und ohne
+          "Süd höher / Nord höher" (vom Projektbesitzer abgelehnt, Nov. 2026). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400">
         <LegendItem color={MEASURED_COLOR} width={2}>gemessen</LegendItem>
         <LegendItem color={METAR_COLOR} width={1.5} dash={METAR_DASH}>Flughäfen</LegendItem>
@@ -728,7 +726,7 @@ export default function PressurePanel({
             </span>
             {currentTemp && (
               <span>
-                {south.short}−{north.short}{" "}
+                Δ{" "}
                 <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatSigned(-currentTemp.diff)} °C</strong>
               </span>
             )}

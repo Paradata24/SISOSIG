@@ -560,7 +560,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
 - **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
   Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
   Zeitachse. Gemessene Temperaturen beider Stationen als Linien (IBK
-  schwarz, BZ braun), die **Fläche zwischen den Linien = ΔT Bozen −
+  blau, BZ braun), die **Fläche zwischen den Linien = ΔT Bozen −
   Innsbruck** (seit 6. Nov. 2026 gezählt wie der Druck, vorher umgekehrt):
   rot, wo Bozen wärmer ist, blau, wo Innsbruck wärmer ist (erste Fassung
   zeigte nur ΔT um eine Nulllinie). Nach „jetzt“ die **ICON-CH1-Temperatur**
@@ -573,9 +573,11 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   noch nicht angezeigt.
 - **Lesbarkeit des Druck-Verlaufsbalkens** (Nov. 2026, zweimal auf Wunsch
   des Projektbesitzers aufgeräumt, zuletzt am 6. Nov.): Kopfzeile nur zwei
-  Zeilen (großes Differenz-Schild, rechts die Druckwerte; **kein erklärender
+  Zeilen (großes Differenz-Schild, rechts die Druckwerte in größerer Schrift; **kein erklärender
   Satz** wie „kein nennenswertes Gefälle“ — vom Projektbesitzer abgelehnt);
-  jedes Diagramm hat eine **eigene Titelzeile mit Legende** (nichts liegt auf
+  das Druck-Diagramm hat nur seine Legende (keine Titelzeile „Druck (hPa)“,
+  kein „Süd höher/Nord höher“ — abgelehnt), das Temperatur-Diagramm eine
+  Titelzeile mit „Δ“ (= Bozen − Innsbruck) statt „BZ−IBK“ (nichts liegt auf
   den Kurven); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet — die blassen Prognose-Linien vor „jetzt“ gibt es
   deshalb nicht mehr; senkrechte Rasterlinien und Stundenzahlen nur alle 2 h, hPa-Zahlen ab
