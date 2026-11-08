@@ -168,14 +168,15 @@ const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.j
 // --- LUFTDRUCK DER FLUGHÄFEN (ICON-CH1, Nov. 2026, Wunsch des Projektbesitzers) ---
 // Für die Föhn-Anzeige (Druckdifferenz Bozen − Innsbruck, src/lib/pressure.ts)
 // die Druckprognose von ICON-CH1 an den Flughäfen Innsbruck (LOWI) und Bozen
-// (LIPB). Gemessen wird dort der QNH aus der Flugwetter-Meldung (METAR,
-// gespeichert vom Sammler). Damit Messung und Prognose vergleichbar sind,
-// rechnet diese Funktion den Druck AM BODEN (surface_pressure, von Open-Meteo
-// auf die angegebene Flughafenhöhe bezogen) nach derselben Regel in den QNH
-// um wie die Flughäfen (Normatmosphäre, siehe qnhFromSurface). Der Druck auf
-// Meereshöhe des Modells (pressure_msl) rechnet anders und lag am 03.11.2026
-// in Innsbruck rund 2 hPa über dem METAR; der so gerechnete QNH traf ihn auf
-// wenige Zehntel.
+// (LIPB). Gemessen wird der QNH, den der Sammler aus den Wetterstationen an
+// den Flughäfen selbst rechnet (src/lib/stationPressure.ts; bis 8. Nov. 2026
+// zusätzlich die Flugwetter-Meldungen METAR). Damit Messung und Prognose
+// vergleichbar sind, rechnet diese Funktion den Druck AM BODEN
+// (surface_pressure, von Open-Meteo auf die angegebene Flughafenhöhe bezogen)
+// nach derselben Regel in den QNH um wie die Flughäfen (Normatmosphäre, siehe
+// qnhFromSurface). Der Druck auf Meereshöhe des Modells (pressure_msl) rechnet
+// mit der Temperatur (wie QFF) und lag am 03.11.2026 in Innsbruck rund 2 hPa
+// über dem METAR-QNH; der so gerechnete QNH traf ihn auf wenige Zehntel.
 // Länger als der Wind (siehe PRESSURE_MODELS): Für Föhn ist auch der nächste
 // Tag interessant. Kostet trotzdem nur 1 Aufruf je Standort (gezählt wird
 // erst ab 2 Wochen Zeitraum). Seit Nov. 2026 zusätzlich ECMWF.

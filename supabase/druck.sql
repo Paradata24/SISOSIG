@@ -21,9 +21,9 @@
 --                           und Bozen (Land) — station bleibt dabei 'LOWI'
 --                           bzw. 'LIPB' (die Seite); geschrieben vom Sammler
 --                           (seit Nov. 2026, src/lib/stationPressure.ts)
---              'metar'    = gemessen (Flugwetter-Meldung METAR, geschrieben
---                           vom Sammler /api/collect; Ersatz, falls die
---                           Stationswerte fehlen)
+--              'metar'    = bis 8. Nov. 2026: gemessen (Flugwetter-Meldung
+--                           METAR); seitdem nicht mehr gesammelt, alte Zeilen
+--                           räumt der Sammler nach 3 Tagen weg
 --              'kamm'     = gemessen, Temperatur und Feuchte auf Kammhöhe
 --                           (Rittnerhorn, Patscherkofel; seit 8. Nov. 2026,
 --                           vom Sammler, src/lib/crestTemperature.ts) — ohne

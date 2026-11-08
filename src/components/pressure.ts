@@ -90,12 +90,11 @@ export function usePressureData(enabled: boolean): {
 
 /**
  * Differenz-Reihen Bozen − Innsbruck: `measured` = 10-Minuten-Werte der
- * Stationen (Hauptkurve), `metar` = Flugwetter-Meldungen (Ersatz für Karte und Kopfzeile),
+ * Stationen (Hauptkurve),
  * `forecast` = ICON-CH1, `ecmwf` = ECMWF.
  */
 export function usePressureSeries(data: PressurePayload | null): {
   measured: PressureDiffPoint[];
-  metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   ecmwf: PressureDiffPoint[];
   /**
@@ -117,9 +116,6 @@ export function usePressureSeries(data: PressurePayload | null): {
     () => ({
       measured: data
         ? pairPressureSeries(data.stations[FOEHN_PAIR.north], data.stations[FOEHN_PAIR.south])
-        : [],
-      metar: data
-        ? pairPressureSeries(data.metar[FOEHN_PAIR.north], data.metar[FOEHN_PAIR.south])
         : [],
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
@@ -198,7 +194,6 @@ export function usePressureLine(
   map: L.Map | null,
   enabled: boolean,
   measured: PressureDiffPoint[],
-  metar: PressureDiffPoint[],
   time: number | null,
   onOpen: () => void,
 ): void {
@@ -260,12 +255,13 @@ export function usePressureLine(
   // Farbe und Zahl nach dem gewählten Zeitpunkt.
   useEffect(() => {
     if (!layers) return;
-    // Die 10-Minuten-Werte; fehlen sie (Station ausgefallen), die METAR.
+    // Die 10-Minuten-Werte der Stationen (seit 8. Nov. 2026 ohne Ersatz aus
+    // den Flughafen-Meldungen; fehlen sie, wird die Linie grau).
     const at = time ?? Date.now();
-    const point = pressureDiffAt(measured, at) ?? pressureDiffAt(metar, at);
+    const point = pressureDiffAt(measured, at);
     layers.line.setStyle({ color: point ? foehnColor(point.diff).color : FOEHN_STALE_COLOR });
     layers.label.setIcon(
       L.divIcon({ className: "foehn-marker", html: labelHtml(point), iconSize: [96, 24], iconAnchor: [48, 12] }),
     );
-  }, [layers, measured, metar, time]);
+  }, [layers, measured, time]);
 }

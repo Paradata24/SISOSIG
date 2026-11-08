@@ -4,26 +4,25 @@ import { WIND_COLOR_SCALE } from "./wind";
 // Wunsch des Projektbesitzers; Vorbild die "Live-Druckdifferenzen" der burnair
 // Map). Gemeinsame Angaben für Sammler, /api/pressure, Karte und
 // Druck-Verlaufsbalken. Die Abrufe selbst stehen in src/lib/stationPressure.ts
-// und src/lib/metar.ts (nur Server).
+// und src/lib/crestTemperature.ts (nur Server).
 //
 // IMMER QNH (Wunsch des Projektbesitzers): der Luftdruck, nach der
 // Normatmosphäre der ICAO auf Meereshöhe umgerechnet — so, wie ihn die
 // Flughäfen melden. Beide Seiten rechnen nach DERSELBEN Regel; die
 // Landeswetterdienste rechnen ihre eigenen Werte auf Meereshöhe jeder anders
-// um (am 03.11.2026 lag GeoSphere Innsbruck-Flughafen 1,6 hPa über dem METAR)
-// — deren umgerechnete Werte werden deshalb NICHT direkt verglichen.
+// um (am 03.11.2026 lag GeoSphere Innsbruck-Flughafen 1,6 hPa über dem
+// METAR-QNH — laut Recherche vom Nov. 2026 vor allem der Unterschied QFF/QNH
+// bei kaltem Wetter) — deren umgerechnete Werte werden deshalb NICHT direkt
+// verglichen.
 //
-// ZWEI MESSREIHEN (seit Nov. 2026):
-//   1. Hauptkurve, Linie und Schild auf der Karte: QNH alle 10 min auf 0,1 hPa,
-//      selbst gerechnet aus den Wetterstationen Innsbruck-Flughafen (GeoSphere)
-//      und Bozen (Landeswetterdienst) — src/lib/stationPressure.ts.
-//   2. Ersatz: die METAR der Flughäfen LOWI und LIPB. Nur ganze hPa
-//      (abgerundet), Innsbruck alle 30 min, Bozen stündlich und NACHTS GAR
-//      NICHT (etwa 22:50–6:30 Uhr). Die erste Fassung zeigte nur diese — die
-//      Kurve war treppig und jede Nacht unterbrochen. Fehlen die
-//      Stationswerte, zeigen Karte und Kopfzeile die METAR. Die dünne graue
-//      Vergleichslinie im Diagramm wurde am 8. Nov. 2026 auf Wunsch des
-//      Projektbesitzers entfernt.
+// MESSREIHE: QNH alle 10 min auf 0,1 hPa, selbst gerechnet aus den
+// Wetterstationen Innsbruck-Flughafen (GeoSphere) und Bozen
+// (Landeswetterdienst) — src/lib/stationPressure.ts. Für Hauptkurve, Linie
+// und Schild auf der Karte. Bis 8. Nov. 2026 gab es dazu die METAR der
+// Flughäfen LOWI und LIPB (die erste Fassung zeigte nur diese: ganze hPa,
+// Bozen nachts ohne Meldung, die Kurve war treppig und jede Nacht
+// unterbrochen; danach Vergleichslinie, zuletzt nur Ersatz) — auf Wunsch des
+// Projektbesitzers ganz entfernt, nicht wieder einführen.
 //
 // VORZEICHEN: Differenz = Bozen − Innsbruck (wie im Föhndiagramm üblich).
 //   positiv = Druck im Süden höher → Luft strömt nach Norden → Südföhn
@@ -117,17 +116,18 @@ export const PRESSURE_STATUS_NAME = "druck";
 
 /**
  * Ab diesem Alter gilt die Differenz als ausgefallen (Linie grau, ohne Zahl).
- * Die 10-Minuten-Werte der Stationen sind normal 10–20 min alt; fehlen sie,
- * springt die Anzeige auf die METAR (Bozen stündlich, ~15 min unterwegs,
- * normal bis ~80 min). 2 h überbrücken einen verpassten Bozner METAR.
+ * Die 10-Minuten-Werte der Stationen sind normal 10–20 min alt. Die 2 h
+ * stammen aus der Zeit, als bei fehlenden Stationswerten die stündlichen
+ * METAR einsprangen (bis 8. Nov. 2026); seitdem gelten sie nur noch für die
+ * Stationswerte und ließen sich verkürzen. Auch /api/pressure nutzt die
+ * Grenze für den Notbetrieb.
  */
 export const PRESSURE_STALE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Zwei Messungen gehören zusammen, wenn sie höchstens so weit auseinander
- * liegen. Die Stationen messen beide zu jeder vollen 10 Minuten; die
- * Flughäfen melden beide zu :50, Sondermeldungen (SPECI) dazwischen werden so
- * mit der nächstgelegenen Meldung der anderen Seite gepaart.
+ * liegen. Die Stationen messen beide zu jeder vollen 10 Minuten; fehlt auf
+ * einer Seite ein Wert, wird der nächstgelegene genommen.
  */
 const PAIR_TOLERANCE_MS = 20 * 60 * 1000;
 
@@ -145,8 +145,6 @@ export interface PressurePayload {
    * vorher die Talstationen Bozen und Innsbruck im Feld "temperature").
    */
   crestTemperature: Record<CrestStationId, Array<[number, number]>>;
-  /** Ersatz, falls Stationswerte fehlen: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
-  metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose der Lufttemperatur (2 m, °C) auf Kammhöhe, stündlich. */
@@ -211,8 +209,10 @@ export function pressureDiffAt(series: PressureDiffPoint[], time: number): Press
  * (WIND_COLOR_SCALE in src/lib/wind.ts), in harten Stufen, für positive und
  * negative Werte gleich:
  *   bis 0,5 hPa blau · bis 1,5 grün · bis 2,5 gelb · bis 3 orange · darüber rot
- * (dritte Fassung des Projektbesitzers, Nov. 2026). Die gemessenen Werte
- * sind ganzzahlig (METAR): 0 blau, 1 grün, 2 gelb, 3 orange, ab 4 rot.
+ * (dritte Fassung des Projektbesitzers, Nov. 2026). Die Stufengrenzen auf
+ * halben hPa stammen aus der Zeit der ganzzahligen METAR-Werte (0 blau,
+ * 1 grün, 2 gelb, 3 orange, ab 4 rot); seit den 10-Minuten-Werten auf 0,1 hPa
+ * entscheidet die Zehntel-Rundung (foehnColor).
  * `upTo` = höchster Betrag der Stufe, `inclusive` = ob er noch dazugehört.
  */
 export const FOEHN_COLOR_SCALE: Array<{ upTo: number; inclusive: boolean; color: string; text: string }> = [
@@ -246,7 +246,7 @@ export function describeFoehn(diff: number): string {
   return diff > 0 ? "Süd höher → Südföhn-Lage" : "Nord höher → Nordföhn-Lage";
 }
 
-/** Differenz als Text, z. B. "+4 hPa" / "−3 hPa" (METAR-Werte sind ganzzahlig). */
+/** Differenz als Text, z. B. "+1,6 hPa" / "−3 hPa" (ganze Werte ohne Komma). */
 export function formatPressureDiff(diff: number): string {
   const rounded = Math.round(diff * 10) / 10;
   const text = Number.isInteger(rounded) ? String(Math.abs(rounded)) : Math.abs(rounded).toFixed(1).replace(".", ",");
@@ -258,7 +258,7 @@ export function formatPressureDiff(diff: number): string {
  * Quellen der Föhn-Anzeige — stehen unter "Quellen" im Ebenen-Menü bei den
  * übrigen Quellen (Wunsch des Projektbesitzers, Nov. 2026; zuerst unten im
  * Druck-Verlaufsbalken). GeoSphere verlangt die Nennung (CC BY 4.0), ebenso
- * Open-Meteo; METAR sind gemeinfrei (US-Behörde NOAA).
+ * Open-Meteo.
  */
 export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string }> = [
   {
@@ -269,10 +269,6 @@ export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string
   {
     label: "Luftdruck Bozen, Temperatur Rittnerhorn © Land Südtirol – Wetterdienst",
     url: "https://wetter.provinz.bz.it",
-  },
-  {
-    label: "Flughäfen IBK/BZ (METAR) © NOAA Aviation Weather Center",
-    url: "https://aviationweather.gov/data/api/",
   },
   {
     label: "Druck- und Temperaturprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",

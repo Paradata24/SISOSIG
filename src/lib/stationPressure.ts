@@ -2,8 +2,8 @@ import { SOURCE_TIMEOUT_MS } from "./wind";
 import { type PressureStationId } from "./pressure";
 
 // Luftdruck in 10-Minuten-Auflösung für die Föhn-Anzeige (Nov. 2026, Wunsch
-// des Projektbesitzers): Die Flugwetter-Meldungen (METAR, src/lib/metar.ts)
-// haben nur ganze hPa, und Bozen meldet nachts gar nicht (etwa 22:50–6:30
+// des Projektbesitzers): Die Flugwetter-Meldungen (METAR, bis 8. Nov. 2026
+// in src/lib/metar.ts) haben nur ganze hPa, und Bozen meldet nachts gar nicht (etwa 22:50–6:30
 // Uhr) — die Kurve im Druck-Verlaufsbalken war deshalb treppig und nachts
 // unterbrochen. Hier rechnen wir den QNH selbst, auf 0,1 hPa und alle 10
 // Minuten, aus zwei Wetterstationen an den Flughäfen:
@@ -25,8 +25,9 @@ import { type PressureStationId } from "./pressure";
 // änderte sie sich im Median um 0,08 hPa. WIE das Land Bozen auf Meereshöhe
 // umrechnet, ist nicht dokumentiert — die Rückrechnung (Höhe 245 m,
 // Stationstemperatur plus halber Normgradient) traf es an diesen 48 h am
-// besten. Die METAR werden weiter gespeichert (seit 8. Nov. 2026 ohne Linie
-// im Diagramm); weicht die Kurve dauerhaft von ihnen ab, hier prüfen.
+// besten. Die METAR wurden noch bis 8. Nov. 2026 zum Vergleich gesammelt,
+// seitdem nicht mehr (Wunsch des Projektbesitzers) — wer die Rückrechnung
+// erneut prüfen will, vergleicht mit den METAR auf aviationweather.gov.
 //
 // Nur auf dem Server: Abgefragt vom Sammler (/api/collect, letzte 3 h) und im
 // Notbetrieb von /api/pressure (48 h). Beide Dienste liefern ihre Werte mit

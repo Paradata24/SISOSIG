@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { DATABASE_TIMEOUT_MS, HISTORY_HOURS } from "@/lib/wind";
-import { fetchMetarPressure } from "@/lib/metar";
 import { fetchStationPressure } from "@/lib/stationPressure";
 import { fetchCrestTemperature } from "@/lib/crestTemperature";
 import {
@@ -19,11 +18,12 @@ import {
 //   crestTemperature  Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel;
 //             seit 8. Nov. 2026, vorher die Talstationen Bozen/Innsbruck)
 //   crestTemperatureForecast  ICON-CH1-Temperatur (2 m) dieser Bergstationen
-//   metar     QNH aus den Flugwetter-Meldungen (Ersatz, falls Stationswerte fehlen)
 //   forecast  ICON-CH1-Prognose
 //   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
 // Gefüllt wird die Tabelle vom Sammler (/api/collect, Messwerte) und der Edge
 // Function fetch-wind-forecasts (Prognose) — "Ein Sammler, eine Wahrheit".
+// Die Flugwetter-Meldungen der Flughäfen (METAR, Art 'metar') sind seit
+// 8. Nov. 2026 auf Wunsch des Projektbesitzers ganz weg.
 //
 // NOTBETRIEB wie bei /api/wind: Antwortet die Datenbank nicht oder fehlt dort
 // für eine Messreihe ein frischer Wert (z. B. Sammler ausgefallen, oder kurz
@@ -37,7 +37,7 @@ const RESPONSE_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=30";
 
 // Höchstens so viele Zeilen (Supabase gibt je Anfrage bis zu 1000 heraus).
 // Erwartet in 48 h + 33 h Vorschau: ~580 Stationswerte, ~580
-// Kammtemperaturen, ~150 METAR, ~330 ICON-CH1-Stunden (Flughäfen und
+// Kammtemperaturen, ~330 ICON-CH1-Stunden (Flughäfen und
 // Bergstationen) — zusammen über 1000, deshalb je Art eine Anfrage.
 const MAX_ROWS = 1000;
 
@@ -137,17 +137,15 @@ export async function GET() {
   const since = now - HISTORY_HOURS * 60 * 60 * 1000;
   const sinceIso = new Date(since).toISOString();
 
-  const [stationsDb, crestDb, metarDb, forecastDb, ecmwfDb] = await Promise.all([
+  const [stationsDb, crestDb, forecastDb, ecmwfDb] = await Promise.all([
     readSeries("station", sinceIso),
     readSeries(CREST_KIND, sinceIso),
-    readSeries("metar", sinceIso),
     readSeries("icon_ch1", sinceIso),
     readSeries("ecmwf_ifs", sinceIso),
   ]);
 
   let stations = stationsDb?.series ?? emptySeries();
   let crestTemperature = crestDb?.crestTemperature ?? emptyCrestSeries();
-  let metar = metarDb?.series ?? emptySeries();
   let fallback = false;
 
   // Notbetrieb je Messreihe, alle gleichzeitig.
@@ -180,22 +178,11 @@ export async function GET() {
         console.error("Kammtemperatur im Notbetrieb nicht abrufbar:", err);
       }
     })(),
-    (async () => {
-      if (isFresh(metarDb?.series, now)) return;
-      try {
-        const values = await fetchMetarPressure(HISTORY_HOURS);
-        if (values.length === 0) return;
-        metar = toSeries(values.map((v) => ({ station: v.station, at: v.observedAt, qnh: v.qnhHpa })), since);
-        fallback = true;
-      } catch (err) {
-        console.error("Luftdruck (METAR) im Notbetrieb nicht abrufbar:", err);
-      }
-    })(),
   ]);
 
   const forecast = forecastDb?.series ?? emptySeries();
   const ecmwf = ecmwfDb?.series ?? emptySeries();
-  const hasAny = [stations, metar, forecast, ecmwf].some((series) =>
+  const hasAny = [stations, forecast, ecmwf].some((series) =>
     PRESSURE_STATION_IDS.some((id) => series[id].length > 0),
   );
   if (!hasAny) {
@@ -205,7 +192,6 @@ export async function GET() {
   const payload: PressurePayload = {
     stations,
     crestTemperature,
-    metar,
     forecast,
     crestTemperatureForecast: forecastDb?.crestTemperature ?? emptyCrestSeries(),
     modelRun: forecastDb?.modelRun ?? null,

@@ -20,11 +20,10 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h —
 // schwarz die 10-Minuten-Werte der Stationen (Hauptkurve) — und die
 // Prognosen ICON-CH1 (grau gestrichelt, 33 h voraus) und ECMWF (violett
-// gestrichelt, 72 h voraus, seit Nov. 2026). KEINE Flughafen-Linie mehr
-// (METAR, dünn grau punktiert; am 8. Nov. 2026 auf Wunsch des
-// Projektbesitzers entfernt — nicht wieder einführen). Die METAR werden
-// weiter gesammelt: Fehlen die Stationswerte, zeigen Kopfzeile und Karte
-// ersatzweise sie (`current` unten).
+// gestrichelt, 72 h voraus, seit Nov. 2026). KEINE Flughafen-Werte mehr
+// (METAR: erst dünn grau punktierte Vergleichslinie, dann nur noch Ersatz
+// für Kopfzeile und Karte; am 8. Nov. 2026 auf Wunsch des Projektbesitzers
+// ganz entfernt — nicht wieder einführen).
 // PROGNOSE AUCH IN DER VERGANGENHEIT (7. Nov. 2026, Wunsch des
 // Projektbesitzers, "wie im Verlaufsbalken"): Die gespeicherten Prognosen
 // (ICON-CH1, ECMWF, Temperatur) laufen über die ganzen 48 h, hinter der
@@ -339,7 +338,6 @@ function buildPath(
 
 export default function PressurePanel({
   measured,
-  metar,
   forecast,
   modelRun,
   ecmwf,
@@ -358,8 +356,6 @@ export default function PressurePanel({
   topInset: number;
   /** 10-Minuten-Werte der Stationen (Hauptkurve). */
   measured: PressureDiffPoint[];
-  /** Flugwetter-Meldungen der Flughäfen — nur noch Ersatz für die Kopfzeile, keine Linie. */
-  metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   modelRun: string | null;
   /** ECMWF-Prognose (blau gestrichelt). */
@@ -409,8 +405,7 @@ export default function PressurePanel({
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
-  // Fehlen die Stationswerte, die Flughafen-Meldungen (wie auf der Karte).
-  const current = pressureDiffAt(measured, now) ?? pressureDiffAt(metar, now);
+  const current = pressureDiffAt(measured, now);
   const currentTemp = pressureDiffAt(tempDiff, now);
 
   const chart = useMemo(() => {

@@ -3,7 +3,6 @@ import { SOURCE_IDS, WIND_SOURCES, type MeasurementRow, type SourceId } from "@/
 import { saveStationList } from "@/lib/stationList";
 import { saveSourceStatus, type SourceOutcome } from "@/lib/sourceStatus";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
-import { fetchMetarPressure } from "@/lib/metar";
 import { fetchStationPressure } from "@/lib/stationPressure";
 import { fetchCrestTemperature } from "@/lib/crestTemperature";
 import { CREST_KIND, PRESSURE_STATUS_NAME } from "@/lib/pressure";
@@ -182,24 +181,22 @@ async function collectSource(
 }
 
 // Luftdruck für die Föhn-Anzeige (src/lib/pressure.ts) holen und speichern,
-// drei Arten in der Tabelle pressure_values:
+// zwei Arten in der Tabelle pressure_values:
 //   kind 'station' = QNH alle 10 min, selbst gerechnet aus den Wetterstationen
 //                    Innsbruck-Flughafen (GeoSphere) und Bozen (Land),
 //                    src/lib/stationPressure.ts — die Hauptkurve; dazu
 //                    Temperatur und Feuchte der Stationen (temp_c,
 //                    humidity_pct; seit 8. Nov. 2026 nicht mehr angezeigt,
 //                    aber weiter gespeichert)
-//   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
-//                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts —
-//                    Ersatz für Karte und Kopfzeile, falls die Stationswerte
-//                    fehlen (die Vergleichslinie im Diagramm ist seit 8. Nov.
-//                    2026 weg)
 //   kind 'kamm'    = Temperatur und Feuchte auf Kammhöhe (Rittnerhorn,
 //                    Patscherkofel; seit 8. Nov. 2026), src/lib/crestTemperature.ts
 //                    — ohne QNH (qnh_hpa leer)
 // Jeder Lauf schreibt alles für die letzten 3 h (wenige Zeilen): Ein
 // verpasster Lauf oder ein verspäteter Wert füllt sich so von selbst auf.
 // Ganz getrennt vom Wind — scheitert etwas, wird es nur gemeldet.
+// Bis 8. Nov. 2026 kam als dritte Art 'metar' dazu (QNH aus den
+// Flugwetter-Meldungen der Flughäfen, erst Vergleichslinie, dann Ersatz) —
+// auf Wunsch des Projektbesitzers ganz entfernt.
 // Die Kammtemperaturen werden in einem EIGENEN Schreibvorgang gespeichert:
 // Scheitert er (z. B. weil qnh_hpa in einer älteren Datenbank noch Pflicht
 // ist, siehe supabase/druck.sql), bleibt der Luftdruck davon unberührt.
@@ -213,30 +210,10 @@ async function collectPressure(
   const rows: object[] = [];
   const crestRows: object[] = [];
 
-  const [metar, stations, crest] = await Promise.allSettled([
-    fetchMetarPressure(HISTORY_WINDOW_MS / (60 * 60 * 1000)),
+  const [stations, crest] = await Promise.allSettled([
     fetchStationPressure(now - HISTORY_WINDOW_MS),
     fetchCrestTemperature(now - HISTORY_WINDOW_MS),
   ]);
-  if (metar.status === "fulfilled") {
-    if (metar.value.length === 0) errors.push("METAR: keine Meldung erhalten");
-    for (const p of metar.value) {
-      // temp_c/humidity_pct mit leer: Supabase verlangt bei mehreren Zeilen
-      // in einem Schreibvorgang überall dieselben Spalten.
-      rows.push({
-        station: p.station,
-        kind: "metar",
-        valid_at: p.observedAt,
-        qnh_hpa: p.qnhHpa,
-        temp_c: null,
-        humidity_pct: null,
-        fetched_at: fetchedAt,
-      });
-    }
-  } else {
-    console.error("Luftdruck (METAR) nicht abrufbar:", metar.reason);
-    errors.push(`METAR: ${String(metar.reason)}`);
-  }
   if (stations.status === "fulfilled") {
     errors.push(...stations.value.errors);
     for (const p of stations.value.values) {

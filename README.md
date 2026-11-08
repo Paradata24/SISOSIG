@@ -202,8 +202,9 @@ gelöscht oder verändert wird nichts. Fehlt es, läuft die Karte im Notbetrieb
 **Föhn-Anzeige (Nov. 2026), einmalig bei einer bestehenden Datenbank:**
 `supabase/druck.sql` auf dieselbe Weise ausführen (in der Datenbank des
 Projekts schon geschehen). Es legt die Tabelle `pressure_values` an (Luftdruck
-der Flughäfen Innsbruck und Bozen: gemessen aus dem METAR und die
-ICON-CH1-Prognose); gelöscht oder verändert wird nichts. **Danach** die Edge
+der Flughäfen Innsbruck und Bozen, gemessen und als ICON-CH1-Prognose, dazu
+die Temperatur auf Kammhöhe am Rittnerhorn und Patscherkofel); gelöscht wird
+nichts. **Danach** die Edge
 Function `fetch-wind-forecasts` neu deployen (sie schreibt die Druckprognose).
 Fehlt die Tabelle, meldet der Sammler `"pressure": {"error": …}`, der Wind
 läuft unverändert weiter.
