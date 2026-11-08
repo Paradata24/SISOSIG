@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import {
+  CREST_PAIR,
   FOEHN_PAIR,
   FOEHN_STALE_COLOR,
   foehnColor,
@@ -97,11 +98,15 @@ export function usePressureSeries(data: PressurePayload | null): {
   metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   ecmwf: PressureDiffPoint[];
-  /** Temperatur-Differenz Innsbruck − Bozen (°C); negativ = Innsbruck kälter. */
+  /**
+   * Temperatur-Differenz auf Kammhöhe, intern Nord − Süd (Patscherkofel −
+   * Rittnerhorn, °C; negativ = Patscherkofel kälter). Seit 8. Nov. 2026 die
+   * Bergstationen statt Innsbruck/Bozen im Tal.
+   */
   tempDiff: PressureDiffPoint[];
   /** Dasselbe aus der ICON-CH1-Prognose (stündlich). */
   tempDiffForecast: PressureDiffPoint[];
-  /** Gemessene Temperaturen je Seite (°C), aufsteigend. */
+  /** Gemessene Temperaturen je Seite (°C), aufsteigend: Nord = Patscherkofel, Süd = Rittnerhorn. */
   tempNorth: Array<[number, number]>;
   tempSouth: Array<[number, number]>;
   /** ICON-CH1-Temperatur je Seite (°C). */
@@ -119,23 +124,24 @@ export function usePressureSeries(data: PressurePayload | null): {
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
         : [],
-      // Intern ΔT = Innsbruck − Bozen. pairPressureSeries rechnet "zweites
-      // minus erstes" — deshalb hier Bozen zuerst. Angezeigt wird seit Nov.
-      // 2026 Bozen − Innsbruck (wie beim Druck): PressurePanel dreht das
-      // Vorzeichen und die Farben. Ältere Antworten haben das Feld nicht.
-      tempDiff: data?.temperature
-        ? pairPressureSeries(data.temperature[FOEHN_PAIR.south], data.temperature[FOEHN_PAIR.north])
+      // Temperatur auf Kammhöhe (Rittnerhorn = Süd, Patscherkofel = Nord).
+      // Intern ΔT = Nord − Süd. pairPressureSeries rechnet "zweites minus
+      // erstes" — deshalb hier der Süden zuerst. Angezeigt wird Süd − Nord
+      // (wie beim Druck): PressurePanel dreht das Vorzeichen und die Farben.
+      // Ältere Antworten (vor dem 8. Nov. 2026) haben die Felder nicht.
+      tempDiff: data?.crestTemperature
+        ? pairPressureSeries(data.crestTemperature[CREST_PAIR.south], data.crestTemperature[CREST_PAIR.north])
         : [],
-      tempDiffForecast: data?.forecastTemperature
+      tempDiffForecast: data?.crestTemperatureForecast
         ? pairPressureSeries(
-            data.forecastTemperature[FOEHN_PAIR.south],
-            data.forecastTemperature[FOEHN_PAIR.north],
+            data.crestTemperatureForecast[CREST_PAIR.south],
+            data.crestTemperatureForecast[CREST_PAIR.north],
           )
         : [],
-      tempNorth: data?.temperature?.[FOEHN_PAIR.north] ?? [],
-      tempSouth: data?.temperature?.[FOEHN_PAIR.south] ?? [],
-      tempNorthForecast: data?.forecastTemperature?.[FOEHN_PAIR.north] ?? [],
-      tempSouthForecast: data?.forecastTemperature?.[FOEHN_PAIR.south] ?? [],
+      tempNorth: data?.crestTemperature?.[CREST_PAIR.north] ?? [],
+      tempSouth: data?.crestTemperature?.[CREST_PAIR.south] ?? [],
+      tempNorthForecast: data?.crestTemperatureForecast?.[CREST_PAIR.north] ?? [],
+      tempSouthForecast: data?.crestTemperatureForecast?.[CREST_PAIR.south] ?? [],
       // Ältere Antworten (vor ECMWF) haben das Feld nicht.
       ecmwf: data?.ecmwf
         ? pairPressureSeries(data.ecmwf[FOEHN_PAIR.north], data.ecmwf[FOEHN_PAIR.south])

@@ -50,13 +50,14 @@ const QNH_MAX_HPA = 1070;
 const TEMP_MIN_C = -40;
 const TEMP_MAX_C = 45;
 
-function tempOrNull(value: number | null | undefined): number | null {
+// Auch für die Kammtemperaturen (src/lib/crestTemperature.ts) genutzt.
+export function tempOrNull(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= TEMP_MIN_C && value <= TEMP_MAX_C
     ? round1(value)
     : null;
 }
 
-function humidityOrNull(value: number | null | undefined): number | null {
+export function humidityOrNull(value: number | null | undefined): number | null {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100
     ? Math.round(value)
     : null;
@@ -64,10 +65,12 @@ function humidityOrNull(value: number | null | undefined): number | null {
 
 /**
  * Ein selbst gerechneter QNH, dazu Temperatur und Luftfeuchtigkeit derselben
- * Station und Messzeit (seit Nov. 2026, Wunsch des Projektbesitzers: für die
- * Temperatur-Differenz Innsbruck − Bozen im Druck-Verlaufsbalken; die
- * Feuchte wird vorerst nur gespeichert). null, wenn der Dienst den Wert
- * nicht lieferte.
+ * Station und Messzeit (seit Nov. 2026; bis 8. Nov. 2026 für die
+ * Temperatur-Differenz Innsbruck − Bozen im Druck-Verlaufsbalken, seitdem
+ * zeigt er die Kammtemperatur, src/lib/crestTemperature.ts — Temperatur und
+ * Feuchte der Talstationen werden nur noch gespeichert, z. B. für eine
+ * spätere Druckrechnung mit echter Temperatur). null, wenn der Dienst den
+ * Wert nicht lieferte.
  */
 export interface StationPressure {
   /** Flughafen-Seite (LOWI = Innsbruck, LIPB = Bozen). */
@@ -116,12 +119,20 @@ function bolzanoDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");
 }
 
-/** Innsbruck: QNH aus dem Stationsdruck von GeoSphere seit `sinceMs`. */
-async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPressure[]> {
+/**
+ * 10-Minuten-Werte einer GeoSphere-Station seit `sinceMs`: Zeitstempel und je
+ * Parameter (z. B. P, TL, RF) die Werte in derselben Reihenfolge. Auch für
+ * die Kammtemperatur am Patscherkofel (src/lib/crestTemperature.ts).
+ */
+export async function fetchGeosphere10min(
+  stationId: string,
+  parameterNames: string[],
+  sinceMs: number,
+  now: number,
+): Promise<{ times: string[]; parameters: Record<string, Array<number | null>> }> {
   const params = new URLSearchParams({
-    // P = Luftdruck, TL = Lufttemperatur, RF = relative Feuchte (je 10 min).
-    parameters: "P,TL,RF",
-    station_ids: INNSBRUCK.geosphereId,
+    parameters: parameterNames.join(","),
+    station_ids: stationId,
     start: new Date(sinceMs).toISOString().slice(0, 16),
     end: new Date(now).toISOString().slice(0, 16),
   });
@@ -136,11 +147,19 @@ async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPres
       properties?: { parameters?: Record<string, { data?: Array<number | null> } | undefined> };
     }>;
   };
-  const times = body.timestamps ?? [];
-  const parameters = body.features?.[0]?.properties?.parameters ?? {};
-  const values = parameters.P?.data ?? [];
-  const temps = parameters.TL?.data ?? [];
-  const humidity = parameters.RF?.data ?? [];
+  const found = body.features?.[0]?.properties?.parameters ?? {};
+  const parameters: Record<string, Array<number | null>> = {};
+  for (const name of parameterNames) parameters[name] = found[name]?.data ?? [];
+  return { times: body.timestamps ?? [], parameters };
+}
+
+/** Innsbruck: QNH aus dem Stationsdruck von GeoSphere seit `sinceMs`. */
+async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPressure[]> {
+  // P = Luftdruck, TL = Lufttemperatur, RF = relative Feuchte (je 10 min).
+  const { times, parameters } = await fetchGeosphere10min(INNSBRUCK.geosphereId, ["P", "TL", "RF"], sinceMs, now);
+  const values = parameters.P;
+  const temps = parameters.TL;
+  const humidity = parameters.RF;
   const result: StationPressure[] = [];
   times.forEach((time, i) => {
     const p = values[i];
@@ -159,10 +178,18 @@ async function fetchInnsbruck(sinceMs: number, now: number): Promise<StationPres
   return result;
 }
 
-/** Eine Messreihe des Bozner Dienstes als Map ISO-Zeit → Wert. */
-async function fetchBolzanoSeries(sensor: string, sinceMs: number, now: number): Promise<Map<string, number>> {
+/**
+ * Eine Messreihe einer Station des Bozner Dienstes als Map ISO-Zeit → Wert.
+ * Auch für die Kammtemperatur am Rittnerhorn (src/lib/crestTemperature.ts).
+ */
+export async function fetchBolzanoSeries(
+  stationCode: string,
+  sensor: string,
+  sinceMs: number,
+  now: number,
+): Promise<Map<string, number>> {
   const params = new URLSearchParams({
-    station_code: BOZEN.scode,
+    station_code: stationCode,
     sensor_code: sensor,
     date_from: bolzanoDate(sinceMs - 24 * 60 * 60 * 1000),
     date_to: bolzanoDate(now + 24 * 60 * 60 * 1000),
@@ -187,9 +214,9 @@ async function fetchBolzanoSeries(sensor: string, sinceMs: number, now: number):
 async function fetchBozen(sinceMs: number, now: number): Promise<StationPressure[]> {
   // Feuchte (LF) ist nur ein Zusatz: Fehlt sie, bleibt der Rest.
   const [reduced, temperature, humidity] = await Promise.all([
-    fetchBolzanoSeries("LD.RED", sinceMs, now),
-    fetchBolzanoSeries("LT", sinceMs, now),
-    fetchBolzanoSeries("LF", sinceMs, now).catch(() => new Map<string, number>()),
+    fetchBolzanoSeries(BOZEN.scode, "LD.RED", sinceMs, now),
+    fetchBolzanoSeries(BOZEN.scode, "LT", sinceMs, now),
+    fetchBolzanoSeries(BOZEN.scode, "LF", sinceMs, now).catch(() => new Map<string, number>()),
   ]);
   const result: StationPressure[] = [];
   for (const [iso, red] of reduced) {

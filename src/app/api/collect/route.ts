@@ -5,7 +5,8 @@ import { saveSourceStatus, type SourceOutcome } from "@/lib/sourceStatus";
 import { DATABASE_TIMEOUT_MS, type WindStation } from "@/lib/wind";
 import { fetchMetarPressure } from "@/lib/metar";
 import { fetchStationPressure } from "@/lib/stationPressure";
-import { PRESSURE_STATUS_NAME } from "@/lib/pressure";
+import { fetchCrestTemperature } from "@/lib/crestTemperature";
+import { CREST_KIND, PRESSURE_STATUS_NAME } from "@/lib/pressure";
 
 // Sammel-Route: ruft alle Wetterdienste ab (Liste in src/lib/sources.ts,
 // Logik je Quelle in src/lib/) und schreibt die Windwerte in die
@@ -22,8 +23,9 @@ import { PRESSURE_STATUS_NAME } from "@/lib/pressure";
 //    Daraus zeigt die Karte den Hinweis "… liefert gerade keine Daten".
 //  - seit Nov. 2026 den Luftdruck (QNH) bei den Flughäfen Innsbruck und Bozen
 //    für die Föhn-Anzeige (Tabelle pressure_values, siehe collectPressure;
-//    Zustand in wind_status unter "druck"). Ein Fehler dort betrifft den Wind
-//    nicht.
+//    Zustand in wind_status unter "druck"), seit 8. Nov. 2026 dazu die
+//    Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel). Ein Fehler dort
+//    betrifft den Wind nicht.
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
@@ -180,18 +182,25 @@ async function collectSource(
 }
 
 // Luftdruck für die Föhn-Anzeige (src/lib/pressure.ts) holen und speichern,
-// zwei Arten in der Tabelle pressure_values:
+// drei Arten in der Tabelle pressure_values:
 //   kind 'station' = QNH alle 10 min, selbst gerechnet aus den Wetterstationen
 //                    Innsbruck-Flughafen (GeoSphere) und Bozen (Land),
 //                    src/lib/stationPressure.ts — die Hauptkurve; dazu
 //                    Temperatur und Feuchte der Stationen (temp_c,
-//                    humidity_pct)
+//                    humidity_pct; seit 8. Nov. 2026 nicht mehr angezeigt,
+//                    aber weiter gespeichert)
 //   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
 //                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts — zum
 //                    Vergleich (dünne graue Linie im Diagramm)
-// Jeder Lauf schreibt beides für die letzten 3 h (wenige Zeilen): Ein
+//   kind 'kamm'    = Temperatur und Feuchte auf Kammhöhe (Rittnerhorn,
+//                    Patscherkofel; seit 8. Nov. 2026), src/lib/crestTemperature.ts
+//                    — ohne QNH (qnh_hpa leer)
+// Jeder Lauf schreibt alles für die letzten 3 h (wenige Zeilen): Ein
 // verpasster Lauf oder ein verspäteter Wert füllt sich so von selbst auf.
 // Ganz getrennt vom Wind — scheitert etwas, wird es nur gemeldet.
+// Die Kammtemperaturen werden in einem EIGENEN Schreibvorgang gespeichert:
+// Scheitert er (z. B. weil qnh_hpa in einer älteren Datenbank noch Pflicht
+// ist, siehe supabase/druck.sql), bleibt der Luftdruck davon unberührt.
 async function collectPressure(
   supabaseUrl: string,
   headers: Record<string, string>,
@@ -200,10 +209,12 @@ async function collectPressure(
   const fetchedAt = new Date(now).toISOString();
   const errors: string[] = [];
   const rows: object[] = [];
+  const crestRows: object[] = [];
 
-  const [metar, stations] = await Promise.allSettled([
+  const [metar, stations, crest] = await Promise.allSettled([
     fetchMetarPressure(HISTORY_WINDOW_MS / (60 * 60 * 1000)),
     fetchStationPressure(now - HISTORY_WINDOW_MS),
+    fetchCrestTemperature(now - HISTORY_WINDOW_MS),
   ]);
   if (metar.status === "fulfilled") {
     if (metar.value.length === 0) errors.push("METAR: keine Meldung erhalten");
@@ -241,26 +252,46 @@ async function collectPressure(
     console.error("Luftdruck (Stationen) nicht abrufbar:", stations.reason);
     errors.push(`Stationen: ${String(stations.reason)}`);
   }
+  if (crest.status === "fulfilled") {
+    errors.push(...crest.value.errors.map((e) => `Kamm: ${e}`));
+    for (const p of crest.value.values) {
+      crestRows.push({
+        station: p.station,
+        kind: CREST_KIND,
+        valid_at: p.measuredAt,
+        qnh_hpa: null,
+        temp_c: p.tempC,
+        humidity_pct: p.humidityPct,
+        fetched_at: fetchedAt,
+      });
+    }
+  } else {
+    console.error("Kammtemperatur nicht abrufbar:", crest.reason);
+    errors.push(`Kamm: ${String(crest.reason)}`);
+  }
 
-  if (rows.length > 0) {
+  // Zwei getrennte Schreibvorgänge (siehe oben), gleichzeitig.
+  const save = async (batch: object[], label: string) => {
+    if (batch.length === 0) return;
     try {
       const res = await fetch(
         `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
         {
           method: "POST",
           headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
-          body: JSON.stringify(rows),
+          body: JSON.stringify(batch),
           signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
         },
       );
-      if (!res.ok) errors.push(`Speichern: Status ${res.status}: ${await res.text()}`);
+      if (!res.ok) errors.push(`${label}: Status ${res.status}: ${await res.text()}`);
     } catch (err) {
-      errors.push(`Speichern: ${String(err)}`);
+      errors.push(`${label}: ${String(err)}`);
     }
-  }
+  };
+  await Promise.all([save(rows, "Speichern"), save(crestRows, "Speichern Kamm")]);
   return {
     source: PRESSURE_STATUS_NAME,
-    values: rows.length,
+    values: rows.length + crestRows.length,
     error: errors.length > 0 ? errors.join("; ") : null,
   };
 }

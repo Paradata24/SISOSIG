@@ -12,8 +12,10 @@
 -- Fehlt die Tabelle, scheitert nur der Druck-Teil (Sammler und Prognose
 -- melden es in ihrer Antwort), der Wind läuft unverändert weiter.
 --
--- Eine Zeile je Flughafen, Art und Zeitpunkt:
---   station    ICAO-Kennung des Flughafens: 'LOWI' (Innsbruck), 'LIPB' (Bozen)
+-- Eine Zeile je Flughafen (bzw. Bergstation), Art und Zeitpunkt:
+--   station    ICAO-Kennung des Flughafens: 'LOWI' (Innsbruck), 'LIPB' (Bozen);
+--              seit 8. Nov. 2026 auch die Bergstationen 'RITTNERHORN' und
+--              'PATSCHERKOFEL' (nur Temperatur, siehe unten)
 --   kind       'station'  = gemessen, QNH alle 10 min, selbst gerechnet aus den
 --                           Wetterstationen Innsbruck-Flughafen (GeoSphere)
 --                           und Bozen (Land) — station bleibt dabei 'LOWI'
@@ -21,11 +23,18 @@
 --                           (seit Nov. 2026, src/lib/stationPressure.ts)
 --              'metar'    = gemessen (Flugwetter-Meldung METAR, geschrieben
 --                           vom Sammler /api/collect; Vergleichslinie)
+--              'kamm'     = gemessen, Temperatur und Feuchte auf Kammhöhe
+--                           (Rittnerhorn, Patscherkofel; seit 8. Nov. 2026,
+--                           vom Sammler, src/lib/crestTemperature.ts) — ohne
+--                           QNH
 --              'icon_ch1' = Prognose (ICON-CH1 über Open-Meteo, geschrieben
---                           von der Edge Function fetch-wind-forecasts)
+--                           von der Edge Function fetch-wind-forecasts); für
+--                           die Bergstationen nur die Temperatur, ohne QNH
+--              'ecmwf_ifs' = Prognose (ECMWF über Open-Meteo, nur Flughäfen)
 --   valid_at   Messzeit bzw. Prognosestunde (UTC)
 --   qnh_hpa    QNH in hPa (Luftdruck nach Normatmosphäre auf Meereshöhe
---              umgerechnet — der Wert, den die Flughäfen melden)
+--              umgerechnet — der Wert, den die Flughäfen melden); leer bei
+--              den Bergstationen
 --   model_run  bei Prognosen: Startzeit des Modelllaufs, sonst leer
 --   fetched_at wann der Wert geholt wurde
 -- Aufbewahrung 3 Tage wie bei den Windwerten (räumt der Sammler auf).
@@ -49,3 +58,13 @@ alter table public.pressure_values enable row level security;
 -- Druck-Verlaufsbalken. Ein zweites Ausführen schadet nicht.
 alter table public.pressure_values add column if not exists temp_c real;
 alter table public.pressure_values add column if not exists humidity_pct real;
+
+-- Seit 8. Nov. 2026 (Wunsch des Projektbesitzers): Temperatur auf Kammhöhe
+-- (Rittnerhorn, Patscherkofel) für das Temperatur-Diagramm im
+-- Druck-Verlaufsbalken. Diese Bergstationen haben keinen QNH — deshalb darf
+-- qnh_hpa leer sein. Sicher: Es wird nur eine Pflicht-Regel gelockert, keine
+-- Daten geändert. REIHENFOLGE wie oben: erst diese Zeile ausführen, DANN die
+-- Edge Function neu deployen (fehlt sie, scheitert nur das Speichern der
+-- Kammtemperaturen, der Luftdruck läuft weiter). Ein zweites Ausführen
+-- schadet nicht.
+alter table public.pressure_values alter column qnh_hpa drop not null;

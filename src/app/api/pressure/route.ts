@@ -2,9 +2,13 @@ import { NextResponse } from "next/server";
 import { DATABASE_TIMEOUT_MS, HISTORY_HOURS } from "@/lib/wind";
 import { fetchMetarPressure } from "@/lib/metar";
 import { fetchStationPressure } from "@/lib/stationPressure";
+import { fetchCrestTemperature } from "@/lib/crestTemperature";
 import {
+  CREST_KIND,
+  CREST_STATION_IDS,
   PRESSURE_STALE_AFTER_MS,
   PRESSURE_STATION_IDS,
+  type CrestStationId,
   type PressurePayload,
   type PressureStationId,
 } from "@/lib/pressure";
@@ -12,8 +16,9 @@ import {
 // Luftdruck (QNH) bei den Flughäfen Innsbruck und Bozen für die Föhn-Anzeige
 // (src/lib/pressure.ts), alles aus der Tabelle pressure_values:
 //   stations  QNH alle 10 min aus den Wetterstationen (Hauptkurve)
-//   temperature  Lufttemperatur derselben Stationen (für ΔT Innsbruck − Bozen)
-//   forecastTemperature  ICON-CH1-Temperatur (2 m) an beiden Flughäfen
+//   crestTemperature  Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel;
+//             seit 8. Nov. 2026, vorher die Talstationen Bozen/Innsbruck)
+//   crestTemperatureForecast  ICON-CH1-Temperatur (2 m) dieser Bergstationen
 //   metar     QNH aus den Flugwetter-Meldungen (Vergleichslinie)
 //   forecast  ICON-CH1-Prognose
 //   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
@@ -31,24 +36,31 @@ import {
 const RESPONSE_CACHE_CONTROL = "public, s-maxage=60, stale-while-revalidate=30";
 
 // Höchstens so viele Zeilen (Supabase gibt je Anfrage bis zu 1000 heraus).
-// Erwartet in 48 h + 33 h Vorschau: ~580 Stationswerte, ~150 METAR,
-// ~170 Prognosestunden — knapp unter 1000, deshalb je Art eine Anfrage.
+// Erwartet in 48 h + 33 h Vorschau: ~580 Stationswerte, ~580
+// Kammtemperaturen, ~150 METAR, ~330 ICON-CH1-Stunden (Flughäfen und
+// Bergstationen) — zusammen über 1000, deshalb je Art eine Anfrage.
 const MAX_ROWS = 1000;
 
 export const dynamic = "force-dynamic";
 
 type Series = Record<PressureStationId, Array<[number, number]>>;
+type CrestSeries = Record<CrestStationId, Array<[number, number]>>;
 
 interface PressureRow {
   station: string;
   valid_at: string;
-  qnh_hpa: number;
+  // Leer bei den Kammtemperaturen (Bergstationen ohne Luftdruck).
+  qnh_hpa: number | null;
   model_run: string | null;
   temp_c: number | null;
 }
 
 function emptySeries(): Series {
   return Object.fromEntries(PRESSURE_STATION_IDS.map((id) => [id, []])) as unknown as Series;
+}
+
+function emptyCrestSeries(): CrestSeries {
+  return Object.fromEntries(CREST_STATION_IDS.map((id) => [id, []])) as unknown as CrestSeries;
 }
 
 async function readKind(kind: string, sinceIso: string): Promise<PressureRow[]> {
@@ -70,25 +82,30 @@ async function readKind(kind: string, sinceIso: string): Promise<PressureRow[]> 
   return (await res.json()) as PressureRow[];
 }
 
-/** Zeilen einer Art in Reihen je Flughafen; null, wenn die Datenbank nicht antwortet. */
+/**
+ * Zeilen einer Art: QNH je Flughafen (`series`) und Temperatur je
+ * Bergstation (`crestTemperature`); null, wenn die Datenbank nicht antwortet.
+ */
 async function readSeries(
   kind: string,
   sinceIso: string,
-): Promise<{ series: Series; temperature: Series; modelRun: string | null } | null> {
+): Promise<{ series: Series; crestTemperature: CrestSeries; modelRun: string | null } | null> {
   try {
     const series = emptySeries();
-    const temperature = emptySeries();
+    const crestTemperature = emptyCrestSeries();
     let modelRun: string | null = null;
     for (const row of await readKind(kind, sinceIso)) {
-      const station = PRESSURE_STATION_IDS.find((id) => id === row.station);
       const time = Date.parse(row.valid_at);
-      if (!station || Number.isNaN(time) || typeof row.qnh_hpa !== "number") continue;
-      series[station].push([time, row.qnh_hpa]);
-      if (typeof row.temp_c === "number") temperature[station].push([time, row.temp_c]);
+      if (Number.isNaN(time)) continue;
+      const station = PRESSURE_STATION_IDS.find((id) => id === row.station);
+      const crest = CREST_STATION_IDS.find((id) => id === row.station);
+      if (station && typeof row.qnh_hpa === "number") series[station].push([time, row.qnh_hpa]);
+      else if (crest && typeof row.temp_c === "number") crestTemperature[crest].push([time, row.temp_c]);
+      else continue;
       // Jüngster Lauf (ältere Stunden stammen teils aus früheren Läufen).
       if (row.model_run && (!modelRun || row.model_run > modelRun)) modelRun = row.model_run;
     }
-    return { series, temperature, modelRun };
+    return { series, crestTemperature, modelRun };
   } catch (err) {
     console.error(`Luftdruck (${kind}) aus der Datenbank nicht lesbar:`, err);
     return null;
@@ -96,10 +113,10 @@ async function readSeries(
 }
 
 /** true, wenn jede Seite einen Wert hat, der höchstens PRESSURE_STALE_AFTER_MS alt ist. */
-function isFresh(series: Series | undefined, now: number): boolean {
+function isFresh(series: Record<string, Array<[number, number]>> | undefined, now: number): boolean {
   if (!series) return false;
-  return PRESSURE_STATION_IDS.every((id) => {
-    const last = series[id][series[id].length - 1];
+  return Object.values(series).every((points) => {
+    const last = points[points.length - 1];
     return last !== undefined && now - last[0] <= PRESSURE_STALE_AFTER_MS;
   });
 }
@@ -120,19 +137,20 @@ export async function GET() {
   const since = now - HISTORY_HOURS * 60 * 60 * 1000;
   const sinceIso = new Date(since).toISOString();
 
-  const [stationsDb, metarDb, forecastDb, ecmwfDb] = await Promise.all([
+  const [stationsDb, crestDb, metarDb, forecastDb, ecmwfDb] = await Promise.all([
     readSeries("station", sinceIso),
+    readSeries(CREST_KIND, sinceIso),
     readSeries("metar", sinceIso),
     readSeries("icon_ch1", sinceIso),
     readSeries("ecmwf_ifs", sinceIso),
   ]);
 
   let stations = stationsDb?.series ?? emptySeries();
-  let temperature = stationsDb?.temperature ?? emptySeries();
+  let crestTemperature = crestDb?.crestTemperature ?? emptyCrestSeries();
   let metar = metarDb?.series ?? emptySeries();
   let fallback = false;
 
-  // Notbetrieb je Messreihe, beide gleichzeitig.
+  // Notbetrieb je Messreihe, alle gleichzeitig.
   await Promise.all([
     (async () => {
       if (isFresh(stationsDb?.series, now)) return;
@@ -140,13 +158,26 @@ export async function GET() {
         const { values } = await fetchStationPressure(since);
         if (values.length === 0) return;
         stations = toSeries(values.map((v) => ({ station: v.station, at: v.measuredAt, qnh: v.qnhHpa })), since);
-        temperature = toSeries(
-          values.flatMap((v) => (v.tempC === null ? [] : [{ station: v.station, at: v.measuredAt, qnh: v.tempC }])),
-          since,
-        );
         fallback = true;
       } catch (err) {
         console.error("Luftdruck (Stationen) im Notbetrieb nicht abrufbar:", err);
+      }
+    })(),
+    (async () => {
+      if (isFresh(crestDb?.crestTemperature, now)) return;
+      try {
+        const { values } = await fetchCrestTemperature(since);
+        if (values.length === 0) return;
+        const series = emptyCrestSeries();
+        for (const v of values) {
+          const time = Date.parse(v.measuredAt);
+          if (time >= since) series[v.station].push([time, v.tempC]);
+        }
+        for (const id of CREST_STATION_IDS) series[id].sort((a, b) => a[0] - b[0]);
+        crestTemperature = series;
+        fallback = true;
+      } catch (err) {
+        console.error("Kammtemperatur im Notbetrieb nicht abrufbar:", err);
       }
     })(),
     (async () => {
@@ -173,10 +204,10 @@ export async function GET() {
 
   const payload: PressurePayload = {
     stations,
-    temperature,
+    crestTemperature,
     metar,
     forecast,
-    forecastTemperature: forecastDb?.temperature ?? emptySeries(),
+    crestTemperatureForecast: forecastDb?.crestTemperature ?? emptyCrestSeries(),
     modelRun: forecastDb?.modelRun ?? null,
     ecmwf,
     ecmwfRun: ecmwfDb?.modelRun ?? null,

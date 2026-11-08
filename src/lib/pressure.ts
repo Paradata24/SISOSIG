@@ -61,6 +61,56 @@ export const FOEHN_PAIR = { north: "LOWI", south: "LIPB" } as const satisfies {
   south: PressureStationId;
 };
 
+/**
+ * Temperatur auf Kammhöhe (8. Nov. 2026, Wunsch des Projektbesitzers; ersetzt
+ * im Druck-Verlaufsbalken die Temperaturen der Talstationen Bozen und
+ * Innsbruck): zwei fast gleich hohe Bergstationen südlich und nördlich des
+ * Brenners. Hintergrund (Recherche Nov. 2026: DHV, Schweizer Verband SHV,
+ * XCTherm, Uni Innsbruck): Föhn wird nicht nur vom Druck am Boden angetrieben,
+ * sondern auch vom Temperaturunterschied der Luftmassen auf Höhe der Pässe —
+ * kalte, schwere Luft drängt über die Pässe zur wärmeren Seite. Die
+ * Temperaturen am Talboden zeigen das kaum (Tagesgang, Kaltluftseen,
+ * Inversionen); deshalb hier zwei Gipfel auf rund 2250 m. Höhenunterschied
+ * nur 9 m (~0,06 °C) — bewusst nicht bereinigt.
+ * `code` = Kennung beim Dienst (Land Südtirol bzw. GeoSphere), `id` = Schlüssel
+ * in der Tabelle pressure_values (Spalte station). Kopie mit Koordinaten in
+ * der Edge Function (CREST_STATIONS) — bei einer Änderung beide anfassen.
+ */
+export const CREST_STATIONS = {
+  RITTNERHORN: {
+    id: "RITTNERHORN",
+    name: "Rittnerhorn",
+    code: "82500WS",
+    lat: 46.6156,
+    lng: 11.4604,
+    elevationM: 2260,
+  },
+  PATSCHERKOFEL: {
+    id: "PATSCHERKOFEL",
+    name: "Patscherkofel",
+    code: "11126",
+    lat: 47.2089,
+    lng: 11.4622,
+    elevationM: 2251,
+  },
+} as const;
+
+export type CrestStationId = keyof typeof CREST_STATIONS;
+export const CREST_STATION_IDS = Object.keys(CREST_STATIONS) as CrestStationId[];
+
+/** Das Paar für den Temperaturvergleich, gezählt wie der Druck: Süd − Nord. */
+export const CREST_PAIR = { north: "PATSCHERKOFEL", south: "RITTNERHORN" } as const satisfies {
+  north: CrestStationId;
+  south: CrestStationId;
+};
+
+/**
+ * Spalte kind der gemessenen Kammtemperaturen in pressure_values (alle 10 min,
+ * vom Sammler; qnh_hpa leer). Die ICON-CH1-Prognose dieser Stationen steht
+ * unter kind 'icon_ch1' (Edge Function), ebenfalls ohne qnh_hpa.
+ */
+export const CREST_KIND = "kamm";
+
 /** Name der Zeile in wind_status, in die der Sammler den Zustand der Druck-Abfrage schreibt. */
 export const PRESSURE_STATUS_NAME = "druck";
 
@@ -89,16 +139,17 @@ export interface PressurePayload {
    */
   stations: Record<PressureStationId, Array<[number, number]>>;
   /**
-   * Lufttemperatur (°C) derselben Wetterstationen, alle 10 min — für die
-   * Temperatur-Differenz Innsbruck − Bozen (seit Nov. 2026).
+   * Lufttemperatur (°C) auf Kammhöhe (Rittnerhorn, Patscherkofel), alle
+   * 10 min, aufsteigend — für das Temperatur-Diagramm (seit 8. Nov. 2026;
+   * vorher die Talstationen Bozen und Innsbruck im Feld "temperature").
    */
-  temperature: Record<PressureStationId, Array<[number, number]>>;
+  crestTemperature: Record<CrestStationId, Array<[number, number]>>;
   /** Zum Vergleich: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
   metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;
-  /** ICON-CH1-Prognose der Lufttemperatur (2 m, °C) je Flughafen, stündlich. */
-  forecastTemperature: Record<PressureStationId, Array<[number, number]>>;
+  /** ICON-CH1-Prognose der Lufttemperatur (2 m, °C) auf Kammhöhe, stündlich. */
+  crestTemperatureForecast: Record<CrestStationId, Array<[number, number]>>;
   /** ECMWF-Prognose (IFS, 9 km) je Flughafen (stündlich), aufsteigend. */
   ecmwf: Record<PressureStationId, Array<[number, number]>>;
   /** Startzeit des ECMWF-Laufs (ISO), sonst null. */
@@ -210,12 +261,12 @@ export function formatPressureDiff(diff: number): string {
  */
 export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string }> = [
   {
-    label: "Luftdruck Innsbruck-Flughafen © GeoSphere Austria",
+    label: "Luftdruck Innsbruck-Flughafen, Temperatur Patscherkofel © GeoSphere Austria",
     url: "https://data.hub.geosphere.at",
     note: "CC BY 4.0",
   },
   {
-    label: "Luftdruck Bozen © Land Südtirol – Wetterdienst",
+    label: "Luftdruck Bozen, Temperatur Rittnerhorn © Land Südtirol – Wetterdienst",
     url: "https://wetter.provinz.bz.it",
   },
   {
@@ -223,7 +274,7 @@ export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string
     url: "https://aviationweather.gov/data/api/",
   },
   {
-    label: "Druckprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
+    label: "Druck- und Temperaturprognose ICON-CH1 © MeteoSchweiz über Open-Meteo",
     url: "https://open-meteo.com/en/docs/meteoswiss-api",
     note: "CC BY 4.0",
   },

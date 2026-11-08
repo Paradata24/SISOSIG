@@ -140,15 +140,17 @@ revoke execute on function public.wind_latest() from public, anon, authenticated
 grant execute on function public.wind_latest() to service_role;
 
 -- Luftdruck der Flughäfen Innsbruck und Bozen (Föhn-Anzeige, gemessen und
--- ICON-CH1-Prognose). Erklärungen in supabase/druck.sql.
+-- ICON-CH1-Prognose), dazu die Temperatur auf Kammhöhe (Rittnerhorn,
+-- Patscherkofel). Erklärungen in supabase/druck.sql.
 create table if not exists public.pressure_values (
   station text not null,
   kind text not null,
   valid_at timestamptz not null,
-  qnh_hpa real not null,
+  -- Leer bei den Bergstationen (nur Temperatur).
+  qnh_hpa real,
   model_run timestamptz,
   fetched_at timestamptz not null default now(),
-  -- Temperatur und Luftfeuchtigkeit der Wetterstationen (nur kind 'station').
+  -- Temperatur und Luftfeuchtigkeit der Wetterstationen.
   temp_c real,
   humidity_pct real,
   primary key (station, kind, valid_at)

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  CREST_PAIR,
+  CREST_STATIONS,
   FOEHN_COLOR_SCALE,
   FOEHN_PAIR,
   foehnColor,
@@ -25,8 +27,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // (ICON-CH1, ECMWF, Temperatur) laufen über die ganzen 48 h, hinter der
 // Messung — so sieht man, wie gut die Prognose getroffen hat. Vorher endeten
 // die Linien links an "jetzt".
-// Darunter ein zweites, flacheres Diagramm: Temperatur Innsbruck und Bozen
-// (siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
+// Darunter ein zweites, flacheres Diagramm: Temperatur auf Kammhöhe,
+// Rittnerhorn und Patscherkofel (seit 8. Nov. 2026; siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
 // ist rot (oberhalb) bzw. blau (unterhalb), die Farbstufen der Karte stehen
 // als schmaler Farbstreifen neben den hPa-Zahlen (siehe AREA_* / scaleBands).
@@ -37,7 +39,7 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Kurven); die Prognose-Zone rechts von "jetzt" ist grau hinterlegt; ECMWF ist
 // violett (Blau und Rot gehören den Flächen); die Stufen der Farbskala stehen
 // als Streifen am Rand statt als fünf Linien quer durchs Diagramm; die
-// Temperatur-Differenz zählt wie der Druck Bozen − Innsbruck. Die Quellen
+// Temperatur-Differenz zählt wie der Druck Süd − Nord. Die Quellen
 // stehen unter "Quellen" im Ebenen-Menü (Wunsch des Projektbesitzers).
 // Aufbau wie der Wind-Verlaufsbalken (WindHistoryPanel: weiß, unten,
 // Schließen-Kreuz oben rechts, Escape schließt). Die Zeitachse ist STÜNDLICH
@@ -118,7 +120,7 @@ const FORECAST_DASH = "5 3";
 // ECMWF (seit Nov. 2026, Wunsch des Projektbesitzers): gestrichelt, damit es
 // sich klar vom grauen ICON-CH1 abhebt; seit dem Aufräumen (Nov. 2026)
 // VIOLETT statt blau, weil Blau und Rot den Flächen gehören (Nord höher /
-// Süd höher bzw. Innsbruck wärmer / Bozen wärmer). Reicht 72 h voraus,
+// Süd höher bzw. Norden wärmer / Süden wärmer). Reicht 72 h voraus,
 // ICON-CH1 33 h.
 const ECMWF_COLOR = "#7c3aed";
 const MEASURED_COLOR = "#18181b";
@@ -157,18 +159,26 @@ const STRONG_STEP_LINE_DASH = "6 4";
 // weg (die Linie bleibt); die "0" weicht den Farbsprüngen.
 const STEP_LABEL_MIN_GAP_PX = 10;
 
-// --- Temperatur Innsbruck und Bozen (Nov. 2026, Wunsch des Projektbesitzers) ---
+// --- Temperatur auf Kammhöhe (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
-// mit). Gezeigt werden die gemessenen Temperaturen beider Stationen als
-// Linien (Innsbruck blau, Bozen braun) — die Fläche ZWISCHEN den beiden
-// Linien ist die Temperatur-Differenz. Seit Nov. 2026 gezählt wie beim Druck:
-// Bozen − Innsbruck (vorher umgekehrt, das verwirrte): rot, wo Bozen (Süden)
-// wärmer ist, blau, wo Innsbruck wärmer ist. (buildBandPaths rechnet intern aus
-// Innsbrucks Sicht: "warm" = Innsbruck wärmer.) (Erste Fassung zeigte
-// nur ΔT um eine Nulllinie; der Projektbesitzer wollte auch die gemessenen
-// Temperaturen sehen.) Über den ganzen Zeitraum die ICON-CH1-Prognose beider Stationen
-// gestrichelt, die Fläche dazwischen blasser. Allein wegen der Höhe
-// (Innsbruck ~330 m höher) ist Innsbruck normal ~2 °C kälter.
+// mit). SEIT 8. NOV. 2026 die Bergstationen Rittnerhorn (2260 m, Süden) und
+// Patscherkofel (2251 m, Norden) statt der Talstationen Bozen und Innsbruck
+// (Wunsch des Projektbesitzers nach einer Recherche: Für Föhn zählt der
+// Temperaturunterschied auf Höhe der Pässe, nicht am Talboden — dort
+// überdecken Tagesgang, Kaltluftseen und Inversionen alles; Stationen und
+// Begründung in CREST_STATIONS, src/lib/pressure.ts). Beide liegen fast
+// gleich hoch (9 m), deshalb keine Höhenbereinigung.
+// Gezeigt werden die gemessenen Temperaturen beider Stationen als Linien
+// (Norden blau, Süden braun) — die Fläche ZWISCHEN den beiden Linien ist die
+// Temperatur-Differenz, gezählt wie beim Druck: Süd − Nord (Rittnerhorn −
+// Patscherkofel): rot, wo der Süden wärmer ist, blau, wo der Norden wärmer
+// ist. Lesehilfe: Ist der Süden KÄLTER (blau), drängt die schwere Kaltluft
+// über die Pässe nach Norden — das stützt Südföhn; ist der Norden kälter
+// (rot), stützt es Nordföhn. (buildBandPaths rechnet intern aus Sicht des
+// Nordens: "warm" = Norden wärmer.) (Erste Fassung zeigte nur ΔT um eine
+// Nulllinie; der Projektbesitzer wollte auch die gemessenen Temperaturen
+// sehen.) Über den ganzen Zeitraum die ICON-CH1-Prognose beider Stationen
+// gestrichelt, die Fläche dazwischen blasser.
 // Abstand zwischen Druck- und Temperatur-Diagramm: oben die Stundenzahlen
 // unter dem Druck-Diagramm (PRESSURE_TIME_H, Wunsch des Projektbesitzers,
 // Nov. 2026), darunter die Titelzeile des Temperatur-Diagramms (zwei kleine
@@ -178,9 +188,11 @@ const PRESSURE_TIME_H = 18;
 const TEMP_TITLE_PAD_PX = 8;
 // Höhe der Titelzeile selbst: seit 7. Nov. 2026 aufgebaut wie die Kopfzeile
 // über dem Druck-Diagramm (Wunsch des Projektbesitzers): Titel mit Stand
-// (20 px + 4 px Abstand), großes Δ-Schild (34 px), 8 px Abstand, Legende in
-// 11 px (~16 px).
-const TEMP_TITLE_CONTENT_H = 82;
+// (20 px + 4 px Abstand), großes Δ-Schild, rechts daneben die beiden
+// Temperaturen — seit 8. Nov. 2026 untereinander, weil die Namen der
+// Bergstationen für eine Zeile zu lang sind (2 × 20 px) —, 8 px Abstand,
+// Legende in 11 px (~16 px).
+const TEMP_TITLE_CONTENT_H = 88;
 const TEMP_TITLE_H = TEMP_TITLE_CONTENT_H + 2 * TEMP_TITLE_PAD_PX;
 const TEMP_GAP = PRESSURE_TIME_H + TEMP_TITLE_H;
 const TEMP_H = 100;
@@ -191,11 +203,12 @@ const T_MIN_SPAN_C = 10;
 const T_STEP_C = 5;
 const T_HEADROOM_C = 0.5;
 const TEMP_GAP_MS = MEASURED_GAP_MS;
-// Innsbruck blau (Wunsch des Projektbesitzers, Nov. 2026; vorher schwarz).
-const IBK_COLOR = "#2563eb";
-const BZ_COLOR = "#b45309";
-const TEMP_BZ_WARMER_FILL = "#dc2626";
-const TEMP_IBK_WARMER_FILL = "#2563eb";
+// Norden blau (Wunsch des Projektbesitzers, Nov. 2026; vorher schwarz),
+// Süden braun — wie vorher Innsbruck und Bozen.
+const NORTH_TEMP_COLOR = "#2563eb";
+const SOUTH_TEMP_COLOR = "#b45309";
+const TEMP_SOUTH_WARMER_FILL = "#dc2626";
+const TEMP_NORTH_WARMER_FILL = "#2563eb";
 const TEMP_FILL_OPACITY = 0.25;
 const TEMP_FORECAST_FILL_OPACITY = 0.1;
 
@@ -217,9 +230,10 @@ function buildSeriesPath(
   return d;
 }
 
-// Fläche zwischen den Temperaturen beider Stationen, getrennt nach "Innsbruck
+// Fläche zwischen den Temperaturen beider Stationen, getrennt nach "Norden
 // wärmer" (warm) und "kälter" (cold). `pairs` kommt aus pairPressureSeries
-// (Bozen, Innsbruck): north = Bozen, south = Innsbruck, diff = IBK − BZ. Je
+// (Süd, Nord): Feld north = Süd-Station, Feld south = Nord-Station, diff =
+// Nord − Süd (die Feldnamen stammen vom Druck und sind hier vertauscht). Je
 // zwei aufeinanderfolgende Punkte ergeben ein Viereck; kreuzen sich die
 // Linien dazwischen, wird es am Schnittpunkt in zwei Dreiecke geteilt.
 function buildBandPaths(
@@ -260,6 +274,12 @@ function formatSigned(value: number): string {
     maximumFractionDigits: 1,
   });
   return rounded > 0 ? `+${text}` : rounded < 0 ? `−${text}` : text;
+}
+
+/** Temperatur mit einer Nachkommastelle, minus als echtes "−", plus ohne Zeichen. */
+function formatTemp(value: number): string {
+  const text = formatSigned(value);
+  return text.startsWith("+") ? text.slice(1) : text;
 }
 
 // Fläche zwischen Kurve und Nulllinie, je zusammenhängendem Stück ein
@@ -349,11 +369,11 @@ export default function PressurePanel({
   /** ECMWF-Prognose (blau gestrichelt). */
   ecmwf: PressureDiffPoint[];
   ecmwfRun: string | null;
-  /** Temperatur-Differenz Innsbruck − Bozen (°C), gemessen. */
+  /** Temperatur-Differenz auf Kammhöhe, Nord − Süd (°C), gemessen. */
   tempDiff: PressureDiffPoint[];
   /** Dasselbe aus der ICON-CH1-Prognose. */
   tempDiffForecast: PressureDiffPoint[];
-  /** Gemessene Temperaturen (°C): north = Innsbruck, south = Bozen. */
+  /** Gemessene Temperaturen (°C): north = Patscherkofel, south = Rittnerhorn. */
   tempNorth: Series;
   tempSouth: Series;
   /** ICON-CH1-Temperatur (°C) je Seite. */
@@ -365,6 +385,8 @@ export default function PressurePanel({
 }) {
   const north = PRESSURE_STATIONS[FOEHN_PAIR.north];
   const south = PRESSURE_STATIONS[FOEHN_PAIR.south];
+  const crestNorth = CREST_STATIONS[CREST_PAIR.north];
+  const crestSouth = CREST_STATIONS[CREST_PAIR.south];
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -508,10 +530,10 @@ export default function PressurePanel({
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       ty,
       tTicks,
-      ibkPath: buildSeriesPath(tN, x, ty, TEMP_GAP_MS),
-      bzPath: buildSeriesPath(tS, x, ty, TEMP_GAP_MS),
-      ibkForecastPath: buildSeriesPath(tNf, x, ty, FORECAST_GAP_MS),
-      bzForecastPath: buildSeriesPath(tSf, x, ty, FORECAST_GAP_MS),
+      northTempPath: buildSeriesPath(tN, x, ty, TEMP_GAP_MS),
+      southTempPath: buildSeriesPath(tS, x, ty, TEMP_GAP_MS),
+      northTempForecastPath: buildSeriesPath(tNf, x, ty, FORECAST_GAP_MS),
+      southTempForecastPath: buildSeriesPath(tSf, x, ty, FORECAST_GAP_MS),
       band: buildBandPaths(bandM, x, ty, TEMP_GAP_MS),
       bandForecast: buildBandPaths(bandF, x, ty, FORECAST_GAP_MS),
       nowX: x(now),
@@ -688,8 +710,8 @@ export default function PressurePanel({
             ))}
             <line x1={0} x2={chart.svgW} y1={chart.y(0)} y2={chart.y(0)} stroke="#18181b" strokeWidth={1.2} />
             {/* Temperatur-Diagramm: Gitter, Fläche zwischen den Kurven
-                (rot = Bozen wärmer, blau = Innsbruck wärmer; Prognose blasser).
-                "warm"/"cold" in buildBandPaths = Innsbruck wärmer/kälter. */}
+                (rot = Süden wärmer, blau = Norden wärmer; Prognose blasser).
+                "warm"/"cold" in buildBandPaths = Norden wärmer/kälter. */}
             {chart.tTicks.map((tick) => (
               <line
                 key={`tg${tick}`}
@@ -702,10 +724,10 @@ export default function PressurePanel({
               />
             ))}
             {/* Prognose-Fläche zuerst (liegt in der Vergangenheit hinter der Messung). */}
-            <path d={chart.bandForecast.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
-            <path d={chart.bandForecast.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
-            <path d={chart.band.warm} fill={TEMP_IBK_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
-            <path d={chart.band.cold} fill={TEMP_BZ_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            <path d={chart.bandForecast.warm} fill={TEMP_NORTH_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
+            <path d={chart.bandForecast.cold} fill={TEMP_SOUTH_WARMER_FILL} opacity={TEMP_FORECAST_FILL_OPACITY} />
+            <path d={chart.band.warm} fill={TEMP_NORTH_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
+            <path d={chart.band.cold} fill={TEMP_SOUTH_WARMER_FILL} opacity={TEMP_FILL_OPACITY} />
             {chart.times.map((t) => {
               const date = new Date(t);
               const hour = date.getHours();
@@ -775,10 +797,10 @@ export default function PressurePanel({
               strokeDasharray="2 2"
             />
             {/* Temperaturen: gemessen durchgezogen, ICON-CH1 gestrichelt. */}
-            <path d={chart.bzForecastPath} fill="none" stroke={BZ_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
-            <path d={chart.ibkForecastPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
-            <path d={chart.bzPath} fill="none" stroke={BZ_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
-            <path d={chart.ibkPath} fill="none" stroke={IBK_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
+            <path d={chart.southTempForecastPath} fill="none" stroke={SOUTH_TEMP_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
+            <path d={chart.northTempForecastPath} fill="none" stroke={NORTH_TEMP_COLOR} strokeWidth={1.4} strokeDasharray={FORECAST_DASH} />
+            <path d={chart.southTempPath} fill="none" stroke={SOUTH_TEMP_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
+            <path d={chart.northTempPath} fill="none" stroke={NORTH_TEMP_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
             {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
@@ -788,18 +810,21 @@ export default function PressurePanel({
           </svg>
         </div>
         {/* Titelzeile des Temperatur-Diagramms, fest (wandert nicht mit), in
-            der Lücke zwischen den beiden Diagrammen. Seit 7. Nov. 2026 genau
-            wie die Kopfzeile über dem Druck-Diagramm (Wunsch des
-            Projektbesitzers): links das große Δ-Schild (Bozen − Innsbruck,
-            hellrot = Bozen wärmer, hellblau = Innsbruck wärmer), rechts die
-            beiden Temperaturen in 15 px, darunter die Legende in 11 px. */}
+            der Lücke zwischen den beiden Diagrammen. Seit 7. Nov. 2026 wie
+            die Kopfzeile über dem Druck-Diagramm (Wunsch des
+            Projektbesitzers): links das große Δ-Schild (Süd − Nord, hellrot =
+            Süden wärmer, hellblau = Norden wärmer), rechts die beiden
+            Temperaturen in 15 px, darunter die Legende in 11 px. Seit 8. Nov.
+            2026 Rittnerhorn/Patscherkofel: Die beiden Temperaturen stehen
+            untereinander, jede mit einem Linienstück in ihrer Farbe (statt
+            in der Legende) — für eine Zeile sind die Namen zu lang. */}
         <div
           className="pointer-events-none absolute inset-x-0 bg-white px-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
           style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX, height: TEMP_TITLE_CONTENT_H }}
         >
-          {/* Titel wie ganz oben beim Druck: "Temperatur Bozen − Innsbruck · Stand: …". */}
+          {/* Titel wie ganz oben beim Druck: "Temperatur auf 2250 m · Stand: …". */}
           <h3 className="truncate pb-1 text-sm leading-5 font-semibold text-zinc-900 dark:text-zinc-50">
-            Temperatur Bozen − Innsbruck
+            Temperatur auf 2250 m
             {currentTemp && (
               <span className="font-normal text-zinc-500 dark:text-zinc-400">
                 {" "}
@@ -816,10 +841,10 @@ export default function PressurePanel({
                 >
                   Δ {formatSigned(-currentTemp.diff)} °C
                 </span>
-                <span className="ml-auto whitespace-nowrap text-[15px] text-zinc-500 dark:text-zinc-400">
-                  {south.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(currentTemp.north)}</strong>
-                  {" · "}
-                  {north.short} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatHpa(currentTemp.south)}</strong> °C
+                {/* Feld north = Süd-Station, south = Nord-Station (siehe buildBandPaths). */}
+                <span className="ml-auto flex flex-col items-end text-[15px] leading-5 text-zinc-500 dark:text-zinc-400">
+                  <TempValue color={SOUTH_TEMP_COLOR} name={crestSouth.name} value={currentTemp.north} />
+                  <TempValue color={NORTH_TEMP_COLOR} name={crestNorth.name} value={currentTemp.south} />
                 </span>
               </>
             ) : (
@@ -827,14 +852,12 @@ export default function PressurePanel({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500 dark:text-zinc-400">
-            <LegendItem color={BZ_COLOR} width={2}>{south.short}</LegendItem>
-            <LegendItem color={IBK_COLOR} width={2}>{north.short}</LegendItem>
             <LegendItem color={FORECAST_COLOR} width={1.8} dash={FORECAST_DASH}>ICON-CH1</LegendItem>
             <span className="whitespace-nowrap">
-              <span style={{ color: TEMP_BZ_WARMER_FILL }}>■</span> {south.short} wärmer
+              <span style={{ color: TEMP_SOUTH_WARMER_FILL }}>■</span> Süden wärmer
             </span>
             <span className="whitespace-nowrap">
-              <span style={{ color: TEMP_IBK_WARMER_FILL }}>■</span> {north.short} wärmer
+              <span style={{ color: TEMP_NORTH_WARMER_FILL }}>■</span> Norden wärmer
             </span>
           </div>
         </div>
@@ -845,6 +868,21 @@ export default function PressurePanel({
       {/* Luft unter der Zeitachse. */}
       <div className="h-2 shrink-0" />
     </section>
+  );
+}
+
+// Eine Temperatur rechts neben dem Δ-Schild: Linienstück in der Farbe der
+// Kurve, Name der Station, Wert, z. B. "— Rittnerhorn −2,7 °C".
+function TempValue({ color, name, value }: { color: string; name: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <svg width="16" height="6" aria-hidden="true">
+        <line x1={1} y1={3} x2={15} y2={3} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+      </svg>
+      <span>
+        {name} <strong className="tabular-nums text-zinc-800 dark:text-zinc-100">{formatTemp(value)}</strong> °C
+      </span>
+    </span>
   );
 }
 
