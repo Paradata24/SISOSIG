@@ -485,7 +485,9 @@ der Edge Function nichts. Details:
   Koordinaten) ergänzen, dann die Funktion neu deployen.
 - **Luftdruck der Flughäfen (Föhn-Anzeige, Nov. 2026)** für Innsbruck (LOWI)
   und Bozen (LIPB): ICON-CH1-Druck am Boden, nach der Normatmosphäre in den
-  QNH umgerechnet (wie die Flughäfen ihn melden), letzte 12 h + nächste 33 h,
+  QNH umgerechnet (wie die Flughäfen ihn melden), dazu Temperatur und Feuchte
+  (daraus rechnet `/api/pressure` seit 8. Nov. 2026 das angezeigte QFF),
+  letzte 12 h + nächste 33 h,
   in der Tabelle `pressure_values` (`kind = 'icon_ch1'`). Seit Nov. 2026
   zusätzlich **ECMWF IFS** (72 h voraus, `kind = 'ecmwf_ifs'`). Eigene
   Laufprüfung je Modell wie beim Höhenwind (zusammen 24 Aufrufe am Tag). Die Koordinaten stehen in

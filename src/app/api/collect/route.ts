@@ -182,12 +182,14 @@ async function collectSource(
 
 // Luftdruck für die Föhn-Anzeige (src/lib/pressure.ts) holen und speichern,
 // zwei Arten in der Tabelle pressure_values:
-//   kind 'station' = QNH alle 10 min, selbst gerechnet aus den Wetterstationen
+//   kind 'station' = QNH alle 10 min (angezeigt wird seit 8. Nov. 2026 das
+//                    QFF, das /api/pressure daraus rechnet), selbst
+//                    gerechnet aus den Wetterstationen
 //                    Innsbruck-Flughafen (GeoSphere) und Bozen (Land),
 //                    src/lib/stationPressure.ts — die Hauptkurve; dazu
 //                    Temperatur und Feuchte der Stationen (temp_c,
-//                    humidity_pct; seit 8. Nov. 2026 nicht mehr angezeigt,
-//                    aber weiter gespeichert)
+//                    humidity_pct; seit 8. Nov. 2026 nicht mehr als Kurve
+//                    angezeigt, aber für das QFF gebraucht)
 //   kind 'kamm'    = Temperatur und Feuchte auf Kammhöhe (Rittnerhorn,
 //                    Patscherkofel; seit 8. Nov. 2026), src/lib/crestTemperature.ts
 //                    — ohne QNH (qnh_hpa leer)

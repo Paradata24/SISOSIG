@@ -35,7 +35,9 @@
 --   valid_at   Messzeit bzw. Prognosestunde (UTC)
 --   qnh_hpa    QNH in hPa (Luftdruck nach Normatmosphäre auf Meereshöhe
 --              umgerechnet — der Wert, den die Flughäfen melden); leer bei
---              den Bergstationen
+--              den Bergstationen. ANGEZEIGT wird seit 8. Nov. 2026 das QFF
+--              (mit echter Temperatur und Feuchte): /api/pressure rechnet es
+--              beim Auslesen aus qnh_hpa, temp_c und humidity_pct.
 --   model_run  bei Prognosen: Startzeit des Modelllaufs, sonst leer
 --   fetched_at wann der Wert geholt wurde
 -- Aufbewahrung 3 Tage wie bei den Windwerten (räumt der Sammler auf).
@@ -54,9 +56,9 @@ create table if not exists public.pressure_values (
 alter table public.pressure_values enable row level security;
 
 -- Seit Nov. 2026 (Wunsch des Projektbesitzers): Temperatur und
--- Luftfeuchtigkeit der beiden Wetterstationen (nur bei kind = 'station',
--- sonst leer) — für die Temperatur-Differenz Innsbruck − Bozen im
--- Druck-Verlaufsbalken. Ein zweites Ausführen schadet nicht.
+-- Luftfeuchtigkeit — gemessen (kind 'station', 'kamm') und seit 8. Nov. 2026
+-- auch in den Prognosen. Gebraucht für das QFF und das Temperatur-Diagramm
+-- im Druck-Verlaufsbalken. Ein zweites Ausführen schadet nicht.
 alter table public.pressure_values add column if not exists temp_c real;
 alter table public.pressure_values add column if not exists humidity_pct real;
 

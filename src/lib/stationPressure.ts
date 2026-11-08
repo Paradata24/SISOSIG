@@ -1,5 +1,5 @@
 import { SOURCE_TIMEOUT_MS } from "./wind";
-import { type PressureStationId } from "./pressure";
+import { MEASURED_ELEVATION_M, qnhFromStation, type PressureStationId } from "./pressure";
 
 // Luftdruck in 10-Minuten-Auflösung für die Föhn-Anzeige (Nov. 2026, Wunsch
 // des Projektbesitzers): Die Flugwetter-Meldungen (METAR, bis 8. Nov. 2026
@@ -18,7 +18,11 @@ import { type PressureStationId } from "./pressure";
 //              Stationshöhe zurück (stationFromReduced) und daraus wie in
 //              Innsbruck den QNH.
 //
-// Beide Seiten rechnen also nach DERSELBEN Regel wie die Flughäfen. Am
+// Beide Seiten rechnen also nach DERSELBEN Regel wie die Flughäfen.
+// GESPEICHERT wird dieser QNH (dazu Temperatur und Feuchte); ANGEZEIGT wird
+// seit 8. Nov. 2026 das QFF (mit echter Temperatur, Wunsch des
+// Projektbesitzers) — /api/pressure rechnet es beim Auslesen daraus
+// (toQffSeries in src/lib/pressure.ts). Am
 // 03.11.2026 über 48 h geprüft: Die Differenz Bozen − Innsbruck wich im
 // Mittel 0,02 hPa von der Differenz der METAR ab, höchstens ±1 hPa (= die
 // Rundung der METAR auf ganze hPa); von einem 10-Minuten-Wert zum nächsten
@@ -30,7 +34,8 @@ import { type PressureStationId } from "./pressure";
 // erneut prüfen will, vergleicht mit den METAR auf aviationweather.gov.
 //
 // Nur auf dem Server: Abgefragt vom Sammler (/api/collect, letzte 3 h) und im
-// Notbetrieb von /api/pressure (48 h). Beide Dienste liefern ihre Werte mit
+// Notbetrieb von /api/pressure (48 h + 12 h für die Temperatur des QFF).
+// Beide Dienste liefern ihre Werte mit
 // Verlauf — ein verpasster Sammel-Lauf füllt sich beim nächsten von selbst auf.
 
 const GEOSPHERE_HISTORICAL_URL =
@@ -40,9 +45,9 @@ const BOLZANO_TIMESERIES_URL =
   (process.env.WIND_API_BASE_URL ?? "https://geoservices.buergernetz.bz.it/services/meteo/v1") +
   "/timeseries";
 
-/** Station je Flughafen-Seite: Kennung beim Dienst und Barometerhöhe (m). */
-const INNSBRUCK = { geosphereId: "11121", elevationM: 578 };
-const BOZEN = { scode: "83200MS", elevationM: 245 };
+/** Station je Flughafen-Seite: Kennung beim Dienst und Barometerhöhe (m, MEASURED_ELEVATION_M). */
+const INNSBRUCK = { geosphereId: "11121", elevationM: MEASURED_ELEVATION_M.LOWI };
+const BOZEN = { scode: "83200MS", elevationM: MEASURED_ELEVATION_M.LIPB };
 
 // Gültige Werte (QNH in hPa); alles außerhalb wäre ein Messfehler.
 const QNH_MIN_HPA = 940;
@@ -68,10 +73,10 @@ export function humidityOrNull(value: number | null | undefined): number | null 
  * Ein selbst gerechneter QNH, dazu Temperatur und Luftfeuchtigkeit derselben
  * Station und Messzeit (seit Nov. 2026; bis 8. Nov. 2026 für die
  * Temperatur-Differenz Innsbruck − Bozen im Druck-Verlaufsbalken, seitdem
- * zeigt er die Kammtemperatur, src/lib/crestTemperature.ts — Temperatur und
- * Feuchte der Talstationen werden nur noch gespeichert, z. B. für eine
- * spätere Druckrechnung mit echter Temperatur). null, wenn der Dienst den
- * Wert nicht lieferte.
+ * zeigt er die Kammtemperatur, src/lib/crestTemperature.ts). Seit 8. Nov.
+ * 2026 brauchen wir Temperatur und Feuchte der Talstationen für das QFF
+ * (toQffSeries in src/lib/pressure.ts). null, wenn der Dienst den Wert nicht
+ * lieferte.
  */
 export interface StationPressure {
   /** Flughafen-Seite (LOWI = Innsbruck, LIPB = Bozen). */
@@ -81,11 +86,6 @@ export interface StationPressure {
   qnhHpa: number;
   tempC: number | null;
   humidityPct: number | null;
-}
-
-/** QNH aus dem Druck in Stationshöhe nach der Normatmosphäre der ICAO (wie die Flughäfen). */
-export function qnhFromStation(stationHpa: number, elevationM: number): number {
-  return Math.pow(Math.pow(stationHpa, 0.190263) + 8.417286e-5 * elevationM, 1 / 0.190263);
 }
 
 /**

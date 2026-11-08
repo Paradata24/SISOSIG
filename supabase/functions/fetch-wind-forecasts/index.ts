@@ -177,6 +177,13 @@ const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.j
 // qnhFromSurface). Der Druck auf Meereshöhe des Modells (pressure_msl) rechnet
 // mit der Temperatur (wie QFF) und lag am 03.11.2026 in Innsbruck rund 2 hPa
 // über dem METAR-QNH; der so gerechnete QNH traf ihn auf wenige Zehntel.
+// SEIT 8. NOV. 2026 ZEIGT DIE SEITE DAS QFF (mit echter Temperatur, Wunsch
+// des Projektbesitzers): Gespeichert wird weiter der QNH (exakt
+// zurückrechenbar) mit Temperatur UND Feuchte (relative_humidity_2m, Spalte
+// humidity_pct); /api/pressure rechnet daraus beim Auslesen das QFF — für
+// Messung und Prognose nach derselben Regel (toQffSeries in
+// src/lib/pressure.ts). Fehlt die Feuchte (Zeilen von vor diesem Datum),
+// wird trocken gerechnet (~0,1–0,3 hPa Unterschied).
 // Länger als der Wind (siehe PRESSURE_MODELS): Für Föhn ist auch der nächste
 // Tag interessant. Kostet trotzdem nur 1 Aufruf je Standort (gezählt wird
 // erst ab 2 Wochen Zeitraum). Seit Nov. 2026 zusätzlich ECMWF.
@@ -765,11 +772,14 @@ interface PressureRow {
   valid_at: string;
   // Leer bei den Bergstationen (nur Temperatur, siehe CREST_STATIONS).
   qnh_hpa: number | null;
-  // Lufttemperatur 2 m (°C) an der Flughafenhöhe — für das
-  // Temperatur-Diagramm im Druck-Verlaufsbalken (Nov. 2026). Kostet nichts
-  // extra (zweite Werte-Reihe derselben Anfrage). Spalte temp_c aus
+  // Lufttemperatur 2 m (°C) auf Stationshöhe — für das QFF und (Bergstationen)
+  // das Temperatur-Diagramm im Druck-Verlaufsbalken (Nov. 2026). Kostet
+  // nichts extra (weitere Werte-Reihe derselben Anfrage). Spalte temp_c aus
   // supabase/druck.sql — muss VOR dem Deploy angelegt sein.
   temp_c: number | null;
+  // Relative Feuchte 2 m (%) — für das QFF (virtuelle Temperatur, seit 8.
+  // Nov. 2026). Spalte humidity_pct gibt es schon (supabase/druck.sql).
+  humidity_pct: number | null;
   model_run: string | null;
   fetched_at: string;
 }
@@ -793,7 +803,7 @@ async function fetchPressureForecast(
     longitude: stations.map((s) => s.lng).join(","),
     elevation: stations.map((s) => s.elevationM).join(","),
     models: model.api,
-    hourly: "surface_pressure,temperature_2m",
+    hourly: "surface_pressure,temperature_2m,relative_humidity_2m",
     past_hours: String(PAST_HOURS),
     forecast_hours: String(model.hours),
     timeformat: "unixtime",
@@ -824,9 +834,12 @@ async function fetchPressureForecast(
     if (!hourly || !times) return;
     const surface = hourlySeries(hourly, "surface_pressure", model.api);
     const temperature = hourlySeries(hourly, "temperature_2m", model.api);
+    const humidity = hourlySeries(hourly, "relative_humidity_2m", model.api);
     times.forEach((t, k) => {
       if (typeof t !== "number") return;
       const temp = temperature?.[k];
+      const rh = humidity?.[k];
+      const humidityPct = typeof rh === "number" ? Math.round(rh) : null;
       if (station.crest) {
         // Bergstation: nur die Temperatur.
         if (typeof temp !== "number") return;
@@ -836,6 +849,7 @@ async function fetchPressureForecast(
           valid_at: new Date(t * 1000).toISOString(),
           qnh_hpa: null,
           temp_c: round1(temp),
+          humidity_pct: humidityPct,
           model_run: modelRunIso,
           fetched_at: fetchedAt,
         });
@@ -849,6 +863,7 @@ async function fetchPressureForecast(
         valid_at: new Date(t * 1000).toISOString(),
         qnh_hpa: round1(qnhFromSurface(value, station.elevationM)),
         temp_c: typeof temp === "number" ? round1(temp) : null,
+        humidity_pct: humidityPct,
         model_run: modelRunIso,
         fetched_at: fetchedAt,
       });

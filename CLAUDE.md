@@ -129,8 +129,8 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken; mit `?hours=8` nur die letzten 8 h (Punkt 27), gerechnet immer mit 3 h Vorlauf |
 | `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
-| `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Vorzeichen (Bozen − Innsbruck), Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
-| `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen (Hauptkurve; nur Server) |
+| `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Bergstationen der Kammtemperatur, Vorzeichen (Bozen − Innsbruck), Umrechnung QNH → QFF, Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
+| `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen, mit Temperatur und Feuchte (gespeichert; angezeigt wird das QFF, `toQffSeries` in `src/lib/pressure.ts`; nur Server) |
 | `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Patscherkofel (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
 | `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen, ICON-CH1- und ECMWF-Prognose) und Kammtemperatur aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
@@ -493,11 +493,31 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Föhn-Anzeige: Druckdifferenz Bozen − Innsbruck (Nov. 2026, Wunsch des Projektbesitzers)**
-- Vorbild: die „Live-Druckdifferenzen" der burnair Map. **Immer QNH**
-  (Wunsch des Projektbesitzers; QFF/QFE von burnair sind nur aus dem QNH
-  gerechnet). burnair und Breezedude nehmen dafür die METAR von LOWI/LIPB
-  über aviationweather.gov (Nov. 2026 nachgesehen).
-- **Messreihe (Nov. 2026, vom Projektbesitzer beauftragt):** QNH alle 10 min
+- Vorbild: die „Live-Druckdifferenzen" der burnair Map. burnair und
+  Breezedude nehmen dafür die METAR von LOWI/LIPB über aviationweather.gov
+  (Nov. 2026 nachgesehen; QFF/QFE von burnair sind nur aus dem QNH
+  gerechnet).
+- **QFF statt QNH** (8. Nov. 2026, Wunsch des Projektbesitzers nach einer
+  Recherche; bis dahin „immer QNH“): Angezeigt wird der Druck auf
+  Meereshöhe, gerechnet mit der **echten Temperatur und Feuchte** der Station
+  (`qffFromStation`/`toQffSeries` in `src/lib/pressure.ts`). Grund: Bozen
+  liegt 333 m tiefer als Innsbruck, der QNH nimmt für dieses Stück immer
+  „Normluft“ (~12 °C) an — das verfälscht die Differenz um ~0,14 hPa je Grad
+  Abweichung, bis gut 2 hPa bei Sommerhitze oder Winterkälte. MeteoSchweiz
+  empfiehlt für Druckdifferenzen das QFF, Wettermodelle und Föhndiagramme
+  rechnen ebenso mit Temperatur. Am 5.–8. Nov. 2026 lag die QFF-Differenz im
+  Mittel 0,9 hPa unter der QNH-Differenz. **Temperatur = Mittel aus jetzt
+  und vor 12 h** (`QFF_TEMP_LAG_MS`; übliche Praxis, AMS-Glossar und
+  US-Wetterdienst: sonst erschiene der Tagesgang der Bodentemperatur als
+  Druckschwankung), Säule bis zur Mitte mit 0,65 K/100 m, Feuchte als
+  virtuelle Temperatur (bis ~0,3 hPa). **Gespeichert wird weiter der QNH**
+  (exakt in den Stationsdruck zurückrechenbar, `stationFromQnh`) mit
+  Temperatur und Feuchte; `/api/pressure` rechnet das QFF beim Auslesen —
+  für Messung und Prognose nach derselben Regel, deshalb liest es 12 h mehr
+  als angezeigt. Rückgerechnet wird mit der Höhe, mit der der QNH entstand:
+  Messung 578/245 m (`MEASURED_ELEVATION_M`), Prognose 581/240 m
+  (`PRESSURE_STATIONS`). Die Farbstufen (0,5/1,5/2,5/3 hPa) blieben.
+- **Messreihe (Nov. 2026, vom Projektbesitzer beauftragt):** alle 10 min
   auf 0,1 hPa, **selbst gerechnet** aus GeoSphere 11121 „Innsbruck-Flughafen“
   (Stationsdruck `P`) und Landesstation 83200MS „Bozen“ (reduzierter Druck
   `LD.RED` mit Temperatur `LT` auf Stationsdruck zurückgerechnet), beide nach
@@ -539,8 +559,12 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
   auf Wunsch des Projektbesitzers **ECMWF IFS** (`ecmwf_ifs`, 9 km, 72 h
   voraus, violett gestrichelt — nicht blau, Blau/Rot gehören den Flächen). Beide als Druck **am Boden** geholt und nach
-  derselben Regel in den QNH umgerechnet (`qnhFromSurface`) — nicht
-  `pressure_msl`, das lag in Innsbruck ~2 hPa daneben. ECMWF gibt es NUR hier
+  derselben Regel in den QNH umgerechnet (`qnhFromSurface`) und mit
+  Temperatur und Feuchte (`relative_humidity_2m`, seit 8. Nov. 2026)
+  gespeichert; angezeigt wird daraus wie bei der Messung das QFF. (Nicht
+  `pressure_msl` direkt: Es lag in Innsbruck ~2 hPa über dem QNH — der
+  Unterschied QFF/QNH bei kaltem Wetter — und rechnet nach der Regel des
+  Modells, nicht nach unserer.) ECMWF gibt es NUR hier
   beim Druck, nicht beim Wind (siehe „Prognosemodelle“).
   `/api/pressure` hat je Messreihe einen Notbetrieb direkt bei den Diensten.
 - **Anzeige:** nur Hauptseite, im Ebenen-Menü „Föhn (Druck BZ–IBK)", als
@@ -595,8 +619,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   sein, `supabase/druck.sql`; in einem eigenen Schreibvorgang, damit ein
   Fehler dort den Druck nicht trifft); die Feuchte wird noch nicht
   angezeigt. Temperatur und Feuchte der **Talstationen** (`kind = 'station'`)
-  speichert er weiter (für eine spätere Druckrechnung mit echter Temperatur),
-  `/api/pressure` liefert sie aber nicht mehr aus.
+  speichert er weiter (gebraucht für das QFF), `/api/pressure` liefert sie
+  aber nicht mehr als Kurve aus.
 - **Lesbarkeit des Druck-Verlaufsbalkens** (Nov. 2026, zweimal auf Wunsch
   des Projektbesitzers aufgeräumt, zuletzt am 6. Nov.): Kopfzeile nur zwei
   Zeilen (großes Differenz-Schild, rechts die Druckwerte in größerer Schrift; **kein erklärender

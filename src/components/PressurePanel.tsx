@@ -16,7 +16,8 @@ import { HISTORY_HOURS } from "@/lib/wind";
 
 // Druck-Verlaufsbalken der Föhn-Anzeige (Nov. 2026, Wunsch des
 // Projektbesitzers): öffnet sich beim Antippen der Linie Innsbruck–Bozen auf
-// der Karte. Oben die aktuellen Werte (QNH) beider Seiten und die Differenz,
+// der Karte. Oben die aktuellen Werte (QFF seit 8. Nov. 2026, vorher QNH;
+// gerechnet in /api/pressure) beider Seiten und die Differenz,
 // darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h —
 // schwarz die 10-Minuten-Werte der Stationen (Hauptkurve) — und die
 // Prognosen ICON-CH1 (grau gestrichelt, 33 h voraus) und ECMWF (violett
@@ -304,7 +305,7 @@ function buildAreaPath(
   return d;
 }
 
-/** QNH mit einer Nachkommastelle, z. B. "1019,6". */
+/** Druck (QFF) mit einer Nachkommastelle, z. B. "1019,6". */
 function formatHpa(value: number): string {
   return value.toLocaleString("de-DE", {
     minimumFractionDigits: 1,
@@ -569,7 +570,7 @@ export default function PressurePanel({
       </header>
 
       {/* Aktuelle Lage in einer Zeile: großes Differenz-Schild, rechts klein die
-          beiden Druckwerte (QNH). Bewusst ohne erklärenden Satz (Wunsch des
+          beiden Druckwerte (QFF). Bewusst ohne erklärenden Satz (Wunsch des
           Projektbesitzers, Nov. 2026). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-2 text-xs text-zinc-700 dark:text-zinc-200">
         {current ? (
