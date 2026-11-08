@@ -23,6 +23,11 @@ import { cachedFresh } from "./freshCache";
 //
 // Wie bei den anderen Quellen liefert die Datei nur den neuesten Wert
 // (10-Minuten-Takt), der 5-Minuten-Takt von /api/collect passt.
+//
+// Seit 8. Nov. 2026 liest die Föhn-Anzeige aus derselben Datei auch die
+// Temperatur des Hafelekar (Kammtemperatur Norden, fetchLwdTirolTemperature,
+// genutzt von src/lib/crestTemperature.ts) — dieselbe zwischengespeicherte
+// Datei, also keine zusätzliche Anfrage.
 
 const API_URL =
   process.env.LWD_TIROL_URL ?? "https://wiski.tirol.gv.at/lawine/produkte/ogd.geojson";
@@ -54,6 +59,9 @@ interface LwdFeature {
     WG?: number | null;
     WG_BOE?: number | null;
     WR?: number | null;
+    /** Lufttemperatur (°C) und relative Feuchte (%) — für die Föhn-Anzeige. */
+    LT?: number | null;
+    RH?: number | null;
   };
 }
 
@@ -69,8 +77,9 @@ function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export async function fetchLwdTirolStations(): Promise<WindStation[]> {
-  const body = await cachedFresh(API_URL, CACHE_TTL_MS, async () => {
+/** Die Datei mit allen Stationen (zwischengespeichert, siehe CACHE_TTL_MS). */
+function loadLwdFile(): Promise<{ features?: LwdFeature[] }> {
+  return cachedFresh(API_URL, CACHE_TTL_MS, async () => {
     const res = await fetch(API_URL, {
       cache: "no-store",
       signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
@@ -78,6 +87,26 @@ export async function fetchLwdTirolStations(): Promise<WindStation[]> {
     if (!res.ok) throw new Error(`LWD Tirol antwortete mit Status ${res.status}`);
     return (await res.json()) as { features?: LwdFeature[] };
   });
+}
+
+/**
+ * Neueste Temperatur (°C) und Feuchte (%) einer Station (LWD-Nummer, z. B.
+ * "ISEE1" = Hafelekar) samt Messzeit; null, wenn die Station oder ihre
+ * Temperatur fehlt. Die Datei hat keinen Verlauf — nur den neuesten Wert.
+ */
+export async function fetchLwdTirolTemperature(
+  number: string,
+): Promise<{ measuredAt: string; tempC: number; humidityPct: number | null } | null> {
+  const body = await loadLwdFile();
+  const p = body.features?.find((f) => f.properties?.["LWD-Nummer"] === number)?.properties;
+  const tempC = numberOrNull(p?.LT);
+  const measuredAt = p?.date ? Date.parse(p.date) : NaN;
+  if (!p || tempC === null || Number.isNaN(measuredAt)) return null;
+  return { measuredAt: new Date(measuredAt).toISOString(), tempC, humidityPct: numberOrNull(p.RH) };
+}
+
+export async function fetchLwdTirolStations(): Promise<WindStation[]> {
+  const body = await loadLwdFile();
 
   const now = Date.now();
   const result: WindStation[] = [];

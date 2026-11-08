@@ -1024,7 +1024,6 @@ export default function WindMap({
     leafletMap,
     foehnEnabled,
     pressureSeries.measured,
-    pressureSeries.metar,
     historyFrame?.time ?? null,
     openPressure,
   );
@@ -1164,7 +1163,6 @@ export default function WindMap({
       {pressureOpen && foehnEnabled && (
         <PressurePanel
           measured={pressureSeries.measured}
-          metar={pressureSeries.metar}
           forecast={pressureSeries.forecast}
           modelRun={pressureData?.modelRun ?? null}
           ecmwf={pressureSeries.ecmwf}

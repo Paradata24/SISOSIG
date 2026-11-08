@@ -129,10 +129,10 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/app/api/forecast/route.ts` | Prognose (ICON-CH1) **einer** Station |
 | `src/app/api/timeline/route.ts` | 48 h **aller** Stationen, kompaktes Spaltenformat für den Zeitbalken; mit `?hours=8` nur die letzten 8 h (Punkt 27), gerechnet immer mit 3 h Vorlauf |
 | `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
-| `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Vorzeichen (Bozen − Innsbruck), Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
-| `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen (Hauptkurve; nur Server) |
-| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (Vergleichslinie; nur Server: Sammler und Notbetrieb von `/api/pressure`) |
-| `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen + METAR, ICON-CH1-Prognose) aus `pressure_values`; Notbetrieb direkt bei den Diensten |
+| `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Bergstationen der Kammtemperatur, Vorzeichen (Bozen − Innsbruck), Umrechnung QNH → QFF, Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
+| `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen, mit Temperatur und Feuchte (gespeichert; angezeigt wird das QFF, `toQffSeries` in `src/lib/pressure.ts`; nur Server) |
+| `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Hafelekar (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
+| `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen, ICON-CH1- und ECMWF-Prognose) und Kammtemperatur aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
@@ -493,26 +493,52 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Zeitbalken bleibt ein SLF-Wert bis zum nächsten stehen (`/api/timeline`).
 
 **Föhn-Anzeige: Druckdifferenz Bozen − Innsbruck (Nov. 2026, Wunsch des Projektbesitzers)**
-- Vorbild: die „Live-Druckdifferenzen" der burnair Map. **Immer QNH**
-  (Wunsch des Projektbesitzers; QFF/QFE von burnair sind nur aus dem QNH
-  gerechnet). burnair und Breezedude nehmen dafür die METAR von LOWI/LIPB
-  über aviationweather.gov (Nov. 2026 nachgesehen).
-- **Zwei Messreihen** (Nov. 2026, vom Projektbesitzer beauftragt):
-  - **Hauptkurve, Linie und Schild:** QNH alle 10 min auf 0,1 hPa, **selbst
-    gerechnet** aus GeoSphere 11121 „Innsbruck-Flughafen“ (Stationsdruck `P`)
-    und Landesstation 83200MS „Bozen“ (reduzierter Druck `LD.RED` mit
-    Temperatur `LT` auf Stationsdruck zurückgerechnet), beide nach der
-    Normatmosphäre wie die Flughäfen (`src/lib/stationPressure.ts`). Am
-    03.11.2026 über 48 h geprüft: Differenz im Mittel 0,02 hPa neben der
-    METAR-Differenz, höchstens ±1 hPa (Rundung der METAR). Die
-    reduzierten Werte der Landesdienste NICHT direkt vergleichen (jeder
-    rechnet anders, GeoSphere lag 1,6 hPa über dem METAR).
-  - **Vergleich:** die METAR der Flughäfen LOWI/LIPB (`src/lib/metar.ts`,
-    NOAA Aviation Weather Center), im Diagramm als **dünne graue punktierte
-    Linie** (Wunsch des Projektbesitzers). Nur ganze hPa, Bozen meldet
-    **nachts nicht** (etwa 22:50–6:30 Uhr) — die erste Fassung zeigte nur
-    diese, die Kurve war treppig und nachts unterbrochen. Fehlen die
-    Stationswerte, zeigen Karte und Kopfzeile die METAR.
+- Vorbild: die „Live-Druckdifferenzen" der burnair Map. burnair und
+  Breezedude nehmen dafür die METAR von LOWI/LIPB über aviationweather.gov
+  (Nov. 2026 nachgesehen; QFF/QFE von burnair sind nur aus dem QNH
+  gerechnet).
+- **QFF statt QNH** (8. Nov. 2026, Wunsch des Projektbesitzers nach einer
+  Recherche; bis dahin „immer QNH“): Angezeigt wird der Druck auf
+  Meereshöhe, gerechnet mit der **echten Temperatur und Feuchte** der Station
+  (`qffFromStation`/`toQffSeries` in `src/lib/pressure.ts`). Grund: Bozen
+  liegt 333 m tiefer als Innsbruck, der QNH nimmt für dieses Stück immer
+  „Normluft“ (~12 °C) an — das verfälscht die Differenz um ~0,14 hPa je Grad
+  Abweichung, bis gut 2 hPa bei Sommerhitze oder Winterkälte. MeteoSchweiz
+  empfiehlt für Druckdifferenzen das QFF, Wettermodelle und Föhndiagramme
+  rechnen ebenso mit Temperatur. Am 5.–8. Nov. 2026 lag die QFF-Differenz im
+  Mittel 0,9 hPa unter der QNH-Differenz. **Temperatur = Mittel aus jetzt
+  und vor 12 h** (`QFF_TEMP_LAG_MS`; übliche Praxis, AMS-Glossar und
+  US-Wetterdienst: sonst erschiene der Tagesgang der Bodentemperatur als
+  Druckschwankung), Säule bis zur Mitte mit 0,65 K/100 m, Feuchte als
+  virtuelle Temperatur (bis ~0,3 hPa). **Gespeichert wird weiter der QNH**
+  (exakt in den Stationsdruck zurückrechenbar, `stationFromQnh`) mit
+  Temperatur und Feuchte; `/api/pressure` rechnet das QFF beim Auslesen —
+  für Messung und Prognose nach derselben Regel, deshalb liest es 12 h mehr
+  als angezeigt. Rückgerechnet wird mit der Höhe, mit der der QNH entstand:
+  Messung 578/245 m (`MEASURED_ELEVATION_M`), Prognose 581/240 m
+  (`PRESSURE_STATIONS`). Die Farbstufen (0,5/1,5/2,5/3 hPa) blieben.
+- **Messreihe (Nov. 2026, vom Projektbesitzer beauftragt):** alle 10 min
+  auf 0,1 hPa, **selbst gerechnet** aus GeoSphere 11121 „Innsbruck-Flughafen“
+  (Stationsdruck `P`) und Landesstation 83200MS „Bozen“ (reduzierter Druck
+  `LD.RED` mit Temperatur `LT` auf Stationsdruck zurückgerechnet), beide nach
+  der Normatmosphäre wie die Flughäfen (`src/lib/stationPressure.ts`) — für
+  Hauptkurve, Linie und Schild. Am 03.11.2026 über 48 h geprüft: Differenz im
+  Mittel 0,02 hPa neben der METAR-Differenz, höchstens ±1 hPa (Rundung der
+  METAR). Die reduzierten Werte der Landesdienste NICHT direkt vergleichen
+  (GeoSphere lag 1,6 hPa über dem METAR-QNH — laut Recherche Nov. 2026 vor
+  allem der Unterschied QFF/QNH bei kaltem Wetter).
+- **Keine Flughafen-Werte (METAR) mehr** (8. Nov. 2026, Wunsch des
+  Projektbesitzers; siehe „Nicht wieder einführen“): Die erste Fassung
+  zeigte nur die METAR von LOWI/LIPB (ganze hPa, Bozen nachts ohne Meldung —
+  treppig und nachts unterbrochen), danach waren sie dünne graue punktierte
+  Vergleichslinie, zuletzt nur Ersatz für Karte und Kopfzeile. Jetzt
+  komplett entfernt (`src/lib/metar.ts` gelöscht, Sammler holt sie nicht
+  mehr). Fehlen die Stationswerte, wird die Linie nach 2 h grau
+  (`PRESSURE_STALE_AFTER_MS`). **Als Windstation nicht nötig:** Am Flughafen
+  Innsbruck steht schon die GeoSphere-Station „Innsbruck-Flughafen“
+  (10-min-Werte), 3,5 km vom Flughafen Bozen die Landesstation „Bozen“; die
+  METAR hätten nur grobe Werte (ganze Knoten, 10°-Schritte, Böen nur bei
+  starkem Wind; Bozen stündlich und nachts nicht).
 - **Vorzeichen Bozen − Innsbruck:** positiv = Süd höher (Südföhn-Lage),
   negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
@@ -520,20 +546,25 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis
   1,5 grün, bis 2,5 gelb, bis 3 orange, darüber rot (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
-  (`PRESSURE_STALE_AFTER_MS`). **Quellen** (GeoSphere, Land Südtirol, METAR,
-  ICON-CH1; `PRESSURE_SOURCES`) stehen unter
+  (`PRESSURE_STALE_AFTER_MS`). **Quellen** (GeoSphere, Land Südtirol,
+  ICON-CH1, ECMWF; `PRESSURE_SOURCES`) stehen unter
   „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des
   Projektbesitzers).
 - **Gespeichert** in der eigenen Tabelle `pressure_values`
-  (`supabase/druck.sql`, Spalte `kind`: `station`, `metar`, `icon_ch1`):
+  (`supabase/druck.sql`, Spalte `kind`: `station`, `kamm`
+  (Kammtemperatur, seit 8. Nov. 2026, ohne QNH), `icon_ch1`, `ecmwf_ifs`):
   Messungen schreibt der Sammler, jeweils die letzten 3 h (Zustand in
   `wind_status` als „druck", zählt nicht als Windquelle), die Prognose die
   Edge Function (`refreshPressure`, `PRESSURE_MODELS`, eigene Laufprüfung je
   Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
   auf Wunsch des Projektbesitzers **ECMWF IFS** (`ecmwf_ifs`, 9 km, 72 h
   voraus, violett gestrichelt — nicht blau, Blau/Rot gehören den Flächen). Beide als Druck **am Boden** geholt und nach
-  derselben Regel in den QNH umgerechnet (`qnhFromSurface`) — nicht
-  `pressure_msl`, das lag in Innsbruck ~2 hPa daneben. ECMWF gibt es NUR hier
+  derselben Regel in den QNH umgerechnet (`qnhFromSurface`) und mit
+  Temperatur und Feuchte (`relative_humidity_2m`, seit 8. Nov. 2026)
+  gespeichert; angezeigt wird daraus wie bei der Messung das QFF. (Nicht
+  `pressure_msl` direkt: Es lag in Innsbruck ~2 hPa über dem QNH — der
+  Unterschied QFF/QNH bei kaltem Wetter — und rechnet nach der Regel des
+  Modells, nicht nach unserer.) ECMWF gibt es NUR hier
   beim Druck, nicht beim Wind (siehe „Prognosemodelle“).
   `/api/pressure` hat je Messreihe einen Notbetrieb direkt bei den Diensten.
 - **Anzeige:** nur Hauptseite, im Ebenen-Menü „Föhn (Druck BZ–IBK)", als
@@ -543,8 +574,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   48 h gemessen (schwarz; Druck- und Temperaturkurven **nur ein Wert alle
   20 min** zu :00/:20/:40 — Wunsch des Projektbesitzers,
   `MEASURED_STEP_MINUTES`; gespeichert wird weiter alle 10 min, Kopfzeile und
-  Karte zeigen den neuesten Wert), METAR
-  (dünn grau punktiert) +
+  Karte zeigen den neuesten Wert) +
   Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
@@ -567,33 +597,57 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   100 px; zwischen beiden Diagrammen mehr Luft (`PRESSURE_TIME_H`,
   `TEMP_TITLE_PAD_PX`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
-- **Temperatur Innsbruck und Bozen** (Nov. 2026, Wunsch des
-  Projektbesitzers): eigenes Diagramm unter dem Druck auf derselben
-  Zeitachse. Gemessene Temperaturen beider Stationen als Linien (IBK
-  blau, BZ braun), die **Fläche zwischen den Linien = ΔT Bozen −
-  Innsbruck** (seit 6. Nov. 2026 gezählt wie der Druck, vorher umgekehrt):
-  rot, wo Bozen wärmer ist, blau, wo Innsbruck wärmer ist (erste Fassung
-  zeigte nur ΔT um eine Nulllinie). Nach „jetzt“ die **ICON-CH1-Temperatur**
-  beider Stationen gestrichelt, Fläche blasser (`temperature_2m` in derselben
-  Anfrage der Edge Function, Spalte `temp_c` der Prognosezeilen). ΔT und
-  beide Temperaturen stehen in der Titelzeile des Temperatur-Diagramms. Bewusst NICHT höhenbereinigt
-  (Innsbruck ~330 m höher, normal ~2 °C kälter). Temperatur und Feuchte der
-  Stationen (`TL`/`RF` bei GeoSphere, `LT`/`LF` in Bozen) speichert der
-  Sammler in `temp_c`/`humidity_pct` (`kind = 'station'`); die Feuchte wird
-  noch nicht angezeigt.
+- **Temperatur auf Kammhöhe: Rittnerhorn und Hafelekar** (8. Nov. 2026,
+  Wunsch des Projektbesitzers; vorher die Talstationen Bozen und Innsbruck):
+  eigenes Diagramm unter dem Druck auf derselben Zeitachse, Titel
+  „Temperatur auf 2260 m“. Grund (Recherche Nov. 2026: DHV, SHV, XCTherm,
+  MeteoSchweiz): Föhn treibt auch der Temperaturunterschied der Luftmassen
+  **auf Höhe der Pässe** — am Talboden überdecken Tagesgang, Kaltluftseen und
+  Inversionen das. Rittnerhorn (Land Südtirol `82500WS`, 2260 m, Süden) und
+  **Hafelekar** (Nordkette, Lawinenwarndienst Tirol `ISEE1`, 2270 m, Norden)
+  liegen fast gleich hoch, deshalb keine Höhenbereinigung. **Im Norden zuerst
+  der Patscherkofel** (GeoSphere 11126, 2251 m) — noch am selben Tag auf
+  Wunsch des Projektbesitzers ersetzt: Er liegt am Ausgang des Wipptals und
+  steht bei Südföhn selbst in der Föhnströmung (zeigt dann Luft aus dem
+  Süden); der Hafelekar liegt weiter vom Alpenhauptkamm weg (wie Matro–
+  Pilatus im SHV-Beispiel). **Der Hafelekar hat keinen Verlauf beim Dienst**
+  (die Datei des LWD Tirol enthält nur den neuesten Wert, meist alle 10 min,
+  manchmal Lücken von 20–80 min): Den Verlauf baut der Sammler selbst auf,
+  im Notbetrieb gibt es nur den aktuellen Wert. Die Temperaturlinien zeigen
+  deshalb je 20-Minuten-Abschnitt den ersten Wert (`oneEveryStep` in
+  `PressurePanel`) statt starr :00/:20/:40. Stationen in
+  `CREST_STATIONS`/`CREST_PAIR` (`src/lib/pressure.ts`), Abruf in
+  `src/lib/crestTemperature.ts` und `fetchLwdTirolTemperature`
+  (`src/lib/lwdtirol.ts`). Gemessene
+  Temperaturen als Linien (Norden blau, Süden braun), die **Fläche zwischen
+  den Linien = ΔT Süd − Nord** (gezählt wie der Druck): rot, wo der Süden
+  wärmer ist, blau, wo der Norden wärmer ist. Lesehilfe: Süden kälter (blau)
+  stützt Südföhn, Norden kälter (rot) Nordföhn. Über den ganzen Zeitraum die
+  **ICON-CH1-Temperatur** beider Bergstationen gestrichelt, Fläche blasser
+  (`temperature_2m` auf Stationshöhe, in derselben Open-Meteo-Anfrage wie
+  der Druck der Flughäfen, `CREST_STATIONS` in der Edge Function). Der
+  Sammler speichert Temperatur und Feuchte der Bergstationen als
+  `kind = 'kamm'` **ohne QNH** (`qnh_hpa` darf deshalb seit 8. Nov. 2026 leer
+  sein, `supabase/druck.sql`; in einem eigenen Schreibvorgang, damit ein
+  Fehler dort den Druck nicht trifft); die Feuchte wird noch nicht
+  angezeigt. Temperatur und Feuchte der **Talstationen** (`kind = 'station'`)
+  speichert er weiter (gebraucht für das QFF), `/api/pressure` liefert sie
+  aber nicht mehr als Kurve aus.
 - **Lesbarkeit des Druck-Verlaufsbalkens** (Nov. 2026, zweimal auf Wunsch
   des Projektbesitzers aufgeräumt, zuletzt am 6. Nov.): Kopfzeile nur zwei
   Zeilen (großes Differenz-Schild, rechts die Druckwerte in größerer Schrift; **kein erklärender
   Satz** wie „kein nennenswertes Gefälle“ — vom Projektbesitzer abgelehnt);
   das Druck-Diagramm hat nur seine Legende (keine Titelzeile „Druck (hPa)“,
   kein „Süd höher/Nord höher“ — abgelehnt), das Temperatur-Diagramm eine
-  Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Bozen − Innsbruck,
-  wie das Differenz-Schild des Drucks; hellrot bei Bozen wärmer, hellblau bei
-  Innsbruck wärmer) steht (nichts liegt auf den Kurven); **seit 7. Nov. 2026
+  Titelzeile, in der links ein **Rechteck „Δ +3,5 °C“** (= Süd − Nord,
+  wie das Differenz-Schild des Drucks; hellrot bei Süden wärmer, hellblau bei
+  Norden wärmer) steht (nichts liegt auf den Kurven); **seit 7. Nov. 2026
   aufgebaut wie die Kopfzeile über dem Druck-Diagramm** (Titel „Temperatur
-  Bozen − Innsbruck · Stand: …“, gleich großes
-  Schild, rechts „BZ 9,1 · IBK 5,2 °C“ in 15 px, darunter die Legende in
-  11 px; Wunsch des Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
+  auf 2260 m · Stand: …“, gleich großes Schild, rechts die beiden
+  Temperaturen in 15 px — seit 8. Nov. 2026 **untereinander**, je mit einem
+  Linienstück in der Farbe der Kurve, weil die Namen der Bergstationen
+  für eine Zeile zu lang sind —, darunter die Legende in 11 px; Wunsch des
+  Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)
   laufen seit 7. Nov. 2026 auch in der Vergangenheit weiter, hinter der
   Messung** (Wunsch des Projektbesitzers, „wie im Verlaufsbalken“; vorher
@@ -941,13 +995,17 @@ Projektbesitzers entfernt:
 - Stil „Erklärfilm" (tiefblaue Balken, orange Rahmen, runde Creme-Knöpfe,
   Serifenschrift, Creme-Karte; Okt. 2026 eingebaut und zwei Tage später
   komplett zurückgenommen, PR #123)
+- Flughafen-Werte (METAR) in der Föhn-Anzeige: weder als Linie im
+  Druck-Diagramm (dünn grau punktiert) noch als Ersatz für Karte und
+  Kopfzeile (8. Nov. 2026 ganz entfernt, samt `src/lib/metar.ts`)
 
 ## Fallen, die man einer einzelnen Datei nicht ansieht
 
 - **Deno kann nicht aus `src/` importieren.** Die Edge Function
   `supabase/functions/fetch-wind-forecasts/index.ts` hat deshalb eigene Kopien
-  der Zeitfenster-Konstanten, von `UPPER_WIND_STATIONS` (mit Koordinaten) und
-  von `PRESSURE_STATIONS` (Flughäfen, `src/lib/pressure.ts`).
+  der Zeitfenster-Konstanten, von `UPPER_WIND_STATIONS` (mit Koordinaten),
+  von `PRESSURE_STATIONS` (Flughäfen, `src/lib/pressure.ts`) und von
+  `CREST_STATIONS` (Bergstationen der Kammtemperatur, ebenda).
   Wird `HISTORY_HOURS` / `FUTURE_MARGIN_HOURS` oder `UPPER_WIND_STATIONS` in
   `src/lib/wind.ts` geändert, muss die Edge Function mitgezogen werden (und
   danach im Supabase-Dashboard neu deployt). Die früheren Kopien von
@@ -965,7 +1023,9 @@ Projektbesitzers entfernt:
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht. Seit Nov. 2026 fragt der
   Sammler zusätzlich alle 5 min den Druck von Innsbruck-Flughafen ab
-  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde).
+  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde). (Die
+  Kammtemperatur im Norden kommt seit 8. Nov. 2026 vom Hafelekar aus der
+  ohnehin geladenen Datei des LWD Tirol — keine GeoSphere-Anfrage.)
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
   10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den
@@ -988,7 +1048,9 @@ Projektbesitzers entfernt:
   `stationsliste.sql` und `zeitbalken-funktion.sql`, seit Nov. 2026
   `ein-sammler.sql` und `druck.sql`) — bei
   einer Neuinstallation ist alles schon in `schema.sql`/`forecast-schema.sql`
-  bzw. `collect-cron.sql`. In der Datenbank des Projekts sind alle ausgeführt.
+  bzw. `collect-cron.sql`. In der Datenbank des Projekts sind alle ausgeführt
+  (die letzte Zeile von `druck.sql`, `qnh_hpa` darf leer sein, am 8. Nov.
+  2026).
 - **Zeitplan-Jobs melden nur „abgeschickt“:** In `cron.job_run_details`
   steht bei jedem Lauf „succeeded“, auch wenn `/api/collect` scheitert (pg_net
   arbeitet asynchron). Die echte Antwort steht in `net._http_response`, aber
@@ -1008,8 +1070,9 @@ Projektbesitzers entfernt:
   (alle Stationen der Karte, seit Punkt 14; mit den 46 von Meteotrentino
   ~700, der Rest eines Laufs kommt beim nächsten Anstoß) × 8 Modellläufe ≈
   5.200 (mit Meteotrentino ≈ 5.600) am Tag,
-  plus 16 für den Höhenwind (2 Stationen × 8) und 24 für den Luftdruck der
-  Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4); das Nachholen gescheiterter
+  plus 16 für den Höhenwind (2 Stationen × 8), 24 für den Luftdruck der
+  Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4) und 16 für die Kammtemperatur
+  (ICON-CH1 2 × 8, seit 8. Nov. 2026); das Nachholen gescheiterter
   Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
   pro Minute** (und 5.000 pro Stunde): Der erste Lauf mit allen 657 Stationen
   (01.11.2026) bekam für die letzten 57 Status 429. Deshalb fragt ein Anstoß

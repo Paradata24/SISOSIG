@@ -168,14 +168,22 @@ const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.j
 // --- LUFTDRUCK DER FLUGHÄFEN (ICON-CH1, Nov. 2026, Wunsch des Projektbesitzers) ---
 // Für die Föhn-Anzeige (Druckdifferenz Bozen − Innsbruck, src/lib/pressure.ts)
 // die Druckprognose von ICON-CH1 an den Flughäfen Innsbruck (LOWI) und Bozen
-// (LIPB). Gemessen wird dort der QNH aus der Flugwetter-Meldung (METAR,
-// gespeichert vom Sammler). Damit Messung und Prognose vergleichbar sind,
-// rechnet diese Funktion den Druck AM BODEN (surface_pressure, von Open-Meteo
-// auf die angegebene Flughafenhöhe bezogen) nach derselben Regel in den QNH
-// um wie die Flughäfen (Normatmosphäre, siehe qnhFromSurface). Der Druck auf
-// Meereshöhe des Modells (pressure_msl) rechnet anders und lag am 03.11.2026
-// in Innsbruck rund 2 hPa über dem METAR; der so gerechnete QNH traf ihn auf
-// wenige Zehntel.
+// (LIPB). Gemessen wird der QNH, den der Sammler aus den Wetterstationen an
+// den Flughäfen selbst rechnet (src/lib/stationPressure.ts; bis 8. Nov. 2026
+// zusätzlich die Flugwetter-Meldungen METAR). Damit Messung und Prognose
+// vergleichbar sind, rechnet diese Funktion den Druck AM BODEN
+// (surface_pressure, von Open-Meteo auf die angegebene Flughafenhöhe bezogen)
+// nach derselben Regel in den QNH um wie die Flughäfen (Normatmosphäre, siehe
+// qnhFromSurface). Der Druck auf Meereshöhe des Modells (pressure_msl) rechnet
+// mit der Temperatur (wie QFF) und lag am 03.11.2026 in Innsbruck rund 2 hPa
+// über dem METAR-QNH; der so gerechnete QNH traf ihn auf wenige Zehntel.
+// SEIT 8. NOV. 2026 ZEIGT DIE SEITE DAS QFF (mit echter Temperatur, Wunsch
+// des Projektbesitzers): Gespeichert wird weiter der QNH (exakt
+// zurückrechenbar) mit Temperatur UND Feuchte (relative_humidity_2m, Spalte
+// humidity_pct); /api/pressure rechnet daraus beim Auslesen das QFF — für
+// Messung und Prognose nach derselben Regel (toQffSeries in
+// src/lib/pressure.ts). Fehlt die Feuchte (Zeilen von vor diesem Datum),
+// wird trocken gerechnet (~0,1–0,3 hPa Unterschied).
 // Länger als der Wind (siehe PRESSURE_MODELS): Für Föhn ist auch der nächste
 // Tag interessant. Kostet trotzdem nur 1 Aufruf je Standort (gezählt wird
 // erst ab 2 Wochen Zeitraum). Seit Nov. 2026 zusätzlich ECMWF.
@@ -189,6 +197,18 @@ const PRESSURE_STATIONS: Record<string, { lat: number; lng: number; elevationM: 
   LOWI: { lat: 47.2602, lng: 11.3439, elevationM: 581 }, // Innsbruck Flughafen
   LIPB: { lat: 46.4603, lng: 11.3264, elevationM: 240 }, // Bozen Flughafen
 };
+// Temperatur auf Kammhöhe (8. Nov. 2026, Wunsch des Projektbesitzers): die
+// ICON-CH1-Temperatur (2 m, von Open-Meteo auf die angegebene Höhe bezogen)
+// der beiden Bergstationen für das Temperatur-Diagramm im
+// Druck-Verlaufsbalken. In derselben Anfrage wie der Luftdruck der Flughäfen
+// (kostet je Lauf 2 Aufrufe mehr, also 16 am Tag), gespeichert in
+// pressure_values unter kind 'icon_ch1' OHNE QNH (qnh_hpa leer — die
+// Spalte darf seit supabase/druck.sql leer sein). Kopie von CREST_STATIONS
+// aus src/lib/pressure.ts — bei einer Änderung beide Stellen anfassen.
+const CREST_STATIONS: Record<string, { lat: number; lng: number; elevationM: number }> = {
+  RITTNERHORN: { lat: 46.6156, lng: 11.4604, elevationM: 2260 },
+  HAFELEKAR: { lat: 47.3121, lng: 11.3836, elevationM: 2270 }, // seit 8. Nov. 2026 statt Patscherkofel
+};
 // Modelle der Druckprognose. Seit Nov. 2026 (Wunsch des Projektbesitzers)
 // zusätzlich ECMWF: das IFS-Modell (9 km, bei Open-Meteo "ecmwf_ifs") — gröber
 // als ICON-CH1 (1 km), reicht aber weiter voraus und rechnet unabhängig;
@@ -199,9 +219,11 @@ const PRESSURE_STATIONS: Record<string, { lat: number; lng: number; elevationM: 
 // Druck-Verlaufsbalken zu sehr stauchen — die 48 h Vergangenheit wären nur
 // noch ein schmaler Streifen). Kostet je Lauf 1 Aufruf je Standort.
 // `kind` = Spalte kind in pressure_values; /api/pressure kennt dieselben.
-const PRESSURE_MODELS: Array<{ kind: string; api: string; label: string; hours: number }> = [
-  { kind: "icon_ch1", api: MODEL_API, label: "ICON-CH1", hours: 33 },
-  { kind: "ecmwf_ifs", api: "ecmwf_ifs", label: "ECMWF", hours: 72 },
+// `crest` = auch die Temperatur der Bergstationen (CREST_STATIONS) holen —
+// angezeigt wird nur die von ICON-CH1.
+const PRESSURE_MODELS: Array<{ kind: string; api: string; label: string; hours: number; crest: boolean }> = [
+  { kind: "icon_ch1", api: MODEL_API, label: "ICON-CH1", hours: 33, crest: true },
+  { kind: "ecmwf_ifs", api: "ecmwf_ifs", label: "ECMWF", hours: 72, crest: false },
 ];
 
 // Metadaten des Modells bei Open-Meteo: wann der neueste Lauf gestartet und
@@ -748,30 +770,40 @@ interface PressureRow {
   station: string;
   kind: string;
   valid_at: string;
-  qnh_hpa: number;
-  // Lufttemperatur 2 m (°C) an der Flughafenhöhe — für das
-  // Temperatur-Diagramm im Druck-Verlaufsbalken (Nov. 2026). Kostet nichts
-  // extra (zweite Werte-Reihe derselben Anfrage). Spalte temp_c aus
+  // Leer bei den Bergstationen (nur Temperatur, siehe CREST_STATIONS).
+  qnh_hpa: number | null;
+  // Lufttemperatur 2 m (°C) auf Stationshöhe — für das QFF und (Bergstationen)
+  // das Temperatur-Diagramm im Druck-Verlaufsbalken (Nov. 2026). Kostet
+  // nichts extra (weitere Werte-Reihe derselben Anfrage). Spalte temp_c aus
   // supabase/druck.sql — muss VOR dem Deploy angelegt sein.
   temp_c: number | null;
+  // Relative Feuchte 2 m (%) — für das QFF (virtuelle Temperatur, seit 8.
+  // Nov. 2026). Spalte humidity_pct gibt es schon (supabase/druck.sql).
+  humidity_pct: number | null;
   model_run: string | null;
   fetched_at: string;
 }
 
-// Druckprognose eines Modells für die Flughäfen in PRESSURE_STATIONS, als QNH.
+// Druckprognose eines Modells für die Flughäfen in PRESSURE_STATIONS, als QNH
+// (`rows`), und — bei `model.crest` — die Temperatur der Bergstationen in
+// CREST_STATIONS (`crestRows`, ohne QNH). Beides in EINER Anfrage.
 async function fetchPressureForecast(
   model: (typeof PRESSURE_MODELS)[number],
   fetchedAt: string,
   modelRunIso: string | null,
-): Promise<PressureRow[]> {
-  const codes = Object.keys(PRESSURE_STATIONS);
-  const stations = codes.map((code) => ({ code, ...PRESSURE_STATIONS[code] }));
+): Promise<{ rows: PressureRow[]; crestRows: PressureRow[] }> {
+  const stations = [
+    ...Object.keys(PRESSURE_STATIONS).map((code) => ({ code, crest: false, ...PRESSURE_STATIONS[code] })),
+    ...(model.crest
+      ? Object.keys(CREST_STATIONS).map((code) => ({ code, crest: true, ...CREST_STATIONS[code] }))
+      : []),
+  ];
   const params = new URLSearchParams({
     latitude: stations.map((s) => s.lat).join(","),
     longitude: stations.map((s) => s.lng).join(","),
     elevation: stations.map((s) => s.elevationM).join(","),
     models: model.api,
-    hourly: "surface_pressure,temperature_2m",
+    hourly: "surface_pressure,temperature_2m,relative_humidity_2m",
     past_hours: String(PAST_HOURS),
     forecast_hours: String(model.hours),
     timeformat: "unixtime",
@@ -794,6 +826,7 @@ async function fetchPressureForecast(
   }
 
   const rows: PressureRow[] = [];
+  const crestRows: PressureRow[] = [];
   locations.forEach((loc, i) => {
     const station = stations[i];
     const hourly = loc.hourly;
@@ -801,22 +834,42 @@ async function fetchPressureForecast(
     if (!hourly || !times) return;
     const surface = hourlySeries(hourly, "surface_pressure", model.api);
     const temperature = hourlySeries(hourly, "temperature_2m", model.api);
+    const humidity = hourlySeries(hourly, "relative_humidity_2m", model.api);
     times.forEach((t, k) => {
-      const value = surface?.[k];
-      if (typeof t !== "number" || typeof value !== "number") return;
+      if (typeof t !== "number") return;
       const temp = temperature?.[k];
+      const rh = humidity?.[k];
+      const humidityPct = typeof rh === "number" ? Math.round(rh) : null;
+      if (station.crest) {
+        // Bergstation: nur die Temperatur.
+        if (typeof temp !== "number") return;
+        crestRows.push({
+          station: station.code,
+          kind: model.kind,
+          valid_at: new Date(t * 1000).toISOString(),
+          qnh_hpa: null,
+          temp_c: round1(temp),
+          humidity_pct: humidityPct,
+          model_run: modelRunIso,
+          fetched_at: fetchedAt,
+        });
+        return;
+      }
+      const value = surface?.[k];
+      if (typeof value !== "number") return;
       rows.push({
         station: station.code,
         kind: model.kind,
         valid_at: new Date(t * 1000).toISOString(),
         qnh_hpa: round1(qnhFromSurface(value, station.elevationM)),
         temp_c: typeof temp === "number" ? round1(temp) : null,
+        humidity_pct: humidityPct,
         model_run: modelRunIso,
         fetched_at: fetchedAt,
       });
     });
   });
-  return rows;
+  return { rows, crestRows };
 }
 
 // Druckprognose eines Modells auffrischen — wie refreshUpperWind unabhängig
@@ -849,21 +902,35 @@ async function refreshPressureModel(
         (run ? last >= run.availableMs : Date.now() - last < MIN_REFETCH_WITHOUT_META_MS);
       if (upToDate) return { skipped: true, modelRun: run?.runIso ?? null };
     }
-    const rows = await fetchPressureForecast(model, new Date().toISOString(), run?.runIso ?? null);
+    const { rows, crestRows } = await fetchPressureForecast(model, new Date().toISOString(), run?.runIso ?? null);
     if (rows.length === 0) return { saved: 0, error: "Keine Druckwerte erhalten" };
-    const res = await fetch(
-      `${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`,
-      {
+    const upsert = (batch: PressureRow[]) =>
+      fetch(`${supabaseUrl}/rest/v1/pressure_values?on_conflict=station,kind,valid_at`, {
         method: "POST",
         headers: { ...headers, Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(rows),
+        body: JSON.stringify(batch),
         signal: AbortSignal.timeout(DATABASE_TIMEOUT_MS),
-      },
-    );
+      });
+    const res = await upsert(rows);
     if (!res.ok) {
       return { saved: 0, error: `Supabase-Upsert schlug fehl (Status ${res.status}): ${await res.text()}` };
     }
-    return { saved: rows.length, modelRun: run?.runIso ?? null };
+    // Die Temperatur der Bergstationen in einem eigenen Schreibvorgang:
+    // Scheitert er (z. B. qnh_hpa in einer älteren Datenbank noch Pflicht,
+    // siehe supabase/druck.sql), bleibt die Druckprognose gespeichert.
+    let crestError: string | undefined;
+    if (crestRows.length > 0) {
+      const crestRes = await upsert(crestRows);
+      if (!crestRes.ok) {
+        crestError = `Kammtemperatur: Supabase-Upsert schlug fehl (Status ${crestRes.status}): ${await crestRes.text()}`;
+      }
+    }
+    return {
+      saved: rows.length,
+      crestSaved: crestError ? 0 : crestRows.length,
+      ...(crestError ? { crestError } : {}),
+      modelRun: run?.runIso ?? null,
+    };
   } catch (err) {
     console.error(`Luftdruck (${model.label}):`, err);
     return { saved: 0, error: (err as Error).message };
