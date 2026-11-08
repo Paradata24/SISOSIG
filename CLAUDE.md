@@ -132,7 +132,7 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Vorzeichen (Bozen − Innsbruck), Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
 | `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen (Hauptkurve; nur Server) |
 | `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Patscherkofel (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
-| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (Vergleichslinie; nur Server: Sammler und Notbetrieb von `/api/pressure`) |
+| `src/lib/metar.ts` | Flugwetter-Meldungen (METAR) der Flughäfen Innsbruck und Bozen holen, QNH auslesen (Ersatz, falls Stationswerte fehlen; nur Server: Sammler und Notbetrieb von `/api/pressure`) |
 | `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen + METAR, ICON-CH1-Prognose) aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
@@ -508,12 +508,14 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     METAR-Differenz, höchstens ±1 hPa (Rundung der METAR). Die
     reduzierten Werte der Landesdienste NICHT direkt vergleichen (jeder
     rechnet anders, GeoSphere lag 1,6 hPa über dem METAR).
-  - **Vergleich:** die METAR der Flughäfen LOWI/LIPB (`src/lib/metar.ts`,
-    NOAA Aviation Weather Center), im Diagramm als **dünne graue punktierte
-    Linie** (Wunsch des Projektbesitzers). Nur ganze hPa, Bozen meldet
+  - **Ersatz:** die METAR der Flughäfen LOWI/LIPB (`src/lib/metar.ts`,
+    NOAA Aviation Weather Center). Nur ganze hPa, Bozen meldet
     **nachts nicht** (etwa 22:50–6:30 Uhr) — die erste Fassung zeigte nur
     diese, die Kurve war treppig und nachts unterbrochen. Fehlen die
-    Stationswerte, zeigen Karte und Kopfzeile die METAR.
+    Stationswerte, zeigen Karte und Kopfzeile die METAR. Die **dünne graue
+    punktierte Vergleichslinie** im Diagramm wurde am 8. Nov. 2026 auf
+    Wunsch des Projektbesitzers **entfernt** (siehe „Nicht wieder
+    einführen“); gesammelt werden die METAR weiter.
 - **Vorzeichen Bozen − Innsbruck:** positiv = Süd höher (Südföhn-Lage),
   negativ = Nord höher (Nordföhn-Lage). Auf der Karte zeigt ein Pfeil im
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
@@ -545,8 +547,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   48 h gemessen (schwarz; Druck- und Temperaturkurven **nur ein Wert alle
   20 min** zu :00/:20/:40 — Wunsch des Projektbesitzers,
   `MEASURED_STEP_MINUTES`; gespeichert wird weiter alle 10 min, Kopfzeile und
-  Karte zeigen den neuesten Wert), METAR
-  (dünn grau punktiert) +
+  Karte zeigen den neuesten Wert) +
   Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
@@ -955,6 +956,9 @@ Projektbesitzers entfernt:
 - Stil „Erklärfilm" (tiefblaue Balken, orange Rahmen, runde Creme-Knöpfe,
   Serifenschrift, Creme-Karte; Okt. 2026 eingebaut und zwei Tage später
   komplett zurückgenommen, PR #123)
+- Flughafen-Linie (METAR, dünn grau punktiert) im Druck-Diagramm der
+  Föhn-Anzeige (8. Nov. 2026 entfernt; die METAR selbst werden als Ersatz
+  weiter gesammelt)
 
 ## Fallen, die man einer einzelnen Datei nicht ansieht
 

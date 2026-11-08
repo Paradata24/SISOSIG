@@ -25,8 +25,8 @@ import { type PressureStationId } from "./pressure";
 // änderte sie sich im Median um 0,08 hPa. WIE das Land Bozen auf Meereshöhe
 // umrechnet, ist nicht dokumentiert — die Rückrechnung (Höhe 245 m,
 // Stationstemperatur plus halber Normgradient) traf es an diesen 48 h am
-// besten. Die METAR werden weiter gespeichert und im Diagramm als dünne graue
-// Linie zum Vergleich gezeigt; weicht die Kurve dauerhaft ab, hier prüfen.
+// besten. Die METAR werden weiter gespeichert (seit 8. Nov. 2026 ohne Linie
+// im Diagramm); weicht die Kurve dauerhaft von ihnen ab, hier prüfen.
 //
 // Nur auf dem Server: Abgefragt vom Sammler (/api/collect, letzte 3 h) und im
 // Notbetrieb von /api/pressure (48 h). Beide Dienste liefern ihre Werte mit

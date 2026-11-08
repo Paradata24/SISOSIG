@@ -19,7 +19,7 @@ import {
 //   crestTemperature  Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel;
 //             seit 8. Nov. 2026, vorher die Talstationen Bozen/Innsbruck)
 //   crestTemperatureForecast  ICON-CH1-Temperatur (2 m) dieser Bergstationen
-//   metar     QNH aus den Flugwetter-Meldungen (Vergleichslinie)
+//   metar     QNH aus den Flugwetter-Meldungen (Ersatz, falls Stationswerte fehlen)
 //   forecast  ICON-CH1-Prognose
 //   ecmwf     ECMWF-Prognose (IFS, seit Nov. 2026)
 // Gefüllt wird die Tabelle vom Sammler (/api/collect, Messwerte) und der Edge

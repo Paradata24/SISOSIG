@@ -190,8 +190,10 @@ async function collectSource(
 //                    humidity_pct; seit 8. Nov. 2026 nicht mehr angezeigt,
 //                    aber weiter gespeichert)
 //   kind 'metar'   = QNH aus den Flugwetter-Meldungen der Flughäfen (ganze
-//                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts — zum
-//                    Vergleich (dünne graue Linie im Diagramm)
+//                    hPa, Bozen nachts ohne Meldung), src/lib/metar.ts —
+//                    Ersatz für Karte und Kopfzeile, falls die Stationswerte
+//                    fehlen (die Vergleichslinie im Diagramm ist seit 8. Nov.
+//                    2026 weg)
 //   kind 'kamm'    = Temperatur und Feuchte auf Kammhöhe (Rittnerhorn,
 //                    Patscherkofel; seit 8. Nov. 2026), src/lib/crestTemperature.ts
 //                    — ohne QNH (qnh_hpa leer)

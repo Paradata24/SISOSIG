@@ -18,10 +18,13 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Projektbesitzers): öffnet sich beim Antippen der Linie Innsbruck–Bozen auf
 // der Karte. Oben die aktuellen Werte (QNH) beider Seiten und die Differenz,
 // darunter das Diagramm: Differenz Bozen − Innsbruck der letzten 48 h —
-// schwarz die 10-Minuten-Werte der Stationen (Hauptkurve), dünn grau
-// punktiert die Flugwetter-Meldungen der Flughäfen (Vergleich, Wunsch des
-// Projektbesitzers) — und die Prognosen ICON-CH1 (grau gestrichelt, 33 h
-// voraus) und ECMWF (violett gestrichelt, 72 h voraus, seit Nov. 2026).
+// schwarz die 10-Minuten-Werte der Stationen (Hauptkurve) — und die
+// Prognosen ICON-CH1 (grau gestrichelt, 33 h voraus) und ECMWF (violett
+// gestrichelt, 72 h voraus, seit Nov. 2026). KEINE Flughafen-Linie mehr
+// (METAR, dünn grau punktiert; am 8. Nov. 2026 auf Wunsch des
+// Projektbesitzers entfernt — nicht wieder einführen). Die METAR werden
+// weiter gesammelt: Fehlen die Stationswerte, zeigen Kopfzeile und Karte
+// ersatzweise sie (`current` unten).
 // PROGNOSE AUCH IN DER VERGANGENHEIT (7. Nov. 2026, Wunsch des
 // Projektbesitzers, "wie im Verlaufsbalken"): Die gespeicherten Prognosen
 // (ICON-CH1, ECMWF, Temperatur) laufen über die ganzen 48 h, hinter der
@@ -104,15 +107,8 @@ const Y_HEADROOM_HPA = 0.3;
 // zeigen den neuesten Wert.
 const MEASURED_STEP_MINUTES = 20;
 // Messlücke, ab der eine Kurve unterbrochen wird. Gemessene Kurven (alle
-// 20 min): ein fehlender Wert wird überbrückt, zwei nicht. METAR: Bozen
-// meldet stündlich, ein fehlender wird überbrückt, die Nacht (keine
-// Meldungen) nicht.
+// 20 min): ein fehlender Wert wird überbrückt, zwei nicht.
 const MEASURED_GAP_MS = 50 * 60 * 1000;
-const METAR_GAP_MS = 150 * 60 * 1000;
-// Vergleichslinie der Flughafen-Meldungen: dünn, hellgrau, punktiert —
-// bewusst zurückhaltend, sie ist nur zum Vergleich da.
-const METAR_COLOR = "#a1a1aa";
-const METAR_DASH = "1 3";
 const FORECAST_GAP_MS = 90 * 60 * 1000;
 // Wie die Prognose im Wind-Verlaufsbalken (CH1_COLOR, FORECAST_DASH).
 const FORECAST_COLOR = "#52525b";
@@ -362,7 +358,7 @@ export default function PressurePanel({
   topInset: number;
   /** 10-Minuten-Werte der Stationen (Hauptkurve). */
   measured: PressureDiffPoint[];
-  /** Flugwetter-Meldungen der Flughäfen (Vergleichslinie). */
+  /** Flugwetter-Meldungen der Flughäfen — nur noch Ersatz für die Kopfzeile, keine Linie. */
   metar: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   modelRun: string | null;
@@ -431,11 +427,10 @@ export default function PressurePanel({
     const onStep = (t: number) => new Date(t).getUTCMinutes() % MEASURED_STEP_MINUTES === 0;
     const m = measured.filter((p) => inRange(p) && onStep(p.time));
     const f = forecast.filter(inRange);
-    const mt = metar.filter(inRange);
     const e = ecmwf.filter(inRange);
     // Die Achse richtet sich nach allem, was gezeichnet wird (auch die
     // Prognose in der Vergangenheit, damit nichts abgeschnitten wird).
-    const values = [...m, ...mt, ...f, ...e].map((p) => p.diff);
+    const values = [...m, ...f, ...e].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -525,7 +520,6 @@ export default function PressurePanel({
       stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
-      metarPath: buildPath(mt, x, y, METAR_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       ty,
@@ -538,7 +532,7 @@ export default function PressurePanel({
       bandForecast: buildBandPaths(bandF, x, ty, FORECAST_GAP_MS),
       nowX: x(now),
     };
-  }, [chartH, tempTop, now, measured, metar, forecast, ecmwf, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
+  }, [chartH, tempTop, now, measured, forecast, ecmwf, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
 
   // Beim ersten Zeichnen "jetzt" in die Mitte schieben.
   useEffect(() => {
@@ -606,7 +600,6 @@ export default function PressurePanel({
           "Süd höher / Nord höher" (vom Projektbesitzer abgelehnt, Nov. 2026). */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-3 pb-1 text-[11px] text-zinc-500 dark:text-zinc-400">
         <LegendItem color={MEASURED_COLOR} width={2}>gemessen</LegendItem>
-        <LegendItem color={METAR_COLOR} width={1.5} dash={METAR_DASH}>Flughäfen</LegendItem>
         <LegendItem color={FORECAST_COLOR} width={1.8} dash={FORECAST_DASH}>
           ICON-CH1{modelRun && <> {formatClock(Date.parse(modelRun))}</>}
         </LegendItem>
@@ -804,8 +797,6 @@ export default function PressurePanel({
             {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
-            {/* Unter der Hauptkurve: die Flughafen-Meldungen zum Vergleich. */}
-            <path d={chart.metarPath} fill="none" stroke={METAR_COLOR} strokeWidth={1} strokeDasharray={METAR_DASH} strokeLinecap="round" />
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
         </div>

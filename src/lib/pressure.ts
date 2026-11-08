@@ -17,12 +17,13 @@ import { WIND_COLOR_SCALE } from "./wind";
 //   1. Hauptkurve, Linie und Schild auf der Karte: QNH alle 10 min auf 0,1 hPa,
 //      selbst gerechnet aus den Wetterstationen Innsbruck-Flughafen (GeoSphere)
 //      und Bozen (Landeswetterdienst) — src/lib/stationPressure.ts.
-//   2. Zum Vergleich (dünne graue punktierte Linie im Diagramm, Wunsch des
-//      Projektbesitzers): die METAR der Flughäfen LOWI und LIPB. Nur ganze hPa
+//   2. Ersatz: die METAR der Flughäfen LOWI und LIPB. Nur ganze hPa
 //      (abgerundet), Innsbruck alle 30 min, Bozen stündlich und NACHTS GAR
 //      NICHT (etwa 22:50–6:30 Uhr). Die erste Fassung zeigte nur diese — die
 //      Kurve war treppig und jede Nacht unterbrochen. Fehlen die
-//      Stationswerte, zeigt die Karte die METAR.
+//      Stationswerte, zeigen Karte und Kopfzeile die METAR. Die dünne graue
+//      Vergleichslinie im Diagramm wurde am 8. Nov. 2026 auf Wunsch des
+//      Projektbesitzers entfernt.
 //
 // VORZEICHEN: Differenz = Bozen − Innsbruck (wie im Föhndiagramm üblich).
 //   positiv = Druck im Süden höher → Luft strömt nach Norden → Südföhn
@@ -144,7 +145,7 @@ export interface PressurePayload {
    * vorher die Talstationen Bozen und Innsbruck im Feld "temperature").
    */
   crestTemperature: Record<CrestStationId, Array<[number, number]>>;
-  /** Zum Vergleich: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
+  /** Ersatz, falls Stationswerte fehlen: QNH aus den METAR der Flughäfen (ganze hPa), aufsteigend. */
   metar: Record<PressureStationId, Array<[number, number]>>;
   /** ICON-CH1-Prognose je Flughafen (stündlich), aufsteigend. */
   forecast: Record<PressureStationId, Array<[number, number]>>;

@@ -22,7 +22,8 @@
 --                           bzw. 'LIPB' (die Seite); geschrieben vom Sammler
 --                           (seit Nov. 2026, src/lib/stationPressure.ts)
 --              'metar'    = gemessen (Flugwetter-Meldung METAR, geschrieben
---                           vom Sammler /api/collect; Vergleichslinie)
+--                           vom Sammler /api/collect; Ersatz, falls die
+--                           Stationswerte fehlen)
 --              'kamm'     = gemessen, Temperatur und Feuchte auf Kammhöhe
 --                           (Rittnerhorn, Patscherkofel; seit 8. Nov. 2026,
 --                           vom Sammler, src/lib/crestTemperature.ts) — ohne

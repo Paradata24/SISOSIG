@@ -90,7 +90,7 @@ export function usePressureData(enabled: boolean): {
 
 /**
  * Differenz-Reihen Bozen − Innsbruck: `measured` = 10-Minuten-Werte der
- * Stationen (Hauptkurve), `metar` = Flugwetter-Meldungen (Vergleich),
+ * Stationen (Hauptkurve), `metar` = Flugwetter-Meldungen (Ersatz für Karte und Kopfzeile),
  * `forecast` = ICON-CH1, `ecmwf` = ECMWF.
  */
 export function usePressureSeries(data: PressurePayload | null): {
