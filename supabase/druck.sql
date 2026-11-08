@@ -15,7 +15,8 @@
 -- Eine Zeile je Flughafen (bzw. Bergstation), Art und Zeitpunkt:
 --   station    ICAO-Kennung des Flughafens: 'LOWI' (Innsbruck), 'LIPB' (Bozen);
 --              seit 8. Nov. 2026 auch die Bergstationen 'RITTNERHORN' und
---              'PATSCHERKOFEL' (nur Temperatur, siehe unten)
+--              'HAFELEKAR' (nur Temperatur, siehe unten; bis 8. Nov.
+--              2026 'PATSCHERKOFEL')
 --   kind       'station'  = gemessen, QNH alle 10 min, selbst gerechnet aus den
 --                           Wetterstationen Innsbruck-Flughafen (GeoSphere)
 --                           und Bozen (Land) — station bleibt dabei 'LOWI'
@@ -25,7 +26,7 @@
 --                           METAR); seitdem nicht mehr gesammelt, alte Zeilen
 --                           räumt der Sammler nach 3 Tagen weg
 --              'kamm'     = gemessen, Temperatur und Feuchte auf Kammhöhe
---                           (Rittnerhorn, Patscherkofel; seit 8. Nov. 2026,
+--                           (Rittnerhorn, Hafelekar; seit 8. Nov. 2026,
 --                           vom Sammler, src/lib/crestTemperature.ts) — ohne
 --                           QNH
 --              'icon_ch1' = Prognose (ICON-CH1 über Open-Meteo, geschrieben
@@ -63,7 +64,7 @@ alter table public.pressure_values add column if not exists temp_c real;
 alter table public.pressure_values add column if not exists humidity_pct real;
 
 -- Seit 8. Nov. 2026 (Wunsch des Projektbesitzers): Temperatur auf Kammhöhe
--- (Rittnerhorn, Patscherkofel) für das Temperatur-Diagramm im
+-- (Rittnerhorn, Hafelekar) für das Temperatur-Diagramm im
 -- Druck-Verlaufsbalken. Diese Bergstationen haben keinen QNH — deshalb darf
 -- qnh_hpa leer sein. Sicher: Es wird nur eine Pflicht-Regel gelockert, keine
 -- Daten geändert. REIHENFOLGE wie oben: erst diese Zeile ausführen, DANN die

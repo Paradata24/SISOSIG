@@ -131,7 +131,7 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/lib/timelineMerge.ts` | Fügt die letzten 8 h in den vorhandenen Zeitbalken-Stand ein (Punkt 27), Ergebnis wie beim vollen Laden |
 | `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Bergstationen der Kammtemperatur, Vorzeichen (Bozen − Innsbruck), Umrechnung QNH → QFF, Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
 | `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen, mit Temperatur und Feuchte (gespeichert; angezeigt wird das QFF, `toQffSeries` in `src/lib/pressure.ts`; nur Server) |
-| `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Patscherkofel (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
+| `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Hafelekar (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
 | `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen, ICON-CH1- und ECMWF-Prognose) und Kammtemperatur aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
@@ -597,16 +597,28 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   100 px; zwischen beiden Diagrammen mehr Luft (`PRESSURE_TIME_H`,
   `TEMP_TITLE_PAD_PX`); dabei verschwindet der Zeitbalken wie bei einer Station
   (`pressureOpen` in `WindApp`).
-- **Temperatur auf Kammhöhe: Rittnerhorn und Patscherkofel** (8. Nov. 2026,
+- **Temperatur auf Kammhöhe: Rittnerhorn und Hafelekar** (8. Nov. 2026,
   Wunsch des Projektbesitzers; vorher die Talstationen Bozen und Innsbruck):
   eigenes Diagramm unter dem Druck auf derselben Zeitachse, Titel
-  „Temperatur auf 2250 m“. Grund (Recherche Nov. 2026: DHV, SHV, XCTherm,
+  „Temperatur auf 2260 m“. Grund (Recherche Nov. 2026: DHV, SHV, XCTherm,
   MeteoSchweiz): Föhn treibt auch der Temperaturunterschied der Luftmassen
   **auf Höhe der Pässe** — am Talboden überdecken Tagesgang, Kaltluftseen und
   Inversionen das. Rittnerhorn (Land Südtirol `82500WS`, 2260 m, Süden) und
-  Patscherkofel (GeoSphere `11126`, 2251 m, Norden) liegen fast gleich hoch,
-  deshalb keine Höhenbereinigung (`CREST_STATIONS`/`CREST_PAIR` in
-  `src/lib/pressure.ts`, Abruf in `src/lib/crestTemperature.ts`). Gemessene
+  **Hafelekar** (Nordkette, Lawinenwarndienst Tirol `ISEE1`, 2270 m, Norden)
+  liegen fast gleich hoch, deshalb keine Höhenbereinigung. **Im Norden zuerst
+  der Patscherkofel** (GeoSphere 11126, 2251 m) — noch am selben Tag auf
+  Wunsch des Projektbesitzers ersetzt: Er liegt am Ausgang des Wipptals und
+  steht bei Südföhn selbst in der Föhnströmung (zeigt dann Luft aus dem
+  Süden); der Hafelekar liegt weiter vom Alpenhauptkamm weg (wie Matro–
+  Pilatus im SHV-Beispiel). **Der Hafelekar hat keinen Verlauf beim Dienst**
+  (die Datei des LWD Tirol enthält nur den neuesten Wert, meist alle 10 min,
+  manchmal Lücken von 20–80 min): Den Verlauf baut der Sammler selbst auf,
+  im Notbetrieb gibt es nur den aktuellen Wert. Die Temperaturlinien zeigen
+  deshalb je 20-Minuten-Abschnitt den ersten Wert (`oneEveryStep` in
+  `PressurePanel`) statt starr :00/:20/:40. Stationen in
+  `CREST_STATIONS`/`CREST_PAIR` (`src/lib/pressure.ts`), Abruf in
+  `src/lib/crestTemperature.ts` und `fetchLwdTirolTemperature`
+  (`src/lib/lwdtirol.ts`). Gemessene
   Temperaturen als Linien (Norden blau, Süden braun), die **Fläche zwischen
   den Linien = ΔT Süd − Nord** (gezählt wie der Druck): rot, wo der Süden
   wärmer ist, blau, wo der Norden wärmer ist. Lesehilfe: Süden kälter (blau)
@@ -631,9 +643,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   wie das Differenz-Schild des Drucks; hellrot bei Süden wärmer, hellblau bei
   Norden wärmer) steht (nichts liegt auf den Kurven); **seit 7. Nov. 2026
   aufgebaut wie die Kopfzeile über dem Druck-Diagramm** (Titel „Temperatur
-  auf 2250 m · Stand: …“, gleich großes Schild, rechts die beiden
+  auf 2260 m · Stand: …“, gleich großes Schild, rechts die beiden
   Temperaturen in 15 px — seit 8. Nov. 2026 **untereinander**, je mit einem
-  Linienstück in der Farbe der Kurve, weil „Rittnerhorn“/„Patscherkofel“
+  Linienstück in der Farbe der Kurve, weil die Namen der Bergstationen
   für eine Zeile zu lang sind —, darunter die Legende in 11 px; Wunsch des
   Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
   „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)
@@ -1011,9 +1023,9 @@ Projektbesitzers entfernt:
   verkürzen; die Lizenz (CC BY 4.0) verlangt außerdem die Quellenangabe, die
   über `SOURCE_INFO` im Verlaufsbalken steht. Seit Nov. 2026 fragt der
   Sammler zusätzlich alle 5 min den Druck von Innsbruck-Flughafen ab
-  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde) und seit 8. Nov.
-  2026 die Temperatur am Patscherkofel (`src/lib/crestTemperature.ts`,
-  nochmals 12 pro Stunde).
+  (`src/lib/stationPressure.ts`, 12 Anfragen pro Stunde). (Die
+  Kammtemperatur im Norden kommt seit 8. Nov. 2026 vom Hafelekar aus der
+  ohnehin geladenen Datei des LWD Tirol — keine GeoSphere-Anfrage.)
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
   10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den

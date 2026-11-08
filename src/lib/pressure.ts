@@ -82,9 +82,15 @@ export const FOEHN_PAIR = { north: "LOWI", south: "LIPB" } as const satisfies {
  * sondern auch vom Temperaturunterschied der Luftmassen auf Höhe der Pässe —
  * kalte, schwere Luft drängt über die Pässe zur wärmeren Seite. Die
  * Temperaturen am Talboden zeigen das kaum (Tagesgang, Kaltluftseen,
- * Inversionen); deshalb hier zwei Gipfel auf rund 2250 m. Höhenunterschied
- * nur 9 m (~0,06 °C) — bewusst nicht bereinigt.
- * `code` = Kennung beim Dienst (Land Südtirol bzw. GeoSphere), `id` = Schlüssel
+ * Inversionen); deshalb hier zwei Gipfel auf rund 2260 m. Höhenunterschied
+ * nur 10 m (~0,07 °C) — bewusst nicht bereinigt.
+ * NORDEN = HAFELEKAR (Nordkette) seit 8. Nov. 2026, Wunsch des
+ * Projektbesitzers; vorher Patscherkofel (GeoSphere 11126, 2251 m). Der
+ * Patscherkofel liegt am Ausgang des Wipptals und steht bei Südföhn selbst in
+ * der Föhnströmung (zeigt dann Luft aus dem Süden); der Hafelekar liegt
+ * weiter vom Alpenhauptkamm weg. Sein Dienst liefert nur den neuesten Wert
+ * (src/lib/crestTemperature.ts).
+ * `code` = Kennung beim Dienst (Land Südtirol bzw. LWD Tirol), `id` = Schlüssel
  * in der Tabelle pressure_values (Spalte station). Kopie mit Koordinaten in
  * der Edge Function (CREST_STATIONS) — bei einer Änderung beide anfassen.
  */
@@ -97,13 +103,13 @@ export const CREST_STATIONS = {
     lng: 11.4604,
     elevationM: 2260,
   },
-  PATSCHERKOFEL: {
-    id: "PATSCHERKOFEL",
-    name: "Patscherkofel",
-    code: "11126",
-    lat: 47.2089,
-    lng: 11.4622,
-    elevationM: 2251,
+  HAFELEKAR: {
+    id: "HAFELEKAR",
+    name: "Hafelekar",
+    code: "ISEE1",
+    lat: 47.3121,
+    lng: 11.3836,
+    elevationM: 2270,
   },
 } as const;
 
@@ -111,7 +117,7 @@ export type CrestStationId = keyof typeof CREST_STATIONS;
 export const CREST_STATION_IDS = Object.keys(CREST_STATIONS) as CrestStationId[];
 
 /** Das Paar für den Temperaturvergleich, gezählt wie der Druck: Süd − Nord. */
-export const CREST_PAIR = { north: "PATSCHERKOFEL", south: "RITTNERHORN" } as const satisfies {
+export const CREST_PAIR = { north: "HAFELEKAR", south: "RITTNERHORN" } as const satisfies {
   north: CrestStationId;
   south: CrestStationId;
 };
@@ -151,7 +157,7 @@ export interface PressurePayload {
    */
   stations: Record<PressureStationId, Array<[number, number]>>;
   /**
-   * Lufttemperatur (°C) auf Kammhöhe (Rittnerhorn, Patscherkofel), alle
+   * Lufttemperatur (°C) auf Kammhöhe (Rittnerhorn, Hafelekar), alle
    * 10 min, aufsteigend — für das Temperatur-Diagramm (seit 8. Nov. 2026;
    * vorher die Talstationen Bozen und Innsbruck im Feld "temperature").
    */
@@ -368,8 +374,13 @@ export function formatPressureDiff(diff: number): string {
  */
 export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string }> = [
   {
-    label: "Luftdruck Innsbruck-Flughafen, Temperatur Patscherkofel © GeoSphere Austria",
+    label: "Luftdruck Innsbruck-Flughafen © GeoSphere Austria",
     url: "https://data.hub.geosphere.at",
+    note: "CC BY 4.0",
+  },
+  {
+    label: "Temperatur Hafelekar © Lawinenwarndienst Tirol – Land Tirol",
+    url: "https://lawine.tirol.gv.at",
     note: "CC BY 4.0",
   },
   {

@@ -207,7 +207,7 @@ const PRESSURE_STATIONS: Record<string, { lat: number; lng: number; elevationM: 
 // aus src/lib/pressure.ts — bei einer Änderung beide Stellen anfassen.
 const CREST_STATIONS: Record<string, { lat: number; lng: number; elevationM: number }> = {
   RITTNERHORN: { lat: 46.6156, lng: 11.4604, elevationM: 2260 },
-  PATSCHERKOFEL: { lat: 47.2089, lng: 11.4622, elevationM: 2251 },
+  HAFELEKAR: { lat: 47.3121, lng: 11.3836, elevationM: 2270 }, // seit 8. Nov. 2026 statt Patscherkofel
 };
 // Modelle der Druckprognose. Seit Nov. 2026 (Wunsch des Projektbesitzers)
 // zusätzlich ECMWF: das IFS-Modell (9 km, bei Open-Meteo "ecmwf_ifs") — gröber

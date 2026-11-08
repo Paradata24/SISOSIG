@@ -31,7 +31,7 @@ import { HISTORY_HOURS } from "@/lib/wind";
 // Messung — so sieht man, wie gut die Prognose getroffen hat. Vorher endeten
 // die Linien links an "jetzt".
 // Darunter ein zweites, flacheres Diagramm: Temperatur auf Kammhöhe,
-// Rittnerhorn und Patscherkofel (seit 8. Nov. 2026; siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
+// Rittnerhorn und Hafelekar (seit 8. Nov. 2026; siehe TEMP_* unten). Über der Nulllinie = Süd höher (Südföhn-Lage), darunter = Nord
 // höher (Nordföhn-Lage). Die Fläche zwischen gemessener Kurve und Nulllinie
 // ist rot (oberhalb) bzw. blau (unterhalb), die Farbstufen der Karte stehen
 // als schmaler Farbstreifen neben den hPa-Zahlen (siehe AREA_* / scaleBands).
@@ -158,16 +158,17 @@ const STEP_LABEL_MIN_GAP_PX = 10;
 // --- Temperatur auf Kammhöhe (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
 // mit). SEIT 8. NOV. 2026 die Bergstationen Rittnerhorn (2260 m, Süden) und
-// Patscherkofel (2251 m, Norden) statt der Talstationen Bozen und Innsbruck
+// Hafelekar (2270 m, Nordkette, Norden; zuerst Patscherkofel, noch am selben
+// Tag ersetzt) statt der Talstationen Bozen und Innsbruck
 // (Wunsch des Projektbesitzers nach einer Recherche: Für Föhn zählt der
 // Temperaturunterschied auf Höhe der Pässe, nicht am Talboden — dort
 // überdecken Tagesgang, Kaltluftseen und Inversionen alles; Stationen und
 // Begründung in CREST_STATIONS, src/lib/pressure.ts). Beide liegen fast
-// gleich hoch (9 m), deshalb keine Höhenbereinigung.
+// gleich hoch (10 m), deshalb keine Höhenbereinigung.
 // Gezeigt werden die gemessenen Temperaturen beider Stationen als Linien
 // (Norden blau, Süden braun) — die Fläche ZWISCHEN den beiden Linien ist die
 // Temperatur-Differenz, gezählt wie beim Druck: Süd − Nord (Rittnerhorn −
-// Patscherkofel): rot, wo der Süden wärmer ist, blau, wo der Norden wärmer
+// Hafelekar): rot, wo der Süden wärmer ist, blau, wo der Norden wärmer
 // ist. Lesehilfe: Ist der Süden KÄLTER (blau), drängt die schwere Kaltluft
 // über die Pässe nach Norden — das stützt Südföhn; ist der Norden kälter
 // (rot), stützt es Nordföhn. (buildBandPaths rechnet intern aus Sicht des
@@ -209,6 +210,26 @@ const TEMP_FILL_OPACITY = 0.25;
 const TEMP_FORECAST_FILL_OPACITY = 0.1;
 
 type Series = Array<[number, number]>;
+
+/**
+ * Höchstens ein Wert je MEASURED_STEP_MINUTES-Abschnitt (aufsteigende Reihe):
+ * der erste im Abschnitt — also der zu :00/:20/:40, wenn es ihn gibt. Für die
+ * Temperaturlinien — der Hafelekar (Lawinenwarndienst Tirol) meldet meist
+ * alle 10 min, manchmal aber nur alle 20–80 min und nicht immer zur vollen
+ * 20-Minuten-Marke; ein starres "nur :00/:20/:40" risse die Linie dann auf.
+ */
+function oneEveryStep(points: Series): Series {
+  const stepMs = MEASURED_STEP_MINUTES * 60 * 1000;
+  const result: Series = [];
+  let lastSlot: number | null = null;
+  for (const point of points) {
+    const slot = Math.floor(point[0] / stepMs);
+    if (slot === lastSlot) continue;
+    result.push(point);
+    lastSlot = slot;
+  }
+  return result;
+}
 
 // Linie aus einer Reihe [Zeit, Wert] mit Lücken wie buildPath.
 function buildSeriesPath(
@@ -366,7 +387,7 @@ export default function PressurePanel({
   tempDiff: PressureDiffPoint[];
   /** Dasselbe aus der ICON-CH1-Prognose. */
   tempDiffForecast: PressureDiffPoint[];
-  /** Gemessene Temperaturen (°C): north = Patscherkofel, south = Rittnerhorn. */
+  /** Gemessene Temperaturen (°C): north = Hafelekar, south = Rittnerhorn. */
   tempNorth: Series;
   tempSouth: Series;
   /** ICON-CH1-Temperatur (°C) je Seite. */
@@ -437,8 +458,10 @@ export default function PressurePanel({
       PAD_TOP + ((yTop - Math.max(yBottom, Math.min(yTop, v))) / (yTop - yBottom)) * chartH;
     // Temperatur-Diagramm darunter, eigene mitwachsende Achse in °C.
     const inRangeS = ([t]: [number, number]) => t >= start && t <= end;
-    const tN = tempNorth.filter((p) => inRangeS(p) && onStep(p[0]));
-    const tS = tempSouth.filter((p) => inRangeS(p) && onStep(p[0]));
+    // Je 20-Minuten-Abschnitt ein Wert (siehe oneEveryStep): Der Hafelekar
+    // meldet nicht immer zu :00/:20/:40.
+    const tN = oneEveryStep(tempNorth.filter(inRangeS));
+    const tS = oneEveryStep(tempSouth.filter(inRangeS));
     // Prognose über den ganzen Zeitraum, auch in der Vergangenheit (hinter
     // der Messung, wie im Wind-Verlaufsbalken).
     const tNf = tempNorthForecast.filter(inRangeS);
@@ -802,16 +825,16 @@ export default function PressurePanel({
             Projektbesitzers): links das große Δ-Schild (Süd − Nord, hellrot =
             Süden wärmer, hellblau = Norden wärmer), rechts die beiden
             Temperaturen in 15 px, darunter die Legende in 11 px. Seit 8. Nov.
-            2026 Rittnerhorn/Patscherkofel: Die beiden Temperaturen stehen
+            2026 Rittnerhorn/Hafelekar: Die beiden Temperaturen stehen
             untereinander, jede mit einem Linienstück in ihrer Farbe (statt
             in der Legende) — für eine Zeile sind die Namen zu lang. */}
         <div
           className="pointer-events-none absolute inset-x-0 bg-white px-3 text-xs text-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
           style={{ top: PAD_TOP + chartH + PRESSURE_TIME_H + TEMP_TITLE_PAD_PX, height: TEMP_TITLE_CONTENT_H }}
         >
-          {/* Titel wie ganz oben beim Druck: "Temperatur auf 2250 m · Stand: …". */}
+          {/* Titel wie ganz oben beim Druck: "Temperatur auf 2260 m · Stand: …". */}
           <h3 className="truncate pb-1 text-sm leading-5 font-semibold text-zinc-900 dark:text-zinc-50">
-            Temperatur auf 2250 m
+            Temperatur auf 2260 m
             {currentTemp && (
               <span className="font-normal text-zinc-500 dark:text-zinc-400">
                 {" "}

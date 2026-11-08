@@ -141,7 +141,7 @@ grant execute on function public.wind_latest() to service_role;
 
 -- Luftdruck der Flughäfen Innsbruck und Bozen (Föhn-Anzeige, gemessen und
 -- ICON-CH1-Prognose), dazu die Temperatur auf Kammhöhe (Rittnerhorn,
--- Patscherkofel). Erklärungen in supabase/druck.sql.
+-- Hafelekar). Erklärungen in supabase/druck.sql.
 create table if not exists public.pressure_values (
   station text not null,
   kind text not null,

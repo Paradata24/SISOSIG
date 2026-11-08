@@ -123,7 +123,7 @@ function bolzanoDate(ms: number): string {
 /**
  * 10-Minuten-Werte einer GeoSphere-Station seit `sinceMs`: Zeitstempel und je
  * Parameter (z. B. P, TL, RF) die Werte in derselben Reihenfolge. Auch für
- * die Kammtemperatur am Patscherkofel (src/lib/crestTemperature.ts).
+ * die Kammtemperatur (bis 8. Nov. 2026 Patscherkofel).
  */
 export async function fetchGeosphere10min(
   stationId: string,

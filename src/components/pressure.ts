@@ -98,14 +98,14 @@ export function usePressureSeries(data: PressurePayload | null): {
   forecast: PressureDiffPoint[];
   ecmwf: PressureDiffPoint[];
   /**
-   * Temperatur-Differenz auf Kammhöhe, intern Nord − Süd (Patscherkofel −
-   * Rittnerhorn, °C; negativ = Patscherkofel kälter). Seit 8. Nov. 2026 die
+   * Temperatur-Differenz auf Kammhöhe, intern Nord − Süd (Hafelekar −
+   * Rittnerhorn, °C; negativ = Hafelekar kälter). Seit 8. Nov. 2026 die
    * Bergstationen statt Innsbruck/Bozen im Tal.
    */
   tempDiff: PressureDiffPoint[];
   /** Dasselbe aus der ICON-CH1-Prognose (stündlich). */
   tempDiffForecast: PressureDiffPoint[];
-  /** Gemessene Temperaturen je Seite (°C), aufsteigend: Nord = Patscherkofel, Süd = Rittnerhorn. */
+  /** Gemessene Temperaturen je Seite (°C), aufsteigend: Nord = Hafelekar, Süd = Rittnerhorn. */
   tempNorth: Array<[number, number]>;
   tempSouth: Array<[number, number]>;
   /** ICON-CH1-Temperatur je Seite (°C). */
@@ -120,7 +120,7 @@ export function usePressureSeries(data: PressurePayload | null): {
       forecast: data
         ? pairPressureSeries(data.forecast[FOEHN_PAIR.north], data.forecast[FOEHN_PAIR.south])
         : [],
-      // Temperatur auf Kammhöhe (Rittnerhorn = Süd, Patscherkofel = Nord).
+      // Temperatur auf Kammhöhe (Rittnerhorn = Süd, Hafelekar = Nord).
       // Intern ΔT = Nord − Süd. pairPressureSeries rechnet "zweites minus
       // erstes" — deshalb hier der Süden zuerst. Angezeigt wird Süd − Nord
       // (wie beim Druck): PressurePanel dreht das Vorzeichen und die Farben.

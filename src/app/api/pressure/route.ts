@@ -20,7 +20,7 @@ import {
 // Luftdruck (QFF) bei den Flughäfen Innsbruck und Bozen für die Föhn-Anzeige
 // (src/lib/pressure.ts), alles aus der Tabelle pressure_values:
 //   stations  QFF alle 10 min aus den Wetterstationen (Hauptkurve)
-//   crestTemperature  Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel;
+//   crestTemperature  Temperatur auf Kammhöhe (Rittnerhorn, Hafelekar;
 //             seit 8. Nov. 2026, vorher die Talstationen Bozen/Innsbruck)
 //   crestTemperatureForecast  ICON-CH1-Temperatur (2 m) dieser Bergstationen
 //   forecast  ICON-CH1-Prognose (QFF)

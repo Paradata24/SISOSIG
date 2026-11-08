@@ -23,7 +23,7 @@ import { CREST_KIND, PRESSURE_STATUS_NAME } from "@/lib/pressure";
 //  - seit Nov. 2026 den Luftdruck (QNH) bei den Flughäfen Innsbruck und Bozen
 //    für die Föhn-Anzeige (Tabelle pressure_values, siehe collectPressure;
 //    Zustand in wind_status unter "druck"), seit 8. Nov. 2026 dazu die
-//    Temperatur auf Kammhöhe (Rittnerhorn, Patscherkofel). Ein Fehler dort
+//    Temperatur auf Kammhöhe (Rittnerhorn, Hafelekar). Ein Fehler dort
 //    betrifft den Wind nicht.
 //
 // TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
@@ -191,7 +191,7 @@ async function collectSource(
 //                    humidity_pct; seit 8. Nov. 2026 nicht mehr als Kurve
 //                    angezeigt, aber für das QFF gebraucht)
 //   kind 'kamm'    = Temperatur und Feuchte auf Kammhöhe (Rittnerhorn,
-//                    Patscherkofel; seit 8. Nov. 2026), src/lib/crestTemperature.ts
+//                    Hafelekar; seit 8. Nov. 2026), src/lib/crestTemperature.ts
 //                    — ohne QNH (qnh_hpa leer)
 // Jeder Lauf schreibt alles für die letzten 3 h (wenige Zeilen): Ein
 // verpasster Lauf oder ein verspäteter Wert füllt sich so von selbst auf.
