@@ -89,15 +89,15 @@ const LABEL_EVERY_HOURS = 2;
 // abgeschnitten werden.
 const PAD_X = 10;
 const HOUR_MS = 60 * 60 * 1000;
-// Mitwachsende y-Achse wie im Wind-Verlaufsbalken (Wunsch des
-// Projektbesitzers, Nov. 2026): Oben (Süd höher) und unten (Nord höher)
-// reicht sie je mindestens Y_MIN_EXTENT_HPA weit — so ist die Grenze zu Rot
-// (3 hPa) immer zu sehen und ruhige Tage bleiben vergleichbar. Darüber wächst
-// jede Seite für sich in ganzen hPa (Y_STEP_HPA), bis der höchste bzw.
-// tiefste Wert (Messung oder Prognose) mit Y_HEADROOM_HPA Luft hineinpasst.
-// Eine Seite ohne große Werte bleibt also schmal, statt gespiegelt
-// mitzuwachsen.
-const Y_MIN_EXTENT_HPA = 3;
+// Feste y-Achse ±8 hPa (10. Nov. 2026, Wunsch des Projektbesitzers; vorher
+// mindestens ±3 hPa und darüber mitwachsend): Oben (Süd höher) und unten
+// (Nord höher) reicht sie IMMER Y_MIN_EXTENT_HPA weit, so sind alle Tage
+// gleich skaliert und direkt vergleichbar. Die Höhe des Diagramms bleibt
+// dieselbe (die Kurven werden dadurch flacher). Nur wenn ein Wert (Messung
+// oder Prognose) mit Y_HEADROOM_HPA Luft nicht mehr hineinpasst, wächst die
+// betroffene Seite für sich in ganzen hPa (Y_STEP_HPA) wie bisher. Die
+// Achsengrenze steht links als Zahl ("+8,0"/"−8,0", EXTRA_LINES_HPA).
+const Y_MIN_EXTENT_HPA = 8;
 const Y_STEP_HPA = 1;
 const Y_HEADROOM_HPA = 0.3;
 // Die gemessenen Kurven (Druck UND Temperatur) zeigen nur einen Wert alle
@@ -136,17 +136,18 @@ const AREA_OPACITY = 0.35;
 const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
 const SCALE_STRIP_OPACITY = 0.9;
-// Waagrechte Linien gibt es NUR auf Höhe der Farbsprünge (±0,5 / ±1,5 / ±2,5 /
-// ±3 hPa) und bei 0 — dünn und GRAU (nicht bunt), alle anderen Gitterlinien
+// Waagrechte Linien gibt es NUR auf Höhe der Farbsprünge (±1 bis ±5 hPa),
+// bei 0 und bei ±6 bis ±8 (EXTRA_LINES_HPA) — dünn und GRAU (nicht bunt), alle anderen Gitterlinien
 // (ganze hPa) sind weg. Die hPa-Zahlen links stehen genau auf diesen
 // Farbsprüngen (neben dem Farbstreifen), nicht mehr bei +4/+2/0/−2. Wunsch des
 // Projektbesitzers, 7. Nov. 2026.
 const STEP_LINE_COLOR = "#d4d4d8";
 const STEP_LINE_WIDTH = 1;
-// Hervorgehobene Farbsprünge bei ±1,5 und ±2,5 hPa (7. Nov. 2026, Wunsch des
-// Projektbesitzers): dicker und gestrichelt, etwas dunkler grau (weiter grau,
-// nicht bunt). Die übrigen Farbsprünge (±0,5, ±3) bleiben dünn.
-const STRONG_STEP_HPA = [1.5, 2.5];
+// Hervorgehobene Farbsprünge (7. Nov. 2026, Wunsch des Projektbesitzers):
+// dicker und gestrichelt, etwas dunkler grau (weiter grau, nicht bunt) —
+// grün→gelb und gelb→orange, seit der neuen Skala (10. Nov. 2026) bei ±2 und
+// ±3 hPa (vorher ±1,5/±2,5). Die übrigen Farbsprünge bleiben dünn.
+const STRONG_STEP_HPA = [2, 3];
 const STRONG_STEP_LINE_COLOR = "#a1a1aa";
 const STRONG_STEP_LINE_WIDTH = 1.6;
 const STRONG_STEP_LINE_DASH = "6 4";
@@ -154,6 +155,11 @@ const STRONG_STEP_LINE_DASH = "6 4";
 // beieinander (große Achsenspanne), fällt die Zahl der weiter außen liegenden
 // weg (die Linie bleibt); die "0" weicht den Farbsprüngen.
 const STEP_LABEL_MIN_GAP_PX = 10;
+// Zusätzliche dünne graue Linien mit Zahl links bei ±6, ±7 und ±8 hPa
+// (10. Nov. 2026, Wunsch des Projektbesitzers), damit man auch im schwarzen
+// Bereich über 5 hPa ablesen kann (±5 ist schon ein Farbsprung). Nur soweit
+// die Achse reicht.
+const EXTRA_LINES_HPA = [6, 7, 8];
 
 // --- Temperatur auf Kammhöhe (Nov. 2026, Wunsch des Projektbesitzers) ---
 // Eigenes Diagramm UNTER dem Druck, auf derselben Zeitachse (verschiebt sich
@@ -486,8 +492,8 @@ export default function PressurePanel({
     const times: number[] = [];
     for (let t = start; t <= end; t += HOUR_MS) times.push(t);
     // Farbstreifen der Stufen neben den hPa-Zahlen, oberhalb und unterhalb der
-    // Nulllinie gespiegelt (soweit die Achse reicht): blau bis 0,5, grün bis
-    // 1,5, gelb bis 2,5, orange bis 3, darüber rot.
+    // Nulllinie gespiegelt (soweit die Achse reicht): blau bis 1, grün bis 2,
+    // gelb bis 3, orange bis 4, rot bis 5, darüber schwarz.
     const scaleBands: { top: number; height: number; color: string }[] = [];
     FOEHN_COLOR_SCALE.forEach((step, i) => {
       const lo = i === 0 ? 0 : FOEHN_COLOR_SCALE[i - 1].upTo;
@@ -519,6 +525,18 @@ export default function PressurePanel({
         }
       }
     });
+    // Zusatzlinien ±6/7/8 hPa (EXTRA_LINES_HPA), dann die Achsengrenzen
+    // oben und unten, falls die Achse über 8 hPa gewachsen ist (z. B. "+10,0").
+    for (const at of EXTRA_LINES_HPA.flatMap((v) => [v, -v])) {
+      if (at <= yTop && at >= yBottom) {
+        stepLines.push({ y: y(at), label: formatSigned(at), showLabel: true, strong: false });
+      }
+    }
+    for (const at of [yTop, yBottom]) {
+      if (!EXTRA_LINES_HPA.includes(Math.abs(at))) {
+        stepLines.push({ y: y(at), label: formatSigned(at), showLabel: true, strong: false });
+      }
+    }
     for (const sign of [-1, 1]) {
       // Je Seite von der Nulllinie nach außen; Linien sind nach Betrag sortiert.
       let lastY: number | null = null;

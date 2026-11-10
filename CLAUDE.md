@@ -516,7 +516,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   für Messung und Prognose nach derselben Regel, deshalb liest es 12 h mehr
   als angezeigt. Rückgerechnet wird mit der Höhe, mit der der QNH entstand:
   Messung 578/245 m (`MEASURED_ELEVATION_M`), Prognose 581/240 m
-  (`PRESSURE_STATIONS`). Die Farbstufen (0,5/1,5/2,5/3 hPa) blieben.
+  (`PRESSURE_STATIONS`). Die Farbstufen blieben dabei (0,5/1,5/2,5/3 hPa; am 10. Nov. 2026 neu
+  festgelegt, siehe unten).
 - **Messreihe (Nov. 2026, vom Projektbesitzer beauftragt):** alle 10 min
   auf 0,1 hPa, **selbst gerechnet** aus GeoSphere 11121 „Innsbruck-Flughafen“
   (Stationsdruck `P`) und Landesstation 83200MS „Bozen“ (reduzierter Druck
@@ -544,7 +545,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Schild vom hohen zum tiefen Druck. **Farbstufen vom Projektbesitzer
   festgelegt** (Nov. 2026; zuerst die Stufen von burnair), dieselben Farben
   wie die Windskala, für plus und minus gleich: bis 0,5 hPa blau, bis
-  1,5 grün, bis 2,5 gelb, bis 3 orange, darüber rot (`FOEHN_COLOR_SCALE`, gilt
+  1,5 grün, bis 2,5 gelb, bis 3 orange, darüber rot. **Seit 10. Nov. 2026:**
+  bis 1 hPa blau, bis 2 grün, bis 3 gelb, bis 4 orange, bis 5 rot, darüber
+  **schwarz** mit weißer Schrift (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
   (`PRESSURE_STALE_AFTER_MS`). **Quellen** (GeoSphere, Land Südtirol,
   ICON-CH1, ECMWF; `PRESSURE_SOURCES`) stehen unter
@@ -580,7 +583,8 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
   hPa-Zahlen**; **waagrechte Linien nur auf den Farbsprüngen**
-  (±0,5/1,5/2,5/3 hPa, dünn und GRAU, nicht bunt; **±1,5 und ±2,5 dicker
+  (±1/2/3/4/5 hPa, dazu ±6/7/8 hPa mit Zahl seit 10. Nov. 2026
+  (`EXTRA_LINES_HPA`), dünn und GRAU, nicht bunt; **±2 und ±3 (vorher ±1,5 und ±2,5) dicker
   und gestrichelt**, 7. Nov. 2026, `STRONG_STEP_HPA`) plus die Nulllinie — die
   Gitterlinien bei ganzen hPa sind weg; **die hPa-Zahlen links stehen genau auf
   den Farbsprüngen** (`stepLines`, „+0,5“ … „−3,0“, die „0“ weicht ihnen),
@@ -588,8 +592,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
-  **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
-  mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`);
+  **feste y-Achse ±8 hPa** (10. Nov. 2026, Wunsch des Projektbesitzers;
+  vorher mindestens ±3 hPa) bei gleicher Diagrammhöhe, Grenzen links als
+  „+8,0“/„−8,0“ beschriftet; nur wenn ein Wert darüber geht, wächst die
+  Seite für sich in ganzen hPa wie bisher (`Y_MIN_EXTENT_HPA`);
   **das Fenster reicht bis an den Titel-Balken** (7. Nov. 2026, Wunsch des
   Projektbesitzers, nach Zwischenschritten mit 30 % und 40 % der
   Bildschirmhöhe): das Druck-Diagramm bekommt den ganzen restlichen Platz
