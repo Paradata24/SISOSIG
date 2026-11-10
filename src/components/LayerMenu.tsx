@@ -196,6 +196,15 @@ export default function LayerMenu({
             })}
           </ul>
           {footer}
+          {/* Vorübergehend (Nov. 2026): Zugang zur Test-Seite /gps-test, weil
+              die iPhone-App keine Adresszeile hat. Fliegt mit der Seite raus
+              (src/app/gps-test/page.tsx). */}
+          <a
+            href="/gps-test"
+            className="mt-2 block border-t border-black/10 pt-1.5 text-[10px] text-zinc-400 underline"
+          >
+            GPS-Test
+          </a>
         </div>
       )}
     </div>
