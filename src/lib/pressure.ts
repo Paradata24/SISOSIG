@@ -320,8 +320,8 @@ export function pressureDiffAt(series: PressureDiffPoint[], time: number): Press
  * zuerst die Stufen von burnair): dieselben fünf Farben wie die Windskala
  * (WIND_COLOR_SCALE in src/lib/wind.ts), in harten Stufen, für positive und
  * negative Werte gleich:
- *   bis 0,5 hPa blau · bis 1,5 grün · bis 2,5 gelb · bis 3 orange · darüber rot
- * (dritte Fassung des Projektbesitzers, Nov. 2026). Die Stufengrenzen auf
+ *   bis 0,5 hPa blau · bis 1,5 grün · bis 2,5 gelb · bis 3,5 orange · darüber rot
+ * (vierte Fassung des Projektbesitzers, 10. Nov. 2026; vorher orange bis 3). Die Stufengrenzen auf
  * halben hPa stammen aus der Zeit der ganzzahligen METAR-Werte (0 blau,
  * 1 grün, 2 gelb, 3 orange, ab 4 rot); seit den 10-Minuten-Werten auf 0,1 hPa
  * entscheidet die Zehntel-Rundung (foehnColor).
@@ -331,7 +331,7 @@ export const FOEHN_COLOR_SCALE: Array<{ upTo: number; inclusive: boolean; color:
   { upTo: 0.5, inclusive: true, color: WIND_COLOR_SCALE[0].color, text: "#18181b" }, // blau
   { upTo: 1.5, inclusive: true, color: WIND_COLOR_SCALE[1].color, text: "#18181b" }, // grün
   { upTo: 2.5, inclusive: true, color: WIND_COLOR_SCALE[2].color, text: "#18181b" }, // gelb
-  { upTo: 3, inclusive: true, color: WIND_COLOR_SCALE[3].color, text: "#18181b" }, // orange
+  { upTo: 3.5, inclusive: true, color: WIND_COLOR_SCALE[3].color, text: "#18181b" }, // orange
   { upTo: Infinity, inclusive: false, color: WIND_COLOR_SCALE[4].color, text: "#18181b" }, // rot
 ];
 
