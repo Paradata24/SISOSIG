@@ -170,6 +170,10 @@ export interface PressurePayload {
   ecmwf: Record<PressureStationId, Array<[number, number]>>;
   /** Startzeit des ECMWF-Laufs (ISO), sonst null. */
   ecmwfRun: string | null;
+  /** ICON-D2-Prognose (DWD, 2 km, seit 10. Nov. 2026) je Flughafen (QFF, stündlich), aufsteigend. */
+  iconD2: Record<PressureStationId, Array<[number, number]>>;
+  /** Startzeit des ICON-D2-Laufs (ISO), sonst null. */
+  iconD2Run: string | null;
   /** Startzeit des Modelllaufs (ISO), sonst null. */
   modelRun: string | null;
   /** true = Messwerte im Notbetrieb direkt bei den Diensten geholt (nicht aus der Datenbank). */
@@ -396,6 +400,11 @@ export const PRESSURE_SOURCES: Array<{ label: string; url: string; note?: string
   {
     label: "Druckprognose ECMWF IFS © ECMWF über Open-Meteo",
     url: "https://open-meteo.com/en/docs/ecmwf-api",
+    note: "CC BY 4.0",
+  },
+  {
+    label: "Druckprognose ICON-D2 © Deutscher Wetterdienst über Open-Meteo",
+    url: "https://open-meteo.com/en/docs/dwd-api",
     note: "CC BY 4.0",
   },
 ];

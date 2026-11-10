@@ -166,11 +166,12 @@ export async function GET() {
   const now = Date.now();
   const since = now - HISTORY_HOURS * 60 * 60 * 1000;
 
-  const [stationsDb, crestDb, forecastDb, ecmwfDb] = await Promise.all([
+  const [stationsDb, crestDb, forecastDb, ecmwfDb, iconD2Db] = await Promise.all([
     readSeries("station", since),
     readSeries(CREST_KIND, since),
     readSeries("icon_ch1", since),
     readSeries("ecmwf_ifs", since),
+    readSeries("icon_d2", since),
   ]);
 
   let stations = stationsDb?.series ?? emptySeries();
@@ -221,7 +222,8 @@ export async function GET() {
 
   const forecast = forecastDb?.series ?? emptySeries();
   const ecmwf = ecmwfDb?.series ?? emptySeries();
-  const hasAny = [stations, forecast, ecmwf].some((series) =>
+  const iconD2 = iconD2Db?.series ?? emptySeries();
+  const hasAny = [stations, forecast, ecmwf, iconD2].some((series) =>
     PRESSURE_STATION_IDS.some((id) => series[id].length > 0),
   );
   if (!hasAny) {
@@ -236,6 +238,8 @@ export async function GET() {
     modelRun: forecastDb?.modelRun ?? null,
     ecmwf,
     ecmwfRun: ecmwfDb?.modelRun ?? null,
+    iconD2,
+    iconD2Run: iconD2Db?.modelRun ?? null,
     fallback,
   };
   return NextResponse.json(payload, { headers: { "Cache-Control": RESPONSE_CACHE_CONTROL } });

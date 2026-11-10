@@ -186,9 +186,10 @@ const UPPER_META_URL = `${OPEN_METEO_BASE}/data/${UPPER_MODEL_API}/static/meta.j
 // wird trocken gerechnet (~0,1–0,3 hPa Unterschied).
 // Länger als der Wind (siehe PRESSURE_MODELS): Für Föhn ist auch der nächste
 // Tag interessant. Kostet trotzdem nur 1 Aufruf je Standort (gezählt wird
-// erst ab 2 Wochen Zeitraum). Seit Nov. 2026 zusätzlich ECMWF.
+// erst ab 2 Wochen Zeitraum). Seit Nov. 2026 zusätzlich ECMWF, seit 10. Nov.
+// 2026 auch ICON-D2.
 // Gespeichert in der eigenen Tabelle pressure_values (supabase/druck.sql) mit
-// kind = Modell ('icon_ch1', 'ecmwf_ifs'). Eigene Laufprüfung je Modell wie
+// kind = Modell ('icon_ch1', 'ecmwf_ifs', 'icon_d2'). Eigene Laufprüfung je Modell wie
 // beim Höhenwind (refreshPressure): Fehlt die Prognose, kommt sie beim
 // nächsten Cron-Anstoß.
 // Kopie von PRESSURE_STATIONS aus src/lib/pressure.ts (Deno kann dort nicht
@@ -221,9 +222,15 @@ const CREST_STATIONS: Record<string, { lat: number; lng: number; elevationM: num
 // `kind` = Spalte kind in pressure_values; /api/pressure kennt dieselben.
 // `crest` = auch die Temperatur der Bergstationen (CREST_STATIONS) holen —
 // angezeigt wird nur die von ICON-CH1.
+// Seit 10. Nov. 2026 (Wunsch des Projektbesitzers) zusätzlich ICON-D2 vom
+// DWD (2 km, bei Open-Meteo "dwd_icon_d2" — dieselbe Kennung wie beim
+// Höhenwind): rechnet alle 3 h neu, 48 h voraus. Ein drittes, unabhängig
+// gerechnetes Modell zwischen dem sehr feinen ICON-CH1 und dem groben ECMWF.
+// Kostet je Lauf 2 Aufrufe (nur die Flughäfen), also 16 am Tag.
 const PRESSURE_MODELS: Array<{ kind: string; api: string; label: string; hours: number; crest: boolean }> = [
   { kind: "icon_ch1", api: MODEL_API, label: "ICON-CH1", hours: 33, crest: true },
   { kind: "ecmwf_ifs", api: "ecmwf_ifs", label: "ECMWF", hours: 72, crest: false },
+  { kind: "icon_d2", api: UPPER_MODEL_API, label: "ICON-D2", hours: 48, crest: false },
 ];
 
 // Metadaten des Modells bei Open-Meteo: wann der neueste Lauf gestartet und
