@@ -223,12 +223,17 @@ export function assessLive(
   }
   if (!series || !times || times.length === 0 || Number.isNaN(measuredAt)) return null;
 
+  // Gehaltene Punkte am Ende (TimelineSeries.h) sind Kopien des letzten
+  // Werts, keine Messungen — weglassen, sonst verlängerten sie einen
+  // scheinbar eingefrorenen Abschnitt.
+  const keep = times.length - Math.min(series.h ?? 0, times.length);
+  if (keep === 0) return null;
   const snapped = snapToGrid(measuredAt);
-  const lastTime = times[times.length - 1];
-  const s = [...series.s];
-  const g = [...series.g];
-  const d = [...series.d];
-  const t = [...times];
+  const lastTime = times[keep - 1];
+  const s = series.s.slice(0, keep);
+  const g = series.g.slice(0, keep);
+  const d = series.d.slice(0, keep);
+  const t = times.slice(0, keep);
   let idx: number;
   if (snapped > lastTime) {
     // Live-Wert ist neuer als der Verlauf: hinten anhängen.
@@ -240,7 +245,7 @@ export function assessLive(
   } else {
     // Live-Wert liegt im Verlauf: an seinem Rasterpunkt einsetzen.
     idx = Math.round((snapped - times[0]) / GRID_MS);
-    if (idx < 0 || idx >= times.length) return null;
+    if (idx < 0 || idx >= keep) return null;
     s[idx] = speed;
     g[idx] = gust;
     d[idx] = direction;

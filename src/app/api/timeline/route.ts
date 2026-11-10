@@ -6,10 +6,12 @@ import {
   HISTORY_HOURS,
   snapToGrid,
   SOURCE_INTERVAL_MINUTES,
+  STALE_AFTER_MINUTES,
   TIMELINE_STEP_MINUTES,
   type WindStation,
   type TimelinePayload,
   type TimelineSeries,
+  type SuspectInfo,
 } from "@/lib/wind";
 import { assessSeries, encodeSuspectFlags, LONGEST_RULE_MINUTES } from "@/lib/plausibility";
 
@@ -69,6 +71,63 @@ const LEAD_SLOTS = Math.ceil(LONGEST_RULE_MINUTES / TIMELINE_STEP_MINUTES);
 /** Auf ganze Zahlen runden — kürzeres JSON, und die Karte rundet ohnehin. */
 function round0(value: number | null): number | null {
   return value === null ? null : Math.round(value);
+}
+
+/**
+ * Noch nicht eingetroffene Werte am ENDE des Zeitraums überbrücken (Nov. 2026,
+ * Rückmeldung des Projektbesitzers: "Um 20:50 verschwinden alle Südtiroler
+ * Stationen").
+ *
+ * Grund: Die jüngsten Rasterpunkte sind beim Laden oft noch leer, weil die
+ * Werte erst später in der Datenbank ankommen. Beim Bozner Dienst sind das
+ * typisch 15 min (er hinkt 5–10 min nach, dazu bis zu 5 min bis zum nächsten
+ * Sammel-Lauf; am 10.11.2026 gemessen: Wert von 20:50 gespeichert um 21:05).
+ * Ohne diese Regel waren deshalb um 21:03 an 20:50 und 21:00 ALLE Bozner
+ * Stationen grau bzw. in der Übersicht unsichtbar — obwohl keine ausgefallen
+ * war. MeteoSchweiz und Meteotrentino trifft es genauso.
+ *
+ * Die Regel: Fehlen einer Station nur die allerletzten Punkte, und ist ihr
+ * letzter echter Wert jünger als die Grau-Grenze ihrer Quelle
+ * (STALE_AFTER_MINUTES), bleibt dieser bis zum Ende stehen — genau das, was
+ * die Live-Karte in diesem Moment zeigt. Ist er älter, wird nichts gehalten
+ * (die Station ist dann auch live grau). Lücken MITTEN im Verlauf
+ * bleiben unverändert grau (fehlt nur bei einer Station ein Wert, während
+ * danach schon neuere da sind, ist das eine echte Lücke). Sobald der echte
+ * Wert eintrifft, ersetzt ihn das nächste Laden (alle 10 min, die letzten 8 h
+ * werden komplett neu eingefügt, src/lib/timelineMerge.ts).
+ *
+ * Gibt die Zahl der gehaltenen Punkte am Ende zurück (Feld h in
+ * TimelineSeries). assessLive (src/lib/plausibility.ts) lässt sie weg — sonst
+ * verlängerten die Kopien einen scheinbar eingefrorenen Abschnitt.
+ */
+function holdTrailingValues(
+  series: TimelineSeries,
+  flags: (SuspectInfo | null)[],
+  times: number[],
+  source: WindStation["source"] | undefined,
+): number {
+  if (!source) return 0;
+  const end = times.length - 1;
+  let lastReal = end;
+  while (
+    lastReal >= 0 &&
+    series.d[lastReal] === null &&
+    series.s[lastReal] === null &&
+    series.g[lastReal] === null
+  ) {
+    lastReal--;
+  }
+  // Kein Wert, oder der letzte ist schon zu alt (Station wäre auch live grau):
+  // nichts halten — dann ist es eine echte Lücke, keine verspätete Lieferung.
+  if (lastReal < 0 || lastReal === end) return 0;
+  if (times[end] - times[lastReal] > STALE_AFTER_MINUTES[source] * 60_000) return 0;
+  for (let i = lastReal + 1; i <= end; i++) {
+    series.d[i] = series.d[lastReal];
+    series.s[i] = series.s[lastReal];
+    series.g[i] = series.g[lastReal];
+    flags[i] = flags[lastReal];
+  }
+  return end - lastReal;
 }
 
 export async function GET(request: Request) {
@@ -217,7 +276,11 @@ export async function GET(request: Request) {
   const stations: Record<string, TimelineSeries> = {};
   for (const [code, full] of Object.entries(calc)) {
     const source = sourceByStation.get(code) as WindStation["source"] | undefined;
-    const flags = assessSeries(full, calcTimes, source).slice(LEAD_SLOTS);
+    const allFlags = assessSeries(full, calcTimes, source);
+    // Erst NACH der Messfehler-Prüfung: Die gehaltenen Werte sind Kopien und
+    // dürfen keinen "eingefrorenen" Abschnitt verlängern.
+    const held = holdTrailingValues(full, allFlags, calcTimes, source);
+    const flags = allFlags.slice(LEAD_SLOTS);
     const series: TimelineSeries = {
       d: full.d.slice(LEAD_SLOTS),
       s: full.s.slice(LEAD_SLOTS),
@@ -227,6 +290,7 @@ export async function GET(request: Request) {
     if (empty(series.d) && empty(series.s) && empty(series.g)) continue;
     const q = encodeSuspectFlags(flags);
     if (q) series.q = q;
+    if (held > 0) series.h = held;
     stations[code] = series;
   }
 

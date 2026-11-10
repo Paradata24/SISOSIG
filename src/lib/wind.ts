@@ -364,6 +364,13 @@ export interface TimelineSeries {
    * src/lib/plausibility.ts.
    */
   q?: string;
+  /**
+   * Nur wenn > 0: So viele Punkte am ENDE sind keine Messungen, sondern der
+   * letzte Wert, gehalten, weil die neuen noch nicht in der Datenbank sind
+   * (holdTrailingValues in /api/timeline). Für die Karte wie echte Werte;
+   * die Messfehler-Prüfung der Live-Werte (assessLive) lässt sie weg.
+   */
+  h?: number;
 }
 
 /** Ein Buchstabe je Auffälligkeit für TimelineSeries.q. */

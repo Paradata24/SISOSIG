@@ -415,6 +415,15 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     Karte nur die aktuellen Werte (Zeitpunkt springt auf „Aktuell"), und
     „Zuletzt aktualisiert" steht nirgends. Der Verlauf wird trotzdem weiter
     geladen (Messfehler-Erkennung der Live-Werte braucht ihn).
+  - **Noch nicht eingetroffene Werte am Ende werden überbrückt** (10. Nov.
+    2026, Rückmeldung des Projektbesitzers: um 20:50 fehlten alle Südtiroler
+    Stationen). Die jüngsten 1–2 Zeitpunkte sind beim Laden oft noch leer
+    (Bozen kommt ~15 min verspätet in die Datenbank, MeteoSchweiz und
+    Meteotrentino ähnlich). Fehlen einer Station nur die letzten Punkte und
+    ist ihr letzter Wert jünger als die Grau-Grenze, bleibt er dort stehen
+    wie auf der Live-Karte (`holdTrailingValues` in `/api/timeline`, Feld `h`
+    = Zahl der gehaltenen Punkte; `assessLive` lässt sie weg). Lücken mitten
+    im Verlauf bleiben grau.
   - **Kein Abspielknopf** (Wunsch des Projektbesitzers: unnötig) — nicht
     wieder einführen. Die ◀ ▶-Knöpfe sind ebenfalls weg; per Tastatur gehen die
     Pfeiltasten.

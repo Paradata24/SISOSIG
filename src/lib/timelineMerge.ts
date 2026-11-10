@@ -92,7 +92,12 @@ export function mergeRecentTimeline(
     // Stationen ganz ohne Werte im neuen Zeitraum weglassen (wie /api/timeline,
     // das nur Stationen mit Messungen liefert).
     if (!hasValue) continue;
-    stations[code] = flagged ? { d, s, g, q: q.join("") } : { d, s, g };
+    const merged: TimelineSeries = flagged ? { d, s, g, q: q.join("") } : { d, s, g };
+    // Gehaltene Punkte am Ende (h) stammen immer aus recent: Das Ergebnis
+    // endet am selben Zeitpunkt wie recent.
+    const held = recent.stations[code]?.h;
+    if (held) merged.h = Math.min(held, count);
+    stations[code] = merged;
   }
 
   return {
