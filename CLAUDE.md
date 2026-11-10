@@ -588,8 +588,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Ziehen mit der Maus; `PX_PER_HOUR` 16 = Breite eines Wert-Quadrats im
   Wind-Verlaufsbalken, beschriftet jede 2. Stunde, auch unter dem Druck-Diagramm; beim Öffnen „jetzt“ in der Mitte,
   hPa-Zahlen links fest; Wunsch des Projektbesitzers, Nov. 2026),
-  **mitwachsende y-Achse** wie im Wind-Verlaufsbalken (je Seite
-  mindestens 3 hPa, wächst für sich in ganzen hPa: `Y_MIN_EXTENT_HPA`);
+  **feste y-Achse ±8 hPa** (10. Nov. 2026, Wunsch des Projektbesitzers;
+  vorher mindestens ±3 hPa) bei gleicher Diagrammhöhe, Grenzen links als
+  „+8,0“/„−8,0“ beschriftet; nur wenn ein Wert darüber geht, wächst die
+  Seite für sich in ganzen hPa wie bisher (`Y_MIN_EXTENT_HPA`);
   **das Fenster reicht bis an den Titel-Balken** (7. Nov. 2026, Wunsch des
   Projektbesitzers, nach Zwischenschritten mit 30 % und 40 % der
   Bildschirmhöhe): das Druck-Diagramm bekommt den ganzen restlichen Platz

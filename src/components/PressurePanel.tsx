@@ -89,15 +89,15 @@ const LABEL_EVERY_HOURS = 2;
 // abgeschnitten werden.
 const PAD_X = 10;
 const HOUR_MS = 60 * 60 * 1000;
-// Mitwachsende y-Achse wie im Wind-Verlaufsbalken (Wunsch des
-// Projektbesitzers, Nov. 2026): Oben (Süd höher) und unten (Nord höher)
-// reicht sie je mindestens Y_MIN_EXTENT_HPA weit — so ist die Grenze zu Rot
-// (3 hPa) immer zu sehen und ruhige Tage bleiben vergleichbar. Darüber wächst
-// jede Seite für sich in ganzen hPa (Y_STEP_HPA), bis der höchste bzw.
-// tiefste Wert (Messung oder Prognose) mit Y_HEADROOM_HPA Luft hineinpasst.
-// Eine Seite ohne große Werte bleibt also schmal, statt gespiegelt
-// mitzuwachsen.
-const Y_MIN_EXTENT_HPA = 3;
+// Feste y-Achse ±8 hPa (10. Nov. 2026, Wunsch des Projektbesitzers; vorher
+// mindestens ±3 hPa und darüber mitwachsend): Oben (Süd höher) und unten
+// (Nord höher) reicht sie IMMER Y_MIN_EXTENT_HPA weit, so sind alle Tage
+// gleich skaliert und direkt vergleichbar. Die Höhe des Diagramms bleibt
+// dieselbe (die Kurven werden dadurch flacher). Nur wenn ein Wert (Messung
+// oder Prognose) mit Y_HEADROOM_HPA Luft nicht mehr hineinpasst, wächst die
+// betroffene Seite für sich in ganzen hPa (Y_STEP_HPA) wie bisher. Die
+// Achsengrenze steht links als Zahl ("+8,0"/"−8,0").
+const Y_MIN_EXTENT_HPA = 8;
 const Y_STEP_HPA = 1;
 const Y_HEADROOM_HPA = 0.3;
 // Die gemessenen Kurven (Druck UND Temperatur) zeigen nur einen Wert alle
@@ -519,6 +519,12 @@ export default function PressurePanel({
         }
       }
     });
+    // Achsengrenzen oben und unten ("+8,0"/"−8,0" bzw. mehr, wenn die Achse
+    // gewachsen ist), als dünne graue Linie mit Zahl — über ±3 hPa gibt es
+    // sonst keine Zahl, an der man die Skala ablesen könnte.
+    for (const at of [yTop, yBottom]) {
+      stepLines.push({ y: y(at), label: formatSigned(at), showLabel: true, strong: false });
+    }
     for (const sign of [-1, 1]) {
       // Je Seite von der Nulllinie nach außen; Linien sind nach Betrag sortiert.
       let lastY: number | null = null;
