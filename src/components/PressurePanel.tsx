@@ -137,13 +137,16 @@ const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
 const SCALE_STRIP_OPACITY = 0.9;
 // TEST „Regenbogen“ (10. Nov. 2026, Wunsch des Projektbesitzers, ausdrücklich
-// als leicht umkehrbarer Versuch): Bei true wird die gemessene Druckkurve rot,
-// solange der Druck in Bozen höher ist (über der Nulllinie), sonst blau; die
-// Fläche darunter färbt sich waagrecht in Streifen nach der Farbskala
-// (FOEHN_COLOR_SCALE: blau, grün, gelb, orange, rot, schwarz), so dass unter
-// der Kurve eine Art Regenbogen entsteht. Zurück zum vorherigen Aussehen
-// (schwarze Kurve, Fläche rot/blau): einfach auf false setzen.
-const RAINBOW_TEST = true;
+// als leicht umkehrbarer Versuch). Bei RAINBOW_TEST ≠ "aus" wird die gemessene
+// Druckkurve rot, solange der Druck in Bozen höher ist (über der Nulllinie),
+// sonst blau, und die Fläche darunter färbt sich nach der Farbskala
+// (FOEHN_COLOR_SCALE: blau, grün, gelb, orange, rot, schwarz):
+//   "senkrecht" (aktuell): je Messpunkt ein senkrechter Streifen von der
+//     Nulllinie bis zur Kurve in der Farbe dieses Werts, zwischen zwei
+//     Messpunkten fließender Übergang (waagrechter Farbverlauf).
+//   "waagrecht" (erste Fassung): waagrechte Streifen, je Farbstufe einer.
+// Zurück zum vorherigen Aussehen (schwarze Kurve, Fläche rot/blau): "aus".
+const RAINBOW_TEST: "aus" | "senkrecht" | "waagrecht" = "senkrecht";
 const RAINBOW_AREA_OPACITY = 0.55;
 // Waagrechte Linien gibt es NUR auf Höhe der Farbsprünge (±1 bis ±5 hPa),
 // bei 0 und bei ±6 bis ±8 (EXTRA_LINES_HPA) — dünn und GRAU (nicht bunt), alle anderen Gitterlinien
@@ -566,6 +569,11 @@ export default function PressurePanel({
       stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
+      // TEST Regenbogen senkrecht: Farbe je Messpunkt (siehe RAINBOW_TEST).
+      measuredStops: m.map((p) => ({
+        offset: Math.max(0, Math.min(1, x(p.time) / svgW)),
+        color: foehnColor(p.diff).color,
+      })),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       ty,
@@ -726,19 +734,30 @@ export default function PressurePanel({
                 <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + chartH - chart.y(0)} />
               </clipPath>
               {/* TEST Regenbogen: je Farbstufe ein waagrechter Streifen. */}
-              {RAINBOW_TEST &&
+              {RAINBOW_TEST === "waagrecht" &&
                 chart.scaleBands.map((band, i) => (
                   <clipPath key={`rb${i}`} id={`dp-band-${i}`}>
                     <rect x={0} y={band.top} width={chart.svgW} height={band.height} />
                   </clipPath>
                 ))}
+              {/* TEST Regenbogen senkrecht: Farbverlauf von links nach
+                  rechts, je Messpunkt die Farbe seines Werts. */}
+              {RAINBOW_TEST === "senkrecht" && (
+                <linearGradient id="dp-rainbow" gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={chart.svgW} y2={0}>
+                  {chart.measuredStops.map((stop, i) => (
+                    <stop key={i} offset={stop.offset} stopColor={stop.color} />
+                  ))}
+                </linearGradient>
+              )}
             </defs>
             {/* Prognose-Zone: rechts von "jetzt" grau hinterlegt. */}
             <rect x={chart.nowX} y={PAD_TOP} width={Math.max(0, chart.svgW - chart.nowX)} height={timeTop - PAD_TOP} fill={FORECAST_ZONE_FILL} />
             <text x={chart.nowX + 5} y={PAD_TOP + 10} fontSize={10} fill="#71717a">
               Prognose ▸
             </text>
-            {RAINBOW_TEST ? (
+            {RAINBOW_TEST === "senkrecht" ? (
+              <path d={chart.measuredAreaPath} fill="url(#dp-rainbow)" opacity={RAINBOW_AREA_OPACITY} />
+            ) : RAINBOW_TEST === "waagrecht" ? (
               chart.scaleBands.map((band, i) => (
                 <path
                   key={`ra${i}`}
@@ -864,7 +883,7 @@ export default function PressurePanel({
             {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
-            {RAINBOW_TEST ? (
+            {RAINBOW_TEST !== "aus" ? (
               <>
                 <path d={chart.measuredPath} fill="none" stroke={AREA_ABOVE_FILL} strokeWidth={2} strokeLinejoin="round" clipPath="url(#dp-above)" />
                 <path d={chart.measuredPath} fill="none" stroke={AREA_BELOW_FILL} strokeWidth={2} strokeLinejoin="round" clipPath="url(#dp-below)" />
