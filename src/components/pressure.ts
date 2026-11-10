@@ -91,12 +91,13 @@ export function usePressureData(enabled: boolean): {
 /**
  * Differenz-Reihen Bozen − Innsbruck: `measured` = 10-Minuten-Werte der
  * Stationen (Hauptkurve),
- * `forecast` = ICON-CH1, `ecmwf` = ECMWF.
+ * `forecast` = ICON-CH1, `ecmwf` = ECMWF, `iconD2` = ICON-D2.
  */
 export function usePressureSeries(data: PressurePayload | null): {
   measured: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   ecmwf: PressureDiffPoint[];
+  iconD2: PressureDiffPoint[];
   /**
    * Temperatur-Differenz auf Kammhöhe, intern Nord − Süd (Hafelekar −
    * Rittnerhorn, °C; negativ = Hafelekar kälter). Seit 8. Nov. 2026 die
@@ -141,6 +142,10 @@ export function usePressureSeries(data: PressurePayload | null): {
       // Ältere Antworten (vor ECMWF) haben das Feld nicht.
       ecmwf: data?.ecmwf
         ? pairPressureSeries(data.ecmwf[FOEHN_PAIR.north], data.ecmwf[FOEHN_PAIR.south])
+        : [],
+      // Ältere Antworten (vor dem 10. Nov. 2026) haben das Feld nicht.
+      iconD2: data?.iconD2
+        ? pairPressureSeries(data.iconD2[FOEHN_PAIR.north], data.iconD2[FOEHN_PAIR.south])
         : [],
     }),
     [data],

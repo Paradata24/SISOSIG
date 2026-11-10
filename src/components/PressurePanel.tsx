@@ -119,6 +119,10 @@ const FORECAST_DASH = "5 3";
 // Süd höher bzw. Norden wärmer / Süden wärmer). Reicht 72 h voraus,
 // ICON-CH1 33 h.
 const ECMWF_COLOR = "#7c3aed";
+// ICON-D2 (seit 10. Nov. 2026, Wunsch des Projektbesitzers): gestrichelt in
+// Dunkel-Türkis — nicht Blau/Rot (Flächen), nicht Grau (ICON-CH1), nicht
+// Violett (ECMWF). Reicht 48 h voraus.
+const ICON_D2_COLOR = "#0f766e";
 const MEASURED_COLOR = "#18181b";
 // LESBARKEIT: Senkrechte Rasterlinien nur alle 2 h, hPa-Zahlen nur auf den Farbsprüngen,
 // kurze Legende mit Linienmustern in der Titelzeile des Diagramms. Vor "jetzt"
@@ -370,6 +374,8 @@ export default function PressurePanel({
   modelRun,
   ecmwf,
   ecmwfRun,
+  iconD2,
+  iconD2Run,
   tempDiff,
   tempDiffForecast,
   tempNorth,
@@ -386,9 +392,12 @@ export default function PressurePanel({
   measured: PressureDiffPoint[];
   forecast: PressureDiffPoint[];
   modelRun: string | null;
-  /** ECMWF-Prognose (blau gestrichelt). */
+  /** ECMWF-Prognose (violett gestrichelt). */
   ecmwf: PressureDiffPoint[];
   ecmwfRun: string | null;
+  /** ICON-D2-Prognose (türkis gestrichelt). */
+  iconD2: PressureDiffPoint[];
+  iconD2Run: string | null;
   /** Temperatur-Differenz auf Kammhöhe, Nord − Süd (°C), gemessen. */
   tempDiff: PressureDiffPoint[];
   /** Dasselbe aus der ICON-CH1-Prognose. */
@@ -438,11 +447,12 @@ export default function PressurePanel({
 
   const chart = useMemo(() => {
     // Volle Stunden: links 48 h zurück, rechts bis zum Ende der längsten
-    // Prognose (ECMWF 72 h, ICON-CH1 33 h), mindestens bis in einer Stunde.
+    // Prognose (ECMWF 72 h, ICON-D2 48 h, ICON-CH1 33 h), mindestens bis in einer Stunde.
     const start = Math.floor((now - HISTORY_HOURS * HOUR_MS) / HOUR_MS) * HOUR_MS;
     const lastForecast = Math.max(
       forecast.length > 0 ? forecast[forecast.length - 1].time : now,
       ecmwf.length > 0 ? ecmwf[ecmwf.length - 1].time : now,
+      iconD2.length > 0 ? iconD2[iconD2.length - 1].time : now,
     );
     const end = Math.ceil(Math.max(now + HOUR_MS, lastForecast) / HOUR_MS) * HOUR_MS;
     const inRange = (p: PressureDiffPoint) => p.time >= start && p.time <= end;
@@ -451,9 +461,10 @@ export default function PressurePanel({
     const m = measured.filter((p) => inRange(p) && onStep(p.time));
     const f = forecast.filter(inRange);
     const e = ecmwf.filter(inRange);
+    const d2 = iconD2.filter(inRange);
     // Die Achse richtet sich nach allem, was gezeichnet wird (auch die
     // Prognose in der Vergangenheit, damit nichts abgeschnitten wird).
-    const values = [...m, ...f, ...e].map((p) => p.diff);
+    const values = [...m, ...f, ...e, ...d2].map((p) => p.diff);
     const grow = (extent: number) =>
       Math.max(Y_MIN_EXTENT_HPA, Math.ceil((extent + Y_HEADROOM_HPA) / Y_STEP_HPA) * Y_STEP_HPA);
     const yTop = grow(Math.max(0, ...values));
@@ -559,6 +570,7 @@ export default function PressurePanel({
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
+      iconD2Path: buildPath(d2, x, y, FORECAST_GAP_MS),
       ty,
       tTicks,
       northTempPath: buildSeriesPath(tN, x, ty, TEMP_GAP_MS),
@@ -569,7 +581,7 @@ export default function PressurePanel({
       bandForecast: buildBandPaths(bandF, x, ty, FORECAST_GAP_MS),
       nowX: x(now),
     };
-  }, [chartH, tempTop, now, measured, forecast, ecmwf, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
+  }, [chartH, tempTop, now, measured, forecast, ecmwf, iconD2, tempDiff, tempDiffForecast, tempNorth, tempSouth, tempNorthForecast, tempSouthForecast]);
 
   // Beim ersten Zeichnen "jetzt" in die Mitte schieben.
   useEffect(() => {
@@ -642,6 +654,9 @@ export default function PressurePanel({
         </LegendItem>
         <LegendItem color={ECMWF_COLOR} width={1.6} dash={FORECAST_DASH}>
           ECMWF{ecmwfRun && <> {formatClock(Date.parse(ecmwfRun))}</>}
+        </LegendItem>
+        <LegendItem color={ICON_D2_COLOR} width={1.6} dash={FORECAST_DASH}>
+          ICON-D2{iconD2Run && <> {formatClock(Date.parse(iconD2Run))}</>}
         </LegendItem>
       </div>
 
@@ -833,6 +848,7 @@ export default function PressurePanel({
             <path d={chart.northTempPath} fill="none" stroke={NORTH_TEMP_COLOR} strokeWidth={1.6} strokeLinejoin="round" />
             {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
+            <path d={chart.iconD2Path} fill="none" stroke={ICON_D2_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
             <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>

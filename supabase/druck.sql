@@ -33,6 +33,8 @@
 --                           von der Edge Function fetch-wind-forecasts); für
 --                           die Bergstationen nur die Temperatur, ohne QNH
 --              'ecmwf_ifs' = Prognose (ECMWF über Open-Meteo, nur Flughäfen)
+--              'icon_d2'  = Prognose (ICON-D2 vom DWD über Open-Meteo, nur
+--                           Flughäfen; seit 10. Nov. 2026)
 --   valid_at   Messzeit bzw. Prognosestunde (UTC)
 --   qnh_hpa    QNH in hPa (Luftdruck nach Normatmosphäre auf Meereshöhe
 --              umgerechnet — der Wert, den die Flughäfen melden); leer bei

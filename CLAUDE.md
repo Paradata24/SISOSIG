@@ -132,7 +132,7 @@ nur bei einem neuen ICON-CH1-Lauf, also alle 3 h, wirklich neue Werte).
 | `src/lib/pressure.ts` | Föhn-Anzeige: Flughäfen LOWI/LIPB, Bergstationen der Kammtemperatur, Vorzeichen (Bozen − Innsbruck), Umrechnung QNH → QFF, Farbstufen, Paaren der Messungen (gemeinsam für Route, Karte, Verlaufsbalken) |
 | `src/lib/stationPressure.ts` | Föhn-Anzeige: QNH alle 10 min selbst rechnen aus GeoSphere Innsbruck-Flughafen und Landesstation Bozen, mit Temperatur und Feuchte (gespeichert; angezeigt wird das QFF, `toQffSeries` in `src/lib/pressure.ts`; nur Server) |
 | `src/lib/crestTemperature.ts` | Föhn-Anzeige: Temperatur auf Kammhöhe, Rittnerhorn und Hafelekar (Temperatur-Diagramm; nur Server; Stationen in `CREST_STATIONS`, `src/lib/pressure.ts`) |
-| `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen, ICON-CH1- und ECMWF-Prognose) und Kammtemperatur aus `pressure_values`; Notbetrieb direkt bei den Diensten |
+| `src/app/api/pressure/route.ts` | Luftdruck Innsbruck/Bozen (48 h Stationen, ICON-CH1-, ECMWF- und ICON-D2-Prognose) und Kammtemperatur aus `pressure_values`; Notbetrieb direkt bei den Diensten |
 | `src/components/pressure.ts` + `src/components/PressurePanel.tsx` | Föhn-Linie Innsbruck–Bozen auf der Karte der Hauptseite (Farbe/Schild mit Differenz) und ihr Druck-Verlaufsbalken |
 | `src/app/api/kabel/route.ts` | Kabel (Luftfahrthindernisse Südtirol) für den Flugmodus, einmal am Tag vom Land geholt |
 | `src/lib/kabel.ts` | Antwortformat von `/api/kabel` und Höhenklassen der Kabel (gemeinsam für Route und Flugmodus) |
@@ -551,7 +551,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   **schwarz** mit weißer Schrift (`FOEHN_COLOR_SCALE`, gilt
   für Linie, Schild und Diagramm), grau ab 2 h ohne Messung
   (`PRESSURE_STALE_AFTER_MS`). **Quellen** (GeoSphere, Land Südtirol,
-  ICON-CH1, ECMWF; `PRESSURE_SOURCES`) stehen unter
+  ICON-CH1, ECMWF, ICON-D2; `PRESSURE_SOURCES`) stehen unter
   „Quellen" im Ebenen-Menü, nicht im Druck-Verlaufsbalken (Wunsch des
   Projektbesitzers).
 - **Gespeichert** in der eigenen Tabelle `pressure_values`
@@ -562,7 +562,10 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Edge Function (`refreshPressure`, `PRESSURE_MODELS`, eigene Laufprüfung je
   Modell): **ICON-CH1** (33 h voraus, grau gestrichelt) und seit Nov. 2026
   auf Wunsch des Projektbesitzers **ECMWF IFS** (`ecmwf_ifs`, 9 km, 72 h
-  voraus, violett gestrichelt — nicht blau, Blau/Rot gehören den Flächen). Beide als Druck **am Boden** geholt und nach
+  voraus, violett gestrichelt — nicht blau, Blau/Rot gehören den Flächen),
+  seit 10. Nov. 2026 auf Wunsch des Projektbesitzers außerdem **ICON-D2**
+  (`icon_d2`, DWD, 2 km, 48 h voraus, türkis gestrichelt `ICON_D2_COLOR`;
+  bei Open-Meteo `dwd_icon_d2` wie der Höhenwind). Beide als Druck **am Boden** geholt und nach
   derselben Regel in den QNH umgerechnet (`qnhFromSurface`) und mit
   Temperatur und Feuchte (`relative_humidity_2m`, seit 8. Nov. 2026)
   gespeichert; angezeigt wird daraus wie bei der Messung das QFF. (Nicht
@@ -655,7 +658,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Linienstück in der Farbe der Kurve, weil die Namen der Bergstationen
   für eine Zeile zu lang sind —, darunter die Legende in 11 px; Wunsch des
   Projektbesitzers); **Prognose-Zone rechts von „jetzt“ grau hinterlegt** und mit
-  „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, Temperatur)
+  „Prognose“ beschriftet; **die Prognosen (ICON-CH1, ECMWF, ICON-D2, Temperatur)
   laufen seit 7. Nov. 2026 auch in der Vergangenheit weiter, hinter der
   Messung** (Wunsch des Projektbesitzers, „wie im Verlaufsbalken“; vorher
   endeten sie an „jetzt“); senkrechte Rasterlinien und Stundenzahlen nur alle 2 h; um Mitternacht
@@ -858,7 +861,7 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   überhaupt abgefragt und gespeichert** — **ICON-D2** (bis Sept. 2026
   mitgesammelt, nie angezeigt) und **AROME** sind komplett entfernt.
   Einzige Ausnahme ist der Höhenwind (nächster Punkt). Die Druckprognose der
-  Föhn-Anzeige (ICON-CH1 und ECMWF) ist davon getrennt, siehe dort.
+  Föhn-Anzeige (ICON-CH1, ECMWF und ICON-D2) ist davon getrennt, siehe dort.
 - **Höhenwind (Okt. 2026, Wunsch des Projektbesitzers)** nur für
   **Rittnerhorn** (`82500WS`) und **Leiterspitz** (`pioupiou-2163`): blaue
   gestrichelte Linie im Verlaufsbalken (`UPPER_WIND_COLOR`), nur Mittelwind
@@ -1078,7 +1081,8 @@ Projektbesitzers entfernt:
   ~700, der Rest eines Laufs kommt beim nächsten Anstoß) × 8 Modellläufe ≈
   5.200 (mit Meteotrentino ≈ 5.600) am Tag,
   plus 16 für den Höhenwind (2 Stationen × 8), 24 für den Luftdruck der
-  Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4) und 16 für die Kammtemperatur
+  Flughäfen (ICON-CH1 2 × 8, ECMWF 2 × 4; seit 10. Nov. 2026 plus 16 für
+  ICON-D2 2 × 8) und 16 für die Kammtemperatur
   (ICON-CH1 2 × 8, seit 8. Nov. 2026); das Nachholen gescheiterter
   Stationen kostet nur bei Fehlern etwas. **Außerdem höchstens 600 Aufrufe
   pro Minute** (und 5.000 pro Stunde): Der erste Lauf mit allen 657 Stationen

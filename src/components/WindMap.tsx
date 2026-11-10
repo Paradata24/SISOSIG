@@ -1166,6 +1166,8 @@ export default function WindMap({
           forecast={pressureSeries.forecast}
           modelRun={pressureData?.modelRun ?? null}
           ecmwf={pressureSeries.ecmwf}
+          iconD2={pressureSeries.iconD2}
+          iconD2Run={pressureData?.iconD2Run ?? null}
           tempDiff={pressureSeries.tempDiff}
           tempDiffForecast={pressureSeries.tempDiffForecast}
           tempNorth={pressureSeries.tempNorth}
