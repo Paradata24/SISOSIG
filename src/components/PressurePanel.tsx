@@ -143,7 +143,9 @@ const SCALE_STRIP_OPACITY = 0.9;
 // (FOEHN_COLOR_SCALE: blau, grün, gelb, orange, rot, schwarz):
 //   "senkrecht" (aktuell): je Messpunkt ein senkrechter Streifen von der
 //     Nulllinie bis zur Kurve in der Farbe dieses Werts, zwischen zwei
-//     Messpunkten fließender Übergang (waagrechter Farbverlauf).
+//     Messpunkten fließender Übergang (waagrechter Farbverlauf). Dazu der
+//     Hintergrund zwischen Kurve und Diagrammrand: oben rot, solange Bozen
+//     höher ist, unten blau, solange Innsbruck höher ist, sonst weiß.
 //   "waagrecht" (erste Fassung): waagrechte Streifen, je Farbstufe einer.
 // Zurück zum vorherigen Aussehen (schwarze Kurve, Fläche rot/blau): "aus".
 const RAINBOW_TEST: "aus" | "senkrecht" | "waagrecht" = "senkrecht";
@@ -341,6 +343,46 @@ function buildAreaPath(
     segment.push(p);
   }
   flush();
+  return d;
+}
+
+/**
+ * TEST Regenbogen senkrecht (RAINBOW_TEST): Hintergrund zwischen Kurve und
+ * Diagrammrand auf der Seite, auf der die Kurve gerade liegt. `sign` = 1:
+ * oberhalb der Nulllinie, nur wo der Wert positiv ist (Rand oben); `sign` = −1:
+ * unterhalb, nur wo er negativ ist (Rand unten). An einem Vorzeichenwechsel
+ * wird der Nulldurchgang eingefügt, damit die Kante dort senkrecht ist.
+ */
+function buildSideBackgroundPath(
+  points: PressureDiffPoint[],
+  x: (t: number) => number,
+  y: (v: number) => number,
+  maxGapMs: number,
+  sign: 1 | -1,
+  edge: number,
+): string {
+  let d = "";
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (b.time - a.time > maxGapMs) continue;
+    // Teilstücke mit einheitlichem Vorzeichen (Nulldurchgang einfügen).
+    const pieces: [PressureDiffPoint, PressureDiffPoint][] = [];
+    if (a.diff * b.diff < 0) {
+      const tc = a.time + ((b.time - a.time) * a.diff) / (a.diff - b.diff);
+      const zero = { ...a, time: tc, diff: 0 };
+      pieces.push([a, zero], [zero, b]);
+    } else {
+      pieces.push([a, b]);
+    }
+    for (const [p, q] of pieces) {
+      if ((p.diff + q.diff) * sign <= 0) continue;
+      const xp = x(p.time).toFixed(1);
+      const xq = x(q.time).toFixed(1);
+      const ye = y(edge).toFixed(1);
+      d += `M${xp} ${ye}L${xq} ${ye}L${xq} ${y(q.diff).toFixed(1)}L${xp} ${y(p.diff).toFixed(1)}Z`;
+    }
+  }
   return d;
 }
 
@@ -569,6 +611,10 @@ export default function PressurePanel({
       stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
+      // TEST Regenbogen senkrecht: Hintergrund rot oberhalb / blau unterhalb
+      // der Nulllinie, je nachdem auf welcher Seite die Kurve liegt.
+      backgroundAbovePath: buildSideBackgroundPath(m, x, y, MEASURED_GAP_MS, 1, yTop),
+      backgroundBelowPath: buildSideBackgroundPath(m, x, y, MEASURED_GAP_MS, -1, yBottom),
       // TEST Regenbogen senkrecht: Farbe je Messpunkt (siehe RAINBOW_TEST).
       measuredStops: m.map((p) => ({
         offset: Math.max(0, Math.min(1, x(p.time) / svgW)),
@@ -756,7 +802,13 @@ export default function PressurePanel({
               Prognose ▸
             </text>
             {RAINBOW_TEST === "senkrecht" ? (
-              <path d={chart.measuredAreaPath} fill="url(#dp-rainbow)" opacity={RAINBOW_AREA_OPACITY} />
+              <>
+                {/* Hintergrund ab der Nulllinie: rot, solange Bozen höher
+                    ist (oben), blau, solange Innsbruck höher ist (unten). */}
+                <path d={chart.backgroundAbovePath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} />
+                <path d={chart.backgroundBelowPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} />
+                <path d={chart.measuredAreaPath} fill="url(#dp-rainbow)" opacity={RAINBOW_AREA_OPACITY} />
+              </>
             ) : RAINBOW_TEST === "waagrecht" ? (
               chart.scaleBands.map((band, i) => (
                 <path
