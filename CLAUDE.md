@@ -580,7 +580,9 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   Karte zeigen den neuesten Wert) +
   Prognose (grau gestrichelt); **Fläche zwischen gemessener Kurve und
   Nulllinie rot (oberhalb) bzw. blau (unterhalb)** wie im ΔT-Diagramm (nach
-  einer Skizze des Projektbesitzers, Nov. 2026), Hintergrund weiß, die
+  einer Skizze des Projektbesitzers, Nov. 2026; **TEST seit 10. Nov. 2026,
+  `RAINBOW_TEST` in `PressurePanel.tsx`:** Kurve rot/blau, Fläche in
+  waagrechten Streifen nach der Farbskala — mit `false` zurück), Hintergrund weiß, die
   Stufen der Farbskala als **schmaler Farbstreifen links neben den
   hPa-Zahlen**; **waagrechte Linien nur auf den Farbsprüngen**
   (±1/2/3/4/5 hPa, dazu ±6/7/8 hPa mit Zahl seit 10. Nov. 2026
