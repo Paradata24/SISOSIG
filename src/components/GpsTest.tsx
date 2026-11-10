@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useWakeLock } from "@/components/flight/device";
 
@@ -201,9 +202,9 @@ export default function GpsTest() {
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 16px)" }}
     >
       {/* Die iPhone-App hat keinen Zurück-Knopf — deshalb hier ein eigener. */}
-      <a href="/" className="text-sm text-zinc-600 underline">
+      <Link href="/" className="text-sm text-zinc-600 underline">
         ← Zurück zur Karte
-      </a>
+      </Link>
       <h1 className="mt-2 text-2xl font-bold">GPS-Test</h1>
       <p className="mt-1 text-sm text-zinc-600">
         Misst, wie oft das Handy einen neuen Standort liefert. Display anlassen, Seite offen lassen und
