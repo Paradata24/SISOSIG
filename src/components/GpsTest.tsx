@@ -200,7 +200,11 @@ export default function GpsTest() {
       className="mx-auto min-h-dvh max-w-md bg-white px-4 pb-10 text-zinc-900"
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 16px)" }}
     >
-      <h1 className="text-2xl font-bold">GPS-Test</h1>
+      {/* Die iPhone-App hat keinen Zurück-Knopf — deshalb hier ein eigener. */}
+      <a href="/" className="text-sm text-zinc-600 underline">
+        ← Zurück zur Karte
+      </a>
+      <h1 className="mt-2 text-2xl font-bold">GPS-Test</h1>
       <p className="mt-1 text-sm text-zinc-600">
         Misst, wie oft das Handy einen neuen Standort liefert. Display anlassen, Seite offen lassen und
         draußen bewegen (gehen, Rad, Auto als Beifahrer, im Flug). Nichts wird gespeichert.
