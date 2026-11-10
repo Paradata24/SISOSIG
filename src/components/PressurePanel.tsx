@@ -136,20 +136,6 @@ const AREA_OPACITY = 0.35;
 const AREA_ABOVE_FILL = "#dc2626";
 const AREA_BELOW_FILL = "#2563eb";
 const SCALE_STRIP_OPACITY = 0.9;
-// TEST „Regenbogen“ (10. Nov. 2026, Wunsch des Projektbesitzers, ausdrücklich
-// als leicht umkehrbarer Versuch). Bei RAINBOW_TEST ≠ "aus" wird die gemessene
-// Druckkurve rot, solange der Druck in Bozen höher ist (über der Nulllinie),
-// sonst blau, und die Fläche darunter färbt sich nach der Farbskala
-// (FOEHN_COLOR_SCALE: blau, grün, gelb, orange, rot, schwarz):
-//   "senkrecht" (aktuell): je Messpunkt ein senkrechter Streifen von der
-//     Nulllinie bis zur Kurve in der Farbe dieses Werts, zwischen zwei
-//     Messpunkten fließender Übergang (waagrechter Farbverlauf). Dazu der
-//     Hintergrund zwischen Kurve und Diagrammrand: oben rot, solange Bozen
-//     höher ist, unten blau, solange Innsbruck höher ist, sonst weiß.
-//   "waagrecht" (erste Fassung): waagrechte Streifen, je Farbstufe einer.
-// Zurück zum vorherigen Aussehen (schwarze Kurve, Fläche rot/blau): "aus".
-const RAINBOW_TEST: "aus" | "senkrecht" | "waagrecht" = "senkrecht";
-const RAINBOW_AREA_OPACITY = 0.55;
 // Waagrechte Linien gibt es NUR auf Höhe der Farbsprünge (±1 bis ±5 hPa),
 // bei 0 und bei ±6 bis ±8 (EXTRA_LINES_HPA) — dünn und GRAU (nicht bunt), alle anderen Gitterlinien
 // (ganze hPa) sind weg. Die hPa-Zahlen links stehen genau auf diesen
@@ -343,46 +329,6 @@ function buildAreaPath(
     segment.push(p);
   }
   flush();
-  return d;
-}
-
-/**
- * TEST Regenbogen senkrecht (RAINBOW_TEST): Hintergrund zwischen Kurve und
- * Diagrammrand auf der Seite, auf der die Kurve gerade liegt. `sign` = 1:
- * oberhalb der Nulllinie, nur wo der Wert positiv ist (Rand oben); `sign` = −1:
- * unterhalb, nur wo er negativ ist (Rand unten). An einem Vorzeichenwechsel
- * wird der Nulldurchgang eingefügt, damit die Kante dort senkrecht ist.
- */
-function buildSideBackgroundPath(
-  points: PressureDiffPoint[],
-  x: (t: number) => number,
-  y: (v: number) => number,
-  maxGapMs: number,
-  sign: 1 | -1,
-  edge: number,
-): string {
-  let d = "";
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (b.time - a.time > maxGapMs) continue;
-    // Teilstücke mit einheitlichem Vorzeichen (Nulldurchgang einfügen).
-    const pieces: [PressureDiffPoint, PressureDiffPoint][] = [];
-    if (a.diff * b.diff < 0) {
-      const tc = a.time + ((b.time - a.time) * a.diff) / (a.diff - b.diff);
-      const zero = { ...a, time: tc, diff: 0 };
-      pieces.push([a, zero], [zero, b]);
-    } else {
-      pieces.push([a, b]);
-    }
-    for (const [p, q] of pieces) {
-      if ((p.diff + q.diff) * sign <= 0) continue;
-      const xp = x(p.time).toFixed(1);
-      const xq = x(q.time).toFixed(1);
-      const ye = y(edge).toFixed(1);
-      d += `M${xp} ${ye}L${xq} ${ye}L${xq} ${y(q.diff).toFixed(1)}L${xp} ${y(p.diff).toFixed(1)}Z`;
-    }
-  }
   return d;
 }
 
@@ -611,15 +557,6 @@ export default function PressurePanel({
       stepLines,
       measuredPath: buildPath(m, x, y, MEASURED_GAP_MS),
       measuredAreaPath: buildAreaPath(m, x, y, MEASURED_GAP_MS),
-      // TEST Regenbogen senkrecht: Hintergrund rot oberhalb / blau unterhalb
-      // der Nulllinie, je nachdem auf welcher Seite die Kurve liegt.
-      backgroundAbovePath: buildSideBackgroundPath(m, x, y, MEASURED_GAP_MS, 1, yTop),
-      backgroundBelowPath: buildSideBackgroundPath(m, x, y, MEASURED_GAP_MS, -1, yBottom),
-      // TEST Regenbogen senkrecht: Farbe je Messpunkt (siehe RAINBOW_TEST).
-      measuredStops: m.map((p) => ({
-        offset: Math.max(0, Math.min(1, x(p.time) / svgW)),
-        color: foehnColor(p.diff).color,
-      })),
       forecastPath: buildPath(f, x, y, FORECAST_GAP_MS),
       ecmwfPath: buildPath(e, x, y, FORECAST_GAP_MS),
       ty,
@@ -779,52 +716,14 @@ export default function PressurePanel({
               <clipPath id="dp-below">
                 <rect x={0} y={chart.y(0)} width={chart.svgW} height={PAD_TOP + chartH - chart.y(0)} />
               </clipPath>
-              {/* TEST Regenbogen: je Farbstufe ein waagrechter Streifen. */}
-              {RAINBOW_TEST === "waagrecht" &&
-                chart.scaleBands.map((band, i) => (
-                  <clipPath key={`rb${i}`} id={`dp-band-${i}`}>
-                    <rect x={0} y={band.top} width={chart.svgW} height={band.height} />
-                  </clipPath>
-                ))}
-              {/* TEST Regenbogen senkrecht: Farbverlauf von links nach
-                  rechts, je Messpunkt die Farbe seines Werts. */}
-              {RAINBOW_TEST === "senkrecht" && (
-                <linearGradient id="dp-rainbow" gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={chart.svgW} y2={0}>
-                  {chart.measuredStops.map((stop, i) => (
-                    <stop key={i} offset={stop.offset} stopColor={stop.color} />
-                  ))}
-                </linearGradient>
-              )}
             </defs>
             {/* Prognose-Zone: rechts von "jetzt" grau hinterlegt. */}
             <rect x={chart.nowX} y={PAD_TOP} width={Math.max(0, chart.svgW - chart.nowX)} height={timeTop - PAD_TOP} fill={FORECAST_ZONE_FILL} />
             <text x={chart.nowX + 5} y={PAD_TOP + 10} fontSize={10} fill="#71717a">
               Prognose ▸
             </text>
-            {RAINBOW_TEST === "senkrecht" ? (
-              <>
-                {/* Hintergrund ab der Nulllinie: rot, solange Bozen höher
-                    ist (oben), blau, solange Innsbruck höher ist (unten). */}
-                <path d={chart.backgroundAbovePath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} />
-                <path d={chart.backgroundBelowPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} />
-                <path d={chart.measuredAreaPath} fill="url(#dp-rainbow)" opacity={RAINBOW_AREA_OPACITY} />
-              </>
-            ) : RAINBOW_TEST === "waagrecht" ? (
-              chart.scaleBands.map((band, i) => (
-                <path
-                  key={`ra${i}`}
-                  d={chart.measuredAreaPath}
-                  fill={band.color}
-                  opacity={RAINBOW_AREA_OPACITY}
-                  clipPath={`url(#dp-band-${i})`}
-                />
-              ))
-            ) : (
-              <>
-                <path d={chart.measuredAreaPath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-above)" />
-                <path d={chart.measuredAreaPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-below)" />
-              </>
-            )}
+            <path d={chart.measuredAreaPath} fill={AREA_ABOVE_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-above)" />
+            <path d={chart.measuredAreaPath} fill={AREA_BELOW_FILL} opacity={AREA_OPACITY} clipPath="url(#dp-below)" />
             {/* Graue Linien nur auf den Farbsprüngen (Zahlen links), dazu die
                 Nulllinie. */}
             {chart.stepLines.map((line, i) => (
@@ -935,14 +834,7 @@ export default function PressurePanel({
             {/* Druck-Prognosen über den ganzen Zeitraum, hinter der Messung. */}
             <path d={chart.ecmwfPath} fill="none" stroke={ECMWF_COLOR} strokeWidth={1.6} strokeDasharray={FORECAST_DASH} />
             <path d={chart.forecastPath} fill="none" stroke={FORECAST_COLOR} strokeWidth={1.8} strokeDasharray={FORECAST_DASH} />
-            {RAINBOW_TEST !== "aus" ? (
-              <>
-                <path d={chart.measuredPath} fill="none" stroke={AREA_ABOVE_FILL} strokeWidth={2} strokeLinejoin="round" clipPath="url(#dp-above)" />
-                <path d={chart.measuredPath} fill="none" stroke={AREA_BELOW_FILL} strokeWidth={2} strokeLinejoin="round" clipPath="url(#dp-below)" />
-              </>
-            ) : (
-              <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
-            )}
+            <path d={chart.measuredPath} fill="none" stroke={MEASURED_COLOR} strokeWidth={2} strokeLinejoin="round" />
           </svg>
         </div>
         {/* Titelzeile des Temperatur-Diagramms, fest (wandert nicht mit), in
