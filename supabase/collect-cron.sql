@@ -1,5 +1,6 @@
 -- Zeitplan-Job "collect-data": stößt alle 5 Minuten die Sammel-Route
--- /api/collect an (warum 5 Minuten: siehe src/app/api/collect/route.ts).
+-- /api/collect an (warum 5 Minuten: siehe src/app/api/collect/route.ts),
+-- seit 13. Nov. 2026 jeweils 3 Minuten nach (:03, :08, :13 …; Grund ebenda).
 -- Für eine NEUE Installation; eine bestehende Datenbank stellt
 -- supabase/collect-cron-tresor.sql um.
 --
@@ -22,7 +23,7 @@ select vault.create_secret('DEIN_CRON_SECRET', 'cron_secret', 'CRON_SECRET für 
 --    Adresse anpassen, falls die Seite nicht unter sisosig.vercel.app läuft.
 select cron.schedule(
   'collect-data',
-  '*/5 * * * *',
+  '3-58/5 * * * *',
   $$
   select net.http_post(
     url := 'https://sisosig.vercel.app/api/collect',

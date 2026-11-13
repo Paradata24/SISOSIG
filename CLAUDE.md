@@ -487,6 +487,13 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
   seit Okt. 2026 holt sie alles in einem Schritt über die Datenbank-Funktion
   `wind_timeline`, `supabase/zeitbalken-funktion.sql`, ~0,2 s in der
   Datenbank).
+- **Sammler startet um :03, :08, :13 …** (`3-58/5 * * * *`, 13. Nov. 2026,
+  vom Projektbesitzer nach einer Messung freigegeben): Bozen und
+  MeteoSchweiz veröffentlichen ~11 min nach der Messung, GeoSphere und
+  Meteotrentino nach 1–2½ min. Mit :00/:05 kamen Bozen/MeteoSchweiz nach 15
+  min auf die Karte, jetzt nach ~13, GeoSphere/Meteotrentino nach 3 statt 5.
+  Nicht auf :02 legen (zu knapp für GeoSphere). Umstellung:
+  `supabase/collect-takt-versatz.sql`.
 - **Sammel-Takt bleibt bei 5 min** (Supabase-Cron-Job `collect-data`), obwohl
   die Stationen nur alle 10 min messen — siehe die Begründung oben in
   `src/app/api/collect/route.ts`. Nicht auf 10 min „aufräumen". Seit Punkt 14

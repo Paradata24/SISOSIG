@@ -266,8 +266,10 @@ Zeitplan-Job wird `Bearer ` davorgesetzt.
 
 ### Supabase Cron einrichten
 
-Der Zeitplan-Job heißt `collect-data` und läuft **alle 5 Minuten**
-(`*/5 * * * *`). Sein Geheimnis (`CRON_SECRET`) liegt seit Okt. 2026 im
+Der Zeitplan-Job heißt `collect-data` und läuft **alle 5 Minuten**, jeweils
+3 Minuten nach (`3-58/5 * * * *`, also :03, :08, :13 …; Grund in
+`src/app/api/collect/route.ts`, Umstellung einer bestehenden Datenbank mit
+`supabase/collect-takt-versatz.sql`). Sein Geheimnis (`CRON_SECRET`) liegt seit Okt. 2026 im
 Supabase-Tresor (Vault) statt im Klartext im Job — genauso wie beim
 Prognose-Job.
 

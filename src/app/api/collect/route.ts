@@ -26,7 +26,7 @@ import { CREST_KIND, PRESSURE_STATUS_NAME } from "@/lib/pressure";
 //    Temperatur auf Kammhöhe (Rittnerhorn, Hafelekar). Ein Fehler dort
 //    betrifft den Wind nicht.
 //
-// TAKT: alle 5 Minuten (Cron-Job "collect-data", `*/5 * * * *`) — bewusst
+// TAKT: alle 5 Minuten (Cron-Job "collect-data", `3-58/5 * * * *`) — bewusst
 // doppelt so oft, wie die Stationen messen. Grund: /sensors liefert immer nur
 // den NEUESTEN Wert je Sensor, und der Bozner Dienst veröffentlicht ihn erst
 // 5–10 Minuten nach der Messung (nachgemessen an inserted_at − measured_at:
@@ -35,6 +35,16 @@ import { CREST_KIND, PRESSURE_STATUS_NAME } from "@/lib/pressure";
 // garantiert mindestens ein Abruf. Bei einem 10-Minuten-Takt wäre das der
 // Grenzfall — eine Verzögerung von wenigen Sekunden würde dann Werte
 // verschlucken. NICHT auf 10 Minuten zurückstellen.
+//
+// STARTZEIT :03, :08, :13 … statt :00, :05, :10 (13. Nov. 2026, vom
+// Projektbesitzer nach einer Messung freigegeben; supabase/collect-takt-versatz.sql).
+// Am 10.11.2026 direkt bei den Diensten gemessen, wann ein neuer Wert
+// erscheint (Minuten nach der Messung): Bozen 11, MeteoSchweiz 10–11,
+// GeoSphere 1–2½, Meteotrentino 1½–2. Mit :00/:05 verpasste der Lauf Bozen
+// und MeteoSchweiz jedes Mal knapp (Wert von 21:10 um 21:21 da, abgeholt erst
+// um 21:25 → 15 min). Mit :03/:08 sind es 13 min, GeoSphere und Meteotrentino
+// bleiben bei 3 statt 5 min. NICHT auf :00/:05 oder :02/:07 legen (:02 ist
+// für GeoSphere zu knapp). Ändert ein Dienst seine Verzögerung, neu messen.
 //
 // Was auch ein schnellerer Takt NICHT verhindern kann: Liefert der Bozner
 // Dienst einen Wert verspätet nach, nachdem der nächste schon da war, wird er
