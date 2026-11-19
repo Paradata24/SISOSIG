@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { MainLayers } from "@/components/LayerMenu";
-import type { StationFilter, TimelineFrame, TimelinePayload } from "@/lib/wind";
+import type { StationFilter, TimelineFrame, TimelinePayload, WindStation } from "@/lib/wind";
 
 const WindMap = dynamic(() => import("@/components/WindMap"), {
   ssr: false,
@@ -42,8 +42,8 @@ export default function WindMapLoader({
   historyFrame: TimelineFrame | null;
   /** Verlauf aller Stationen (für die Messfehler-Prüfung der Live-Werte), siehe WindMap. */
   timeline: TimelinePayload | null;
-  /** Meldet die Stationscodes im sichtbaren Kartenausschnitt, siehe WindMap. */
-  onViewportStationsChange: (codes: string[]) => void;
+  /** Meldet die Stationen (mit aktuellen Werten) im sichtbaren Kartenausschnitt, siehe WindMap. */
+  onViewportStationsChange: (stations: WindStation[]) => void;
   /** Geöffnete Station (null = keine), siehe WindMap. */
   selectedStationCode: string | null;
   onSelectStation: (stationCode: string | null) => void;

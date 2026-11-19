@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getWindColor, GRID_MS, type TimelinePayload } from "@/lib/wind";
+import {
+  getWindColor,
+  GRID_MS,
+  liveTail,
+  liveTailAt,
+  type TimelinePayload,
+  type WindStation,
+} from "@/lib/wind";
 
 // Zeitbalken unter der Karte — ein Zeitrad.
 //
@@ -93,28 +100,43 @@ const STRIP_EMPTY = "#e4e4e7"; // zinc-200
  * STRIP_QUANTILE-Werts (Mittelwind) aller angegebenen Stationen. null =
  * keine Messung (grau). Maßgeblich ist wie in buildTimelineFrame die
  * Zeitliste des Servers; gesucht wird der nächstgelegene Rasterpunkt.
+ * Hat der Verlauf zu einem Zeitpunkt (noch) keinen Wert einer Station, zählt
+ * wie auf der Karte ihr aktueller Wert, soweit er dort gilt (liveTail in
+ * src/lib/wind.ts) — sonst wäre das Ende des Strichs in Südtirol immer
+ * 15–20 min lang grau, weil der Bozner Dienst so spät liefert.
  */
 export function buildStripColors(
   payload: TimelinePayload | null,
   slots: number[],
-  stationCodes: string[] | null,
+  stations: WindStation[] | null,
 ): (string | null)[] | null {
-  if (!payload || payload.times.length === 0 || !stationCodes) return null;
+  if (!payload || payload.times.length === 0 || !stations) return null;
   const start = payload.times[0];
-  const series = stationCodes
-    .map((code) => payload.stations[code])
-    .filter((s) => s !== undefined);
+  // Einmal vorab je Station statt für jeden der 289 Rasterpunkte.
+  const entries = stations.map((station) => ({
+    series: payload.stations[station.stationCode],
+    tail: liveTail(station),
+  }));
   return slots.map((time) => {
-    const idx = Math.round((time - start) / GRID_MS);
-    if (idx < 0 || idx >= payload.times.length) return null;
-    if (Math.abs(payload.times[idx] - time) > GRID_MS / 2) return null;
+    let idx = Math.round((time - start) / GRID_MS);
+    if (idx < 0 || idx >= payload.times.length) idx = -1;
+    else if (Math.abs(payload.times[idx] - time) > GRID_MS / 2) idx = -1;
     const speeds: number[] = [];
-    for (const s of series) {
-      const v = s.s[idx];
-      // Wahrscheinliche Messfehler (siehe src/lib/plausibility.ts) zählen
-      // nicht mit — ein eingefrorener Sturmwert soll den Strich nicht rot färben.
-      if (s.q && s.q[idx] !== ".") continue;
-      if (v !== null && v !== undefined) speeds.push(v);
+    for (const { series, tail } of entries) {
+      const hasValue =
+        idx >= 0 &&
+        series !== undefined &&
+        (series.d[idx] !== null || series.s[idx] !== null || series.g[idx] !== null);
+      if (hasValue) {
+        // Wahrscheinliche Messfehler (siehe src/lib/plausibility.ts) zählen
+        // nicht mit — ein eingefrorener Sturmwert soll den Strich nicht rot färben.
+        if (series.q && series.q[idx] !== ".") continue;
+        const v = series.s[idx];
+        if (v !== null && v !== undefined) speeds.push(v);
+        continue;
+      }
+      const live = liveTailAt(tail, time);
+      if (live && !live.suspect && live.speedKmh !== null) speeds.push(live.speedKmh);
     }
     if (speeds.length === 0) return null;
     speeds.sort((a, b) => a - b);
