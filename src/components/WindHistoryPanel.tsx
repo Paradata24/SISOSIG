@@ -460,6 +460,93 @@ function contrastTextColor(hexColor: string): string {
 // nach der Windskala des Werts eingefärbt ist — ohne Rahmen.
 // - `bold`: stündliche Messwerte werden fett gesetzt, damit man sie beim
 //   Vergleich mit der (ebenfalls stündlichen) Prognose schnell findet.
+// --- Diagramm in Stücken zeichnen (iPhone-Absturz beim Wischen, Nov. 2026) ---
+// Seit der Verlaufsbalken 48 h zeigt, ist das Diagramm rund 8.600 px breit —
+// am iPhone mit dreifacher Pixeldichte über 25.000 Bildpunkte. Safari muss
+// beim Wischen davon große Teile als Bild bereithalten; wird der Speicher
+// knapp, wirft es Bildteile weg: Diagramm UND Kartenpfeile waren dann leer
+// (Rückmeldung des Projektbesitzers). Deshalb wird das Diagramm hier in
+// senkrechte Streifen zu CHUNK_W px geschnitten, und nur die Streifen im
+// sichtbaren Bereich plus je eine Bildschirmbreite links und rechts werden
+// überhaupt gezeichnet. Jeder Streifen ist ein eigenes <svg> mit demselben
+// Inhalt und verschobenem Ausschnitt (viewBox) — das Bild sieht genauso aus
+// wie vorher, nur die Fläche, die Safari malen muss, ist viel kleiner.
+// Gescrollt wird weiter vom Browser selbst (Schwung am Handy bleibt).
+// Neue Streifen kommen nur dazu, wenn man eine Streifengrenze überschreitet.
+const CHUNK_W = 1000;
+
+function ChunkedChart({
+  width,
+  height,
+  scrollRef,
+  ariaLabel,
+  children,
+}: {
+  width: number;
+  height: number;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  const chunkCount = Math.max(1, Math.ceil(width / CHUNK_W));
+  // Sichtbare Streifen als "erster-letzter" (Text, damit gleiche Werte kein
+  // neues Zeichnen auslösen).
+  const [range, setRange] = useState("0-1");
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      const margin = el.clientWidth;
+      const first = Math.max(0, Math.floor((el.scrollLeft - margin) / CHUNK_W));
+      const last = Math.min(
+        chunkCount - 1,
+        Math.floor((el.scrollLeft + el.clientWidth + margin) / CHUNK_W),
+      );
+      setRange(`${first}-${last}`);
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [scrollRef, chunkCount]);
+
+  const [first, last] = range.split("-").map(Number);
+  const chunks: number[] = [];
+  for (let k = first; k <= Math.min(last, chunkCount - 1); k++) chunks.push(k);
+
+  return (
+    <div
+      role="img"
+      aria-label={ariaLabel}
+      className="relative"
+      style={{ width, height }}
+    >
+      {chunks.map((k) => {
+        const left = k * CHUNK_W;
+        const w = Math.min(CHUNK_W, width - left);
+        return (
+          <svg
+            key={k}
+            className="absolute top-0"
+            style={{ left }}
+            width={w}
+            height={height}
+            viewBox={`${left} 0 ${w} ${height}`}
+            aria-hidden="true"
+          >
+            {children}
+          </svg>
+        );
+      })}
+    </div>
+  );
+}
+
 function ValueBox({
   cx,
   boxY,
@@ -1011,12 +1098,11 @@ export default function WindHistoryPanel({
               Keine Daten verfügbar
             </div>
           ) : (
-            <svg
+            <ChunkedChart
               width={svgWidth}
               height={SVG_H}
-              viewBox={`0 0 ${svgWidth} ${SVG_H}`}
-              role="img"
-              aria-label={`Windverlauf: Mittelwind und Böen der letzten ${HISTORY_HOURS} Stunden`}
+              scrollRef={scrollRef}
+              ariaLabel={`Windverlauf: Mittelwind und Böen der letzten ${HISTORY_HOURS} Stunden`}
             >
               {/* Farbflächen der Windstärke-Skala (gleiche Bereiche wie die
                   Kartenpfeile, siehe WIND_COLOR_SCALE): eine Fläche je
@@ -1307,7 +1393,7 @@ export default function WindHistoryPanel({
                   </g>
                 );
               })}
-            </svg>
+            </ChunkedChart>
           )}
         </div>
 
