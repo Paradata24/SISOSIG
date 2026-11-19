@@ -16,6 +16,8 @@ import {
   getStationFilterMapLabel,
   getWindColor,
   listSourceLabels,
+  liveTail,
+  liveTailAt,
   matchesStationFilter,
   MISSING_SOURCES_HEADER,
   parseMissingSources,
@@ -617,29 +619,32 @@ function WindMarkers({
 // Meldet nach jedem Verschieben/Zoomen (und wenn sich die Stationsliste oder
 // der Filter ändert), welche Stationen im sichtbaren Kartenausschnitt liegen.
 // Daraus berechnet WindApp den Farbstrich im Zeitbalken — der Strich zeigt
-// also immer das Gebiet, das man gerade ansieht. Gemeldet wird nur bei einer
-// echten Änderung der Liste, sonst würde der Strich bei jedem Abruf der
-// Live-Werte neu berechnet. Muss innerhalb von <MapContainer> stehen.
+// also immer das Gebiet, das man gerade ansieht. Gemeldet werden die
+// Stationen samt aktuellem Wert (seit Nov. 2026): Am Ende des Strichs, wo der
+// Verlauf noch keinen Wert hat, nimmt er wie die Karte den aktuellen Wert
+// (liveTail in src/lib/wind.ts). Gemeldet wird deshalb, wenn sich der
+// Ausschnitt ODER die Live-Werte ändern (alle 3 min), sonst nicht.
+// Muss innerhalb von <MapContainer> stehen.
 function ViewportReporter({
   stations,
   onChange,
 }: {
   stations: WindStation[];
-  onChange: (codes: string[]) => void;
+  onChange: (stations: WindStation[]) => void;
 }) {
   const lastKey = useRef("");
+  const lastStations = useRef<WindStation[] | null>(null);
   const report = useCallback(
     (map: L.Map) => {
       const bounds = map.getBounds();
-      const codes = stations
-        .filter(
-          (s) => s.lat !== null && s.lng !== null && bounds.contains([s.lat, s.lng]),
-        )
-        .map((s) => s.stationCode);
-      const key = codes.join(",");
-      if (key === lastKey.current) return;
+      const inView = stations.filter(
+        (s) => s.lat !== null && s.lng !== null && bounds.contains([s.lat, s.lng]),
+      );
+      const key = inView.map((s) => s.stationCode).join(",");
+      if (key === lastKey.current && stations === lastStations.current) return;
       lastKey.current = key;
-      onChange(codes);
+      lastStations.current = stations;
+      onChange(inView);
     },
     [stations, onChange],
   );
@@ -788,8 +793,11 @@ export default function WindMap({
    * Werte" lässt sich am einzelnen aktuellen Wert nicht erkennen.
    */
   timeline: TimelinePayload | null;
-  /** Stationscodes im sichtbaren Kartenausschnitt (für den Zeitbalken). */
-  onViewportStationsChange: (codes: string[]) => void;
+  /**
+   * Stationen im sichtbaren Kartenausschnitt, mit ihren aktuellen Werten (für
+   * den Farbstrich im Zeitbalken).
+   */
+  onViewportStationsChange: (stations: WindStation[]) => void;
   /**
    * Die geöffnete Station (null = keine). Der Zustand liegt in WindApp, weil
    * dort der Zeitbalken bei geöffneter Station ausgeblendet wird.
@@ -881,20 +889,30 @@ export default function WindMap({
   //
   // Erst filtern, dann ersetzen: bei aktivem Filter sind das ein paar Dutzend
   // statt ~130 Objekte pro Schritt.
-  const displayStations = useMemo(() => {
-    if (!historyFrame) {
-      // Live: Ohne Auffälligkeiten bleibt die Liste unverändert (gleiche
-      // Referenz, spart ein Neuzeichnen); sonst bekommen nur die auffälligen
-      // Stationen eine Kopie mit dem Feld suspect.
-      if (liveSuspects.size === 0) return visibleStations;
-      return visibleStations.map((station) => {
-        const suspect = liveSuspects.get(station.stationCode);
-        return suspect ? { ...station, suspect } : station;
-      });
-    }
-    const timestamp = new Date(historyFrame.time).toISOString();
+  // Live: Ohne Auffälligkeiten bleibt die Liste unverändert (gleiche
+  // Referenz, spart ein Neuzeichnen); sonst bekommen nur die auffälligen
+  // Stationen eine Kopie mit dem Feld suspect. Diese Liste geht auch an den
+  // Zeitbalken (ViewportReporter), damit sein Farbstrich am Ende dieselben
+  // Werte nimmt wie die Karte (liveTail).
+  const liveStations = useMemo(() => {
+    if (liveSuspects.size === 0) return visibleStations;
     return visibleStations.map((station) => {
-      const value = historyFrame.values.get(station.stationCode);
+      const suspect = liveSuspects.get(station.stationCode);
+      return suspect ? { ...station, suspect } : station;
+    });
+  }, [visibleStations, liveSuspects]);
+
+  const displayStations = useMemo(() => {
+    if (!historyFrame) return liveStations;
+    const timestamp = new Date(historyFrame.time).toISOString();
+    return liveStations.map((station) => {
+      // Hat der Verlauf zu diesem Zeitpunkt (noch) keinen Wert, gilt zwischen
+      // dem neuesten Messwert und "jetzt" derselbe Wert wie bei "Aktuell"
+      // (liveTail in src/lib/wind.ts: Der Bozner Dienst liefert 15 min
+      // verspätet — sonst verschwand eine Stufe vor "Aktuell" ganz Südtirol).
+      const value =
+        historyFrame.values.get(station.stationCode) ??
+        liveTailAt(liveTail(station), historyFrame.time);
       const direction = value?.direction ?? null;
       const speedKmh = value?.speedKmh ?? null;
       const gustKmh = value?.gustKmh ?? null;
@@ -912,7 +930,7 @@ export default function WindMap({
         suspect: value?.suspect ? { reason: value.suspect, since: null } : null,
       };
     });
-  }, [visibleStations, historyFrame, liveSuspects]);
+  }, [liveStations, historyFrame]);
 
   // Aus dem Stationscode abgeleitet (statt eines eingefrorenen Snapshots vom
   // Klickzeitpunkt), damit z. B. der "Stand"-Zeitstempel im Verlaufspanel bei
@@ -1080,7 +1098,7 @@ export default function WindMap({
           selectedStationCode={selectedStationCode}
           showAltitude={flightMode}
         />
-        <ViewportReporter stations={visibleStations} onChange={onViewportStationsChange} />
+        <ViewportReporter stations={liveStations} onChange={onViewportStationsChange} />
         <ViewSaver enabled={!flightMode} />
         <ContainerResizeWatcher />
       </MapContainer>

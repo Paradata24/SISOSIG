@@ -427,7 +427,20 @@ Projektbesitzers; vorher 12 h Anzeige und 2 Tage Aufbewahrung)
     nicht auf „Aktuell" steht (Nov. 2026, Wunsch des Projektbesitzers, wie das
     gelbe Filter-Schild bei aktivem Filter).
   - Die Verlaufsdaten (`/api/timeline`) werden **gleich beim Seitenaufruf**
-    und alle 10 min geladen (früher erst beim ersten Anfassen).
+    und alle 10 min geladen (früher erst beim ersten Anfassen). Bis 19. Nov.
+    2026 fiel dabei jedes zweite Auffrischen aus (Sperre „höchstens 10 min
+    alt" griff genau beim nächsten Rasterschritt), der Zeitbalken hinkte bis
+    zu 20 min hinterher; jetzt Sperre nur 5 min (`ensureTimeline` in `WindApp`).
+  - **Zwischen dem neuesten Messwert einer Station und „Aktuell" zeigt der
+    Zeitbalken denselben Wert wie „Aktuell"** (19. Nov. 2026, nach einem Video
+    des Projektbesitzers: eine Stufe vor „Aktuell" verschwanden ALLE
+    Südtiroler Stationen, weil der Bozner Dienst 15 min verspätet liefert).
+    Grau erst nach der Grau-Grenze der Quelle (`STALE_AFTER_MINUTES`), wie
+    live. Gilt nur dort, wo der Verlauf zu diesem Zeitpunkt keinen Wert hat,
+    für Karte und Farbstrich (`liveTail`/`liveTailAt` in `src/lib/wind.ts`).
+    Bewusst NICHT im gerechneten Verlauf (`/api/timeline`), sonst sähe die
+    Messfehler-Prüfung (`assessLive`) wiederholte Werte als „eingefroren".
+    Echte Lücken mitten im Verlauf bleiben grau.
   - **Sparsam laden (Punkt 27, Nov. 2026, auf Wunsch des Projektbesitzers):**
     Die vollen 48 h (~450 KB) holt nur die Hauptseite beim Öffnen. Danach
     kommen alle 10 min nur die letzten 8 h (`/api/timeline?hours=8`,
@@ -1038,7 +1051,11 @@ Projektbesitzers entfernt:
   ohnehin geladenen Datei des LWD Tirol — keine GeoSphere-Anfrage.)
 - **Der Bozner Dienst hinkt 5–10 min nach und zeigt nur den neuesten Wert.**
   `/sensors` liefert je Sensor genau einen Wert, und der ist beim Abruf typisch
-  10 min alt (gemessen an `inserted_at − measured_at`). Folge: Ein Messwert, den
+  10 min alt (gemessen an `inserted_at − measured_at`). In der Datenbank steht
+  ein Bozner Wert deshalb fast immer erst **15 min nach der Messung** (19. Nov.
+  2026 über 48 h gemessen: 261 von 279 Messzeitpunkten genau 15 min) — die
+  letzten 1–2 Stufen vor „Aktuell" füllt der Zeitbalken mit dem Live-Wert
+  (`liveTail`, siehe „Zeitbalken = Zeitrad"). Folge: Ein Messwert, den
   der Dienst verspätet nachliefert — nachdem der nächste schon da war —, wird
   nie der „neueste" und ist für uns unerreichbar. Solche Lücken sind KEIN Fehler
   der Sammel-Route; sie treten bei allen Stationen gleichzeitig auf und lassen

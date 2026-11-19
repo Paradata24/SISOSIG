@@ -22,6 +22,7 @@ import {
   TIMELINE_RECENT_PATH,
   type StationFilter,
   type TimelinePayload,
+  type WindStation,
 } from "@/lib/wind";
 import { mergeRecentTimeline, TIMELINE_MERGE_MAX_GAP_MS } from "@/lib/timelineMerge";
 import WindMapLoader from "@/components/WindMapLoader";
@@ -321,8 +322,17 @@ export default function WindApp() {
     const age = timelineFetchedAt.current ? Date.now() - timelineFetchedAt.current : Infinity;
     // Die Hauptseite braucht die ganzen 48 h (Farbstrich, Zurückblättern).
     const needFull = !flight && (!current || current.hours < HISTORY_HOURS);
-    // Bereits geholt und noch keinen Rasterschritt alt: nichts zu tun.
-    if (!needFull && age <= GRID_MS) return;
+    // Erst vor Kurzem geholt (z. B. beim Öffnen der Seite kurz vor einem
+    // neuen Rasterschritt): nichts zu tun. Bewusst nur ein HALBER
+    // Rasterschritt (Nov. 2026): Bis dahin stand hier "höchstens ein
+    // Rasterschritt alt". Aufgerufen wird aber genau beim nächsten
+    // Rasterschritt, also gut 10 min nach dem letzten Laden — abzüglich der
+    // Ladezeit (gemerkt wird erst, wenn die Antwort da ist) war das meist
+    // knapp UNTER 10 min, und jedes zweite Auffrischen fiel aus. Der
+    // Zeitbalken hinkte so bis zu 20 min hinter der Datenbank her (am Video
+    // des Projektbesitzers: um 19:52 fehlten Bozner Werte von 19:30, die seit
+    // 19:45 in der Datenbank standen).
+    if (!needFull && age < GRID_MS / 2) return;
     const canMerge = current !== null && age <= TIMELINE_MERGE_MAX_GAP_MS;
     const recentOnly = flight || (!needFull && canMerge);
 
@@ -378,10 +388,12 @@ export default function WindApp() {
   // Welche Stationen gerade im Kartenausschnitt sichtbar sind (meldet
   // WindMap nach jedem Verschieben/Zoomen). Daraus entsteht der Farbstrich
   // im Zeitbalken — er zeigt also immer das Gebiet, das man gerade ansieht.
-  const [viewportCodes, setViewportCodes] = useState<string[] | null>(null);
+  // Mit ihren aktuellen Werten: Am Ende des Strichs, wo der Verlauf noch
+  // nichts hat, zählen sie wie auf der Karte (liveTail in src/lib/wind.ts).
+  const [viewportStations, setViewportStations] = useState<WindStation[] | null>(null);
   const stripColors = useMemo(
-    () => buildStripColors(timeline, slots, viewportCodes),
-    [timeline, slots, viewportCodes],
+    () => buildStripColors(timeline, slots, viewportStations),
+    [timeline, slots, viewportStations],
   );
 
   // Beim schnellen Ziehen feuert der Zeitbalken viele Male pro Sekunde. Mit
@@ -515,7 +527,7 @@ export default function WindApp() {
           onMainLayersChange={changeMainLayers}
           historyFrame={historyFrame}
           timeline={timeline}
-          onViewportStationsChange={setViewportCodes}
+          onViewportStationsChange={setViewportStations}
           selectedStationCode={selectedStationCode}
           // Im Flugmodus öffnet ein Antippen der Pfeile nichts: Mit
           // Handschuhen trifft man leicht aus Versehen, und der

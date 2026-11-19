@@ -441,6 +441,63 @@ export function buildTimelineFrame(
 }
 
 /**
+ * Der AKTUELLE Wert einer Station (von /api/wind), soweit er beim
+ * Zurückblättern im Zeitbalken eine Lücke am Ende füllen darf (Nov. 2026,
+ * Rückmeldung des Projektbesitzers per Video): von seinem eigenen
+ * Rasterpunkt (`from`) bis zur Grau-Grenze seiner Quelle (`until`, siehe
+ * STALE_AFTER_MINUTES). null = kein brauchbarer aktueller Wert.
+ *
+ * Warum: Der Bozner Dienst liefert seine Werte 15 min nach der Messung (Nov.
+ * 2026 an 48 h gemessen, fast immer genau 15 min). Steht "Aktuell" z. B. auf
+ * 19:50, gibt es für Südtirol erst Werte bis 19:30 — "Aktuell" zeigt den von
+ * 19:30, eine Stufe zurück (19:40) gab es aber gar keinen Wert, und ALLE
+ * Südtiroler Stationen verschwanden. Jetzt zeigt der Zeitbalken zwischen dem
+ * neuesten Messwert einer Station und "jetzt" dasselbe wie "Aktuell": den
+ * neuesten Wert, grau erst nach derselben Grenze wie auf der Live-Karte.
+ * Erfunden wird nichts — für diese Zeitpunkte gibt es keinen neueren Wert,
+ * und genau diesen zeigt auch "Aktuell". Lücken MITTEN im Verlauf (echte
+ * Ausfälle) bleiben grau, sie liegen ja vor dem neuesten Wert.
+ *
+ * Bewusst getrennt vom gerechneten Verlauf (/api/timeline): Die
+ * Messfehler-Prüfung (assessLive, src/lib/plausibility.ts) darf diese
+ * wiederholten Werte nicht sehen, sonst sähe sie "eingefrorene" Abschnitte,
+ * die es nicht gibt. Genutzt von der Karte (displayStations in WindMap) und
+ * vom Farbstrich (buildStripColors in TimeSlider), immer nur dort, wo der
+ * Verlauf zu diesem Zeitpunkt keinen Wert hat.
+ */
+export interface LiveTail {
+  /** Ab diesem Rasterpunkt (der Messung selbst, eingerastet). */
+  from: number;
+  /** Bis zu diesem Zeitpunkt (danach wäre die Station auch live grau). */
+  until: number;
+  value: TimelineValue;
+}
+
+export function liveTail(station: WindStation): LiveTail | null {
+  // Gleiche Regel wie bei den Verlaufswerten auf der Karte: ohne Richtung
+  // oder Mittelwind grau.
+  if (station.direction === null || station.speedKmh === null) return null;
+  const measuredAt = station.timestamp ? Date.parse(station.timestamp) : NaN;
+  if (Number.isNaN(measuredAt)) return null;
+  const value: TimelineValue = {
+    direction: station.direction,
+    speedKmh: station.speedKmh,
+    gustKmh: station.gustKmh,
+  };
+  if (station.suspect) value.suspect = station.suspect.reason;
+  return {
+    from: snapToGrid(measuredAt),
+    until: measuredAt + STALE_AFTER_MINUTES[station.source] * 60_000,
+    value,
+  };
+}
+
+/** Wert aus liveTail zum Rasterpunkt `time`, sonst null. */
+export function liveTailAt(tail: LiveTail | null, time: number): TimelineValue | null {
+  return tail && time >= tail.from && time <= tail.until ? tail.value : null;
+}
+
+/**
  * "Windanzeiger" – kuratierte Liste der vom Projektbesitzer bewusst
  * ausgewählten Stationen. Der gleichnamige Filter auf der Karte zeigt nur
  * diese Stationen an. Jeder Eintrag wird (klein geschrieben, ohne
